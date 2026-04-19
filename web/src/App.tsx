@@ -1,121 +1,135 @@
-import { useState } from 'react';
-import reactLogo from './assets/react.svg';
-import viteLogo from './assets/vite.svg';
-import heroImg from './assets/hero.png';
-import './App.css';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
+import {NoteReadout} from './ui/NoteReadout';
+import {PitchPlot, type TraceSample} from './ui/PitchPlot';
+import {VoiceChannel} from './audio/voiceChannel';
+import {openInputStream, type AudioInputDevice} from './audio/deviceManager';
+import type {AnalysisFrame} from './wire/frames';
 
-function App() {
-    const [count, setCount] = useState(0);
+const MAX_TRACE_SAMPLES = 600; // 10 s at ~60 Hz max
+const SLOT_COLORS = ['#5cf', '#fc5'] as const;
 
-    return (
-        <>
-            <section id="center">
-                <div className="hero">
-                    <img src={heroImg} className="base" width="170" height="179" alt="" />
-                    <img src={reactLogo} className="framework" alt="React logo" />
-                    <img src={viteLogo} className="vite" alt="Vite logo" />
-                </div>
-                <div>
-                    <h1>Get started</h1>
-                    <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-                    </p>
-                </div>
-                <button
-                    className="counter"
-                    onClick={() => setCount((count) => count + 1)}
-                >
-          Count is {count}
-                </button>
-            </section>
-
-            <div className="ticks"></div>
-
-            <section id="next-steps">
-                <div id="docs">
-                    <svg className="icon" role="presentation" aria-hidden="true">
-                        <use href="/icons.svg#documentation-icon"></use>
-                    </svg>
-                    <h2>Documentation</h2>
-                    <p>Your questions, answered</p>
-                    <ul>
-                        <li>
-                            <a href="https://vite.dev/" target="_blank">
-                                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-                            </a>
-                        </li>
-                        <li>
-                            <a href="https://react.dev/" target="_blank">
-                                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-                <div id="social">
-                    <svg className="icon" role="presentation" aria-hidden="true">
-                        <use href="/icons.svg#social-icon"></use>
-                    </svg>
-                    <h2>Connect with us</h2>
-                    <p>Join the Vite community</p>
-                    <ul>
-                        <li>
-                            <a href="https://github.com/vitejs/vite" target="_blank">
-                                <svg
-                                    className="button-icon"
-                                    role="presentation"
-                                    aria-hidden="true"
-                                >
-                                    <use href="/icons.svg#github-icon"></use>
-                                </svg>
-                GitHub
-                            </a>
-                        </li>
-                        <li>
-                            <a href="https://chat.vite.dev/" target="_blank">
-                                <svg
-                                    className="button-icon"
-                                    role="presentation"
-                                    aria-hidden="true"
-                                >
-                                    <use href="/icons.svg#discord-icon"></use>
-                                </svg>
-                Discord
-                            </a>
-                        </li>
-                        <li>
-                            <a href="https://x.com/vite_js" target="_blank">
-                                <svg
-                                    className="button-icon"
-                                    role="presentation"
-                                    aria-hidden="true"
-                                >
-                                    <use href="/icons.svg#x-icon"></use>
-                                </svg>
-                X.com
-                            </a>
-                        </li>
-                        <li>
-                            <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                                <svg
-                                    className="button-icon"
-                                    role="presentation"
-                                    aria-hidden="true"
-                                >
-                                    <use href="/icons.svg#bluesky-icon"></use>
-                                </svg>
-                Bluesky
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            </section>
-
-            <div className="ticks"></div>
-            <section id="spacer"></section>
-        </>
-    );
+interface Slot {
+    channelId: string;
+    voiceLabel: string;
+    device: AudioInputDevice;
+    color: string;
 }
 
-export default App;
+export function App() {
+    const [selection, setSelection] = useState<DeviceSelection | null>(null);
+    const [latest, setLatest] = useState<Record<string, AnalysisFrame>>({});
+    const [traces, setTraces] = useState<Record<string, TraceSample[]>>({});
+
+    // channelId is a client-minted GUID per selection so slice 1's aggregator
+    // (which keys LatestPerChannel by channelId) cannot collide across
+    // publishers. Regenerated on each fresh device selection; stable across
+    // re-renders. Keeping this shape in slice 0 means slice 1's wire upgrade
+    // is zero-delta on the App side.
+    const slots = useMemo<Slot[] | null>(() => {
+        if (!selection) {
+            return null;
+        }
+
+        return [
+            {channelId: crypto.randomUUID(), voiceLabel: 'Voice 1', device: selection.voice1, color: SLOT_COLORS[0]},
+            {channelId: crypto.randomUUID(), voiceLabel: 'Voice 2', device: selection.voice2, color: SLOT_COLORS[1]},
+        ];
+    }, [selection]);
+
+    const channelsRef = useRef<VoiceChannel[]>([]);
+
+    const handleFrame = useCallback((frame: AnalysisFrame) => {
+        setLatest((prev) => ({...prev, [frame.channelId]: frame}));
+        setTraces((prev) => {
+            const existing = prev[frame.channelId] ?? [];
+            const buf = existing.slice(-MAX_TRACE_SAMPLES + 1);
+            buf.push({
+                tsMs: performance.now(),
+                fundamentalHz: frame.fundamentalHz,
+                confidence: frame.confidence,
+            });
+
+            return {...prev, [frame.channelId]: buf};
+        });
+    }, []);
+
+    useEffect(() => {
+        if (!slots) {
+            return;
+        }
+
+        let cancelled = false;
+        const audioContext = new AudioContext({sampleRate: 48000});
+
+        const channels = slots.map((slot) => new VoiceChannel({
+            channelId: slot.channelId,
+            voiceLabel: slot.voiceLabel,
+            deviceId: slot.device.deviceId,
+            audioContext,
+            onFrame: handleFrame,
+        }));
+        channelsRef.current = channels;
+
+        (async () => {
+            for (let i = 0; i < channels.length; i++) {
+                const channel = channels[i];
+                const slot = slots[i];
+                const stream = await openInputStream(slot.device.deviceId);
+                if (cancelled) {
+                    stream.getTracks().forEach((t) => t.stop());
+
+                    return;
+                }
+                await channel.start(stream);
+            }
+        })().catch((err) => console.error('Setup failed', err));
+
+        return () => {
+            cancelled = true;
+            channels.forEach((c) => c.stop());
+            audioContext.close().catch(() => undefined);
+        };
+    }, [slots, handleFrame]);
+
+    if (!slots) {
+        return (
+            <main style={{padding: 24, fontFamily: 'sans-serif', color: '#eee', background: '#181818', minHeight: '100vh'}}>
+                <h1>Ring-O-Meter</h1>
+                <DeviceSetup onConfirm={setSelection} />
+            </main>
+        );
+    }
+
+    const voiceLabels: Record<string, string> = {};
+    const voiceColors: Record<string, string> = {};
+    for (const slot of slots) {
+        voiceLabels[slot.channelId] = slot.device.label;
+        voiceColors[slot.channelId] = slot.color;
+    }
+
+    return (
+        <main style={{padding: 24, fontFamily: 'sans-serif', color: '#eee', background: '#181818', minHeight: '100vh'}}>
+            <h1>Ring-O-Meter</h1>
+            <div style={{display: 'flex', gap: 16, marginBottom: 16}}>
+                {slots.map((slot) => {
+                    const frame = latest[slot.channelId];
+
+                    return (
+                        <NoteReadout
+                            key={slot.channelId}
+                            voiceLabel={slot.device.label}
+                            fundamentalHz={frame?.fundamentalHz ?? 0}
+                            confidence={frame?.confidence ?? 0}
+                        />
+                    );
+                })}
+            </div>
+            <PitchPlot
+                voiceLabels={voiceLabels}
+                voiceColors={voiceColors}
+                samples={traces}
+            />
+        </main>
+    );
+}
