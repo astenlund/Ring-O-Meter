@@ -2,7 +2,8 @@ using MessagePack;
 
 namespace RingOMeter.Domain.Analysis;
 
-// Mirror: web/src/wire/frames.ts PeerInfo. Keep [Key] order in sync.
+// slice 1: TS mirror will be added to web/src/wire/frames.ts when the hub
+// starts broadcasting peer rosters. Keep [Key] order stable until then.
 [MessagePackObject]
 public sealed record PeerInfo(
     [property: Key(0)] string ClientId,

@@ -4,7 +4,9 @@ import {
     drawGrid,
     drawLegend,
     drawTraces,
+    makeHzToY,
     resizeForDpr,
+    type PaintFrame,
     type TraceSample,
     type VoiceStyle,
 } from './pitchPlotPaint';
@@ -48,10 +50,16 @@ export function PitchPlot({
 
         const paint = () => {
             const size = resizeForDpr(canvas, ctx);
-            drawBackground(ctx, size);
-            drawGrid(ctx, range, size);
-            drawTraces(ctx, voices, samplesRef.current ?? {}, windowMs, performance.now(), range, size);
-            drawLegend(ctx, voices);
+            const frame: PaintFrame = {
+                ctx,
+                size,
+                hzToY: makeHzToY(range, size.height),
+                nowMs: performance.now(),
+            };
+            drawBackground(frame);
+            drawGrid(frame, range);
+            drawTraces(frame, voices, samplesRef.current ?? {}, windowMs);
+            drawLegend(frame, voices);
 
             rafId = requestAnimationFrame(paint);
         };

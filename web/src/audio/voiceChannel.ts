@@ -12,7 +12,6 @@ export interface VoiceChannelOptions {
     // voiceLabel is consumed by slice 1's SignalrClient.registerChannel()
     // call (hub-side identity of a capturer). Unused in slice 0.
     voiceLabel: string;
-    deviceId: string;
     audioContext: AudioContext;
     onFrame(frame: AnalysisFrame): void;
 }

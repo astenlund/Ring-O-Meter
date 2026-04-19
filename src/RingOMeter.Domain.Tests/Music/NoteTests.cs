@@ -42,6 +42,9 @@ public class NoteTests
     [InlineData("")]
     [InlineData("C")]
     [InlineData("C##4")]
+    [InlineData("c4")]
+    [InlineData(" C4 ")]
+    [InlineData("C999999999999")]
     public void Parse_rejects_invalid_input(string input)
     {
         // Arrange / Act

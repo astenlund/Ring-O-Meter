@@ -35,10 +35,18 @@ export function useVoiceChannels(
         const channels = slots.map((slot) => new VoiceChannel({
             channelId: slot.channelId,
             voiceLabel: slot.voiceLabel,
-            deviceId: slot.deviceId,
             audioContext,
             onFrame,
         }));
+
+        // Shared teardown path for both the effect-cleanup and the setup-failure
+        // branch: stop every channel, close the AudioContext. Any future step
+        // (e.g. disposing timers, nulling refs) belongs here so the two branches
+        // stay in lockstep.
+        const teardown = () => {
+            channels.forEach((c) => c.stop());
+            audioContext.close().catch(() => undefined);
+        };
 
         // Per-branch cancel checks: one before .start() (if the effect tore
         // down during the stream await), one after (if it tore down during
@@ -57,19 +65,24 @@ export function useVoiceChannels(
                 channel.stop();
             }
         })).then((results) => {
+            if (cancelled) {
+                // Cleanup already tore everything down; any rejections here are
+                // almost certainly cancellation-triggered (closed context, aborted
+                // stream). Suppress the log so real user-visible failures aren't
+                // drowned out by teardown noise.
+                return;
+            }
             const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
             if (failures.length === 0) {
                 return;
             }
             failures.forEach((f) => console.error('Setup failed', f.reason));
-            channels.forEach((c) => c.stop());
-            audioContext.close().catch(() => undefined);
+            teardown();
         });
 
         return () => {
             cancelled = true;
-            channels.forEach((c) => c.stop());
-            audioContext.close().catch(() => undefined);
+            teardown();
         };
     }, [slots, onFrame]);
 }

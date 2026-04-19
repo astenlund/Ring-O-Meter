@@ -1,8 +1,9 @@
-// AudioWorklet shell. The DSP itself lives in the testable
-// pitchDetector module; this file just wires the buffer plumbing and posts
+// AudioWorklet shell. The DSP itself lives in the testable pitchDetector
+// and rmsDb modules; this file just wires the buffer plumbing and posts
 // PitchResult-augmented messages back to the main thread.
 
 import {detectPitch} from '../pitchDetector';
+import {computeRmsDb} from '../rmsDb';
 import {PITCH_PROCESSOR_NAME, type ChannelMessage} from './channelMessage';
 
 const FRAME_SIZE = 1024;
@@ -22,8 +23,20 @@ class PitchProcessor extends AudioWorkletProcessor {
             return true;
         }
 
-        for (let i = 0; i < channel.length; i++) {
-            this.buffer[this.bufferIndex++] = channel[i];
+        // Batch-copy the render quantum (typically 128 samples) into the ring
+        // buffer with TypedArray.set, which compiles to a memcpy-class path.
+        // The former per-sample loop ran ~128 branches per quantum on the
+        // audio thread; this keeps the same logical behaviour (publish when
+        // the buffer is full) at a fraction of the per-sample overhead.
+        let inputOffset = 0;
+        let remaining = channel.length;
+        while (remaining > 0) {
+            const space = FRAME_SIZE - this.bufferIndex;
+            const chunk = remaining < space ? remaining : space;
+            this.buffer.set(channel.subarray(inputOffset, inputOffset + chunk), this.bufferIndex);
+            this.bufferIndex += chunk;
+            inputOffset += chunk;
+            remaining -= chunk;
             if (this.bufferIndex >= FRAME_SIZE) {
                 this.framesSinceLastPublish++;
                 if (this.framesSinceLastPublish >= PUBLISH_INTERVAL_FRAMES) {
@@ -48,19 +61,6 @@ class PitchProcessor extends AudioWorkletProcessor {
         };
         this.port.postMessage(message);
     }
-}
-
-function computeRmsDb(buffer: Float32Array): number {
-    let sumSquares = 0;
-    for (let i = 0; i < buffer.length; i++) {
-        sumSquares += buffer[i] * buffer[i];
-    }
-    const rms = Math.sqrt(sumSquares / buffer.length);
-    if (rms <= 1e-9) {
-        return -120;
-    }
-
-    return 20 * Math.log10(rms);
 }
 
 registerProcessor(PITCH_PROCESSOR_NAME, PitchProcessor);

@@ -21,6 +21,21 @@ export interface CanvasSize {
     height: number;
 }
 
+export type HzToY = (hz: number) => number;
+
+// Per-paint rendering context. Built once per rAF frame in PitchPlot and
+// threaded through the draw helpers so they don't each take a long
+// positional parameter list. Fields a particular helper doesn't need are
+// simply ignored, same as in any render-pass pattern.
+export interface PaintFrame {
+    ctx: CanvasRenderingContext2D;
+    size: CanvasSize;
+    hzToY: HzToY;
+    nowMs: number;
+}
+
+const GRID_STEP_HZ = 50;
+
 // Matches the canvas backing-store size to its CSS size scaled by devicePixelRatio,
 // then installs a transform so callers can draw in CSS pixels. Returns the CSS size
 // so callers don't re-read clientWidth/Height.
@@ -37,17 +52,30 @@ export function resizeForDpr(canvas: HTMLCanvasElement, ctx: CanvasRenderingCont
     return {width, height};
 }
 
-export function drawBackground(ctx: CanvasRenderingContext2D, size: CanvasSize): void {
+// Builds a reusable Hz-to-y-pixel mapper with the log bounds captured once.
+// Called once per paint (range and height are fixed across the frame), so the
+// per-sample hot path inside drawTraces only pays for one Math.log call instead
+// of three.
+export function makeHzToY(range: HzRange, height: number): HzToY {
+    const logMin = Math.log(range.minHz);
+    const logSpan = Math.log(range.maxHz) - logMin;
+
+    return (hz) => height - ((Math.log(hz) - logMin) / logSpan) * height;
+}
+
+export function drawBackground(frame: PaintFrame): void {
+    const {ctx, size} = frame;
     ctx.clearRect(0, 0, size.width, size.height);
     ctx.fillStyle = '#111';
     ctx.fillRect(0, 0, size.width, size.height);
 }
 
-export function drawGrid(ctx: CanvasRenderingContext2D, range: HzRange, size: CanvasSize): void {
+export function drawGrid(frame: PaintFrame, range: HzRange): void {
+    const {ctx, hzToY, size} = frame;
     ctx.strokeStyle = '#222';
     ctx.lineWidth = 1;
-    for (let f = range.minHz; f <= range.maxHz; f += 50) {
-        const y = hzToY(f, range, size.height);
+    for (let f = range.minHz; f <= range.maxHz; f += GRID_STEP_HZ) {
+        const y = hzToY(f);
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(size.width, y);
@@ -56,14 +84,12 @@ export function drawGrid(ctx: CanvasRenderingContext2D, range: HzRange, size: Ca
 }
 
 export function drawTraces(
-    ctx: CanvasRenderingContext2D,
+    frame: PaintFrame,
     voices: Record<string, VoiceStyle>,
     samples: Record<string, TraceSample[]>,
     windowMs: number,
-    nowMs: number,
-    range: HzRange,
-    size: CanvasSize,
 ): void {
+    const {ctx, hzToY, size, nowMs} = frame;
     const startMs = nowMs - windowMs;
 
     // Iterate voices (not samples) so legend and trace order stay in
@@ -81,7 +107,7 @@ export function drawTraces(
                 continue;
             }
             const x = ((s.tsMs - startMs) / windowMs) * size.width;
-            const y = hzToY(s.fundamentalHz, range, size.height);
+            const y = hzToY(s.fundamentalHz);
             if (!pen) {
                 ctx.moveTo(x, y);
                 pen = true;
@@ -93,7 +119,8 @@ export function drawTraces(
     }
 }
 
-export function drawLegend(ctx: CanvasRenderingContext2D, voices: Record<string, VoiceStyle>): void {
+export function drawLegend(frame: PaintFrame, voices: Record<string, VoiceStyle>): void {
+    const {ctx} = frame;
     let legendY = 12;
     ctx.font = '12px sans-serif';
     for (const voice of Object.values(voices)) {
@@ -103,12 +130,4 @@ export function drawLegend(ctx: CanvasRenderingContext2D, voices: Record<string,
         ctx.fillText(voice.label, 26, legendY + 2);
         legendY += 18;
     }
-}
-
-export function hzToY(hz: number, range: HzRange, height: number): number {
-    const logMin = Math.log(range.minHz);
-    const logMax = Math.log(range.maxHz);
-    const t = (Math.log(hz) - logMin) / (logMax - logMin);
-
-    return height - t * height;
 }

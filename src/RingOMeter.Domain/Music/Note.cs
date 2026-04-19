@@ -54,7 +54,11 @@ public readonly record struct Note(string Name, int Octave, int MidiNumber)
 
         var letter = match.Groups[1].Value;
         var accidental = match.Groups[2].Value;
-        var octave = int.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
+        if (!int.TryParse(match.Groups[3].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var octave))
+        {
+            throw new FormatException($"'{input}' has an octave value outside the supported range");
+        }
+
         var key = letter + accidental;
 
         if (!NameToOffset.TryGetValue(key, out var offset))

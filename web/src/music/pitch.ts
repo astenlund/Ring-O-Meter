@@ -13,6 +13,13 @@ export interface NearestNote {
 }
 
 export function nearestNote(hz: number): NearestNote {
+    if (!(hz > 0) || !Number.isFinite(hz)) {
+        // Mirrors Pitch.NearestNote() in the C# domain, which throws when
+        // Hz is non-positive. Callers guard with their own display-time
+        // check (see formatNoteWithCents) before reaching here.
+        throw new Error('nearestNote: hz must be a positive finite number');
+    }
+
     const midiExact = A4_MIDI + 12 * Math.log2(hz / A4_HZ);
     const midi = Math.max(0, Math.min(127, Math.round(midiExact)));
     const cents = (midiExact - midi) * 100;

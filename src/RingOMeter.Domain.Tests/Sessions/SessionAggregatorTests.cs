@@ -57,6 +57,24 @@ public class SessionAggregatorTests
     }
 
     [Fact]
+    public void Equal_timestamp_frame_replaces_existing()
+    {
+        // Arrange: tie-break semantics of Apply use `>=`, so a frame arriving
+        // with the same ClientTsMs as the existing one wins. Locks the
+        // behaviour against accidental change to `>`.
+        var agg = new SessionAggregator("dev", () => 1000);
+        var first = new AnalysisFrame("ch1", 500, 220f, 0.7f, -15f);
+        var tied = new AnalysisFrame("ch1", 500, 440f, 0.9f, -10f);
+
+        // Act
+        agg.Apply(first);
+        agg.Apply(tied);
+
+        // Assert
+        agg.Snapshot().LatestPerChannel["ch1"].Should().Be(tied);
+    }
+
+    [Fact]
     public void Multiple_channels_coexist()
     {
         // Arrange

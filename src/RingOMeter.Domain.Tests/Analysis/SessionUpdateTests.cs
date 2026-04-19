@@ -25,6 +25,7 @@ public class SessionUpdateTests
         // Assert
         restored.SessionId.Should().Be("dev");
         restored.SeqNo.Should().Be(42);
+        restored.ServerTsMs.Should().Be(200);
         restored.LatestPerChannel.Should().HaveCount(2);
         restored.LatestPerChannel["ch1"].Should().Be(frame1);
         restored.LatestPerChannel["ch2"].Should().Be(frame2);

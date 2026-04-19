@@ -26,4 +26,10 @@ describe('formatNoteWithCents', () => {
         expect(formatNoteWithCents(0)).toBe('--');
         expect(formatNoteWithCents(-1)).toBe('--');
     });
+
+    it('returns -- for non-finite Hz', () => {
+        // Arrange / Act / Assert
+        expect(formatNoteWithCents(Number.NaN)).toBe('--');
+        expect(formatNoteWithCents(Number.POSITIVE_INFINITY)).toBe('--');
+    });
 });

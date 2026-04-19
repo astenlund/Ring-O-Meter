@@ -57,10 +57,15 @@ export function detectPitch(
     let tauEstimate = -1;
     for (let tau = 2; tau < halfBufferSize; tau++) {
         if (cmnd[tau] < threshold && diff[tau] > 0) {
-            while (tau + 1 < halfBufferSize && cmnd[tau + 1] < cmnd[tau]) {
-                tau++;
+            // Descend to the local minimum using a fresh index so the outer
+            // loop's induction variable is never mutated. Keeps the break
+            // below from accidentally resuming at an advanced position if
+            // this logic is ever restructured.
+            let walk = tau;
+            while (walk + 1 < halfBufferSize && cmnd[walk + 1] < cmnd[walk]) {
+                walk++;
             }
-            tauEstimate = tau;
+            tauEstimate = walk;
             break;
         }
     }

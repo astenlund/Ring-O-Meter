@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {type CSSProperties, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
 import {PitchPlot, type TraceSample, type VoiceStyle} from './ui/PitchPlot';
@@ -15,6 +15,14 @@ const MAX_PUBLISH_HZ = 60;
 const MAX_TRACE_SAMPLES = Math.ceil((PLOT_WINDOW_MS * MAX_PUBLISH_HZ) / 1000);
 
 const SLOT_COLORS = ['#5cf', '#fc5'] as const;
+
+const mainStyle: CSSProperties = {
+    padding: 24,
+    fontFamily: 'sans-serif',
+    color: '#eee',
+    background: '#181818',
+    minHeight: '100vh',
+};
 
 interface Slot {
     channelId: string;
@@ -67,12 +75,15 @@ export function App() {
         tracesRef.current[frame.channelId] = buf;
     }, []);
 
-    // Reset the trace ref each time the device selection changes so a new
-    // set of channelIds doesn't accumulate alongside the stale ones. Runs
-    // before useVoiceChannels' effect on the same dependency, so downstream
-    // frames only land in a fresh map.
+    // Reset both per-channel stores when the device selection changes so
+    // stale channelIds from a previous selection do not accumulate in
+    // `latest` (spread copies them forever) or in `tracesRef` (PitchPlot
+    // would iterate channelIds the voices map no longer knows about).
+    // Runs before useVoiceChannels' effect on the same dependency, so
+    // downstream frames land in fresh stores.
     useEffect(() => {
         tracesRef.current = {};
+        setLatest({});
     }, [slots]);
 
     const channelSlots = useMemo(
@@ -92,7 +103,7 @@ export function App() {
 
     if (!slots) {
         return (
-            <main style={{padding: 24, fontFamily: 'sans-serif', color: '#eee', background: '#181818', minHeight: '100vh'}}>
+            <main style={mainStyle}>
                 <h1>Ring-O-Meter</h1>
                 <DeviceSetup onConfirm={setSelection} />
             </main>
@@ -100,7 +111,7 @@ export function App() {
     }
 
     return (
-        <main style={{padding: 24, fontFamily: 'sans-serif', color: '#eee', background: '#181818', minHeight: '100vh'}}>
+        <main style={mainStyle}>
             <h1>Ring-O-Meter</h1>
             <div style={{display: 'flex', gap: 16, marginBottom: 16}}>
                 {slots.map((slot) => {
@@ -109,7 +120,7 @@ export function App() {
                     return (
                         <NoteReadout
                             key={slot.channelId}
-                            voiceLabel={slot.device.label}
+                            deviceLabel={slot.device.label}
                             fundamentalHz={frame?.fundamentalHz ?? 0}
                             confidence={frame?.confidence ?? 0}
                         />

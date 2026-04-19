@@ -1,12 +1,12 @@
 import {MIN_DISPLAY_CONFIDENCE, formatNoteWithCents} from './formatPitch';
 
 export interface NoteReadoutProps {
-    voiceLabel: string;
+    deviceLabel: string;
     fundamentalHz: number;
     confidence: number;
 }
 
-export function NoteReadout({voiceLabel, fundamentalHz, confidence}: NoteReadoutProps) {
+export function NoteReadout({deviceLabel, fundamentalHz, confidence}: NoteReadoutProps) {
     const text = formatNoteWithCents(fundamentalHz);
     const dim = confidence < MIN_DISPLAY_CONFIDENCE;
 
@@ -18,7 +18,7 @@ export function NoteReadout({voiceLabel, fundamentalHz, confidence}: NoteReadout
             opacity: dim ? 0.4 : 1,
             minWidth: 160,
         }}>
-            <div style={{fontSize: 12, opacity: 0.7}}>{voiceLabel}</div>
+            <div style={{fontSize: 12, opacity: 0.7}}>{deviceLabel}</div>
             <div style={{fontSize: 28, fontFamily: 'monospace'}}>{text}</div>
         </div>
     );

@@ -32,4 +32,12 @@ describe('nearestNote', () => {
         expect(result.name).toBe('A');
         expect(result.cents).toBeCloseTo(12, 0);
     });
+
+    it('throws on non-positive or non-finite hz, mirroring Pitch.cs', () => {
+        // Arrange / Act / Assert
+        expect(() => nearestNote(0)).toThrow();
+        expect(() => nearestNote(-1)).toThrow();
+        expect(() => nearestNote(Number.NaN)).toThrow();
+        expect(() => nearestNote(Number.POSITIVE_INFINITY)).toThrow();
+    });
 });
