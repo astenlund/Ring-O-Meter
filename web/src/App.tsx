@@ -1,14 +1,14 @@
 import {type CSSProperties, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
-import {PitchPlot, type TraceSample, type VoiceStyle} from './ui/PitchPlot';
-import {useVoiceChannels} from './audio/useVoiceChannels';
-import type {AudioInputDevice} from './audio/deviceManager';
+import {PitchPlot, type VoiceStyle} from './ui/PitchPlot';
+import {TraceBuffer} from './session/traceBuffer';
+import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
 import type {AnalysisFrame} from './wire/frames';
 
 // Plot window and the trace cap derived from it. If a voice ever publishes
-// faster than MAX_PUBLISH_HZ the ring buffer will shed the oldest frame,
-// which is the intended behaviour; 60 Hz is a safe ceiling since the
+// faster than MAX_PUBLISH_HZ the ring buffer will overwrite its oldest
+// frame, which is the intended behaviour; 60 Hz is a safe ceiling since the
 // worklet currently publishes at ~47 Hz.
 const PLOT_WINDOW_MS = 10_000;
 const MAX_PUBLISH_HZ = 60;
@@ -24,10 +24,13 @@ const mainStyle: CSSProperties = {
     minHeight: '100vh',
 };
 
-interface Slot {
-    channelId: string;
-    voiceLabel: string;
-    device: AudioInputDevice;
+// Slot widens VoiceChannelSlot with the render-layer fields (deviceLabel
+// for readouts/legend, color for the plot trace). `extends` documents the
+// contract explicitly — without it, assignability is only structural and a
+// future rename of VoiceChannelSlot.deviceId would silently break the
+// relationship.
+interface Slot extends VoiceChannelSlot {
+    deviceLabel: string;
     color: string;
 }
 
@@ -36,11 +39,12 @@ export function App() {
     const [latest, setLatest] = useState<Record<string, AnalysisFrame>>({});
 
     // Trace samples accumulate at the worklet's publish rate (~47 Hz per
-    // voice). Storing them in a ref (mutated in place) instead of React
-    // state avoids a setState + reconciliation every 21 ms; PitchPlot
-    // reads the ref from its rAF paint loop and re-renders of the App
-    // component only happen when `latest` changes (driving NoteReadout).
-    const tracesRef = useRef<Record<string, TraceSample[]>>({});
+    // voice). Storing them in a ref (mutated in place via TraceBuffer)
+    // instead of React state avoids a setState + reconciliation every 21
+    // ms; PitchPlot reads the ref from its rAF paint loop and re-renders
+    // of the App component only happen when `latest` changes (driving
+    // NoteReadout).
+    const buffersRef = useRef<Record<string, TraceBuffer>>({});
 
     // channelId is a client-minted GUID per selection so slice 1's aggregator
     // (which keys LatestPerChannel by channelId) cannot collide across
@@ -53,49 +57,49 @@ export function App() {
         }
 
         return [
-            {channelId: crypto.randomUUID(), voiceLabel: 'Voice 1', device: selection.voice1, color: SLOT_COLORS[0]},
-            {channelId: crypto.randomUUID(), voiceLabel: 'Voice 2', device: selection.voice2, color: SLOT_COLORS[1]},
+            {
+                channelId: crypto.randomUUID(),
+                voiceLabel: 'Voice 1',
+                deviceId: selection.voice1.deviceId,
+                deviceLabel: selection.voice1.label,
+                color: SLOT_COLORS[0],
+            },
+            {
+                channelId: crypto.randomUUID(),
+                voiceLabel: 'Voice 2',
+                deviceId: selection.voice2.deviceId,
+                deviceLabel: selection.voice2.label,
+                color: SLOT_COLORS[1],
+            },
         ];
     }, [selection]);
 
     const handleFrame = useCallback((frame: AnalysisFrame) => {
         setLatest((prev) => ({...prev, [frame.channelId]: frame}));
-
-        const buf = tracesRef.current[frame.channelId] ?? [];
-        buf.push({
-            tsMs: performance.now(),
-            fundamentalHz: frame.fundamentalHz,
-            confidence: frame.confidence,
-        });
-        // In-place trim keeps the trace bounded without re-allocating the
-        // whole array every frame.
-        if (buf.length > MAX_TRACE_SAMPLES) {
-            buf.splice(0, buf.length - MAX_TRACE_SAMPLES);
-        }
-        tracesRef.current[frame.channelId] = buf;
+        buffersRef.current[frame.channelId]?.push(performance.now(), frame.fundamentalHz, frame.confidence);
     }, []);
 
-    // Reset both per-channel stores when the device selection changes so
-    // stale channelIds from a previous selection do not accumulate in
-    // `latest` (spread copies them forever) or in `tracesRef` (PitchPlot
-    // would iterate channelIds the voices map no longer knows about).
+    // Resets the per-channel stores when the device selection changes and
+    // pre-populates a TraceBuffer for every slot, so stale channelIds from
+    // a previous selection cannot leak into `latest` or `buffersRef` and
+    // `handleFrame` does not need a lazy-allocation branch on every frame.
     // Runs before useVoiceChannels' effect on the same dependency, so
     // downstream frames land in fresh stores.
     useEffect(() => {
-        tracesRef.current = {};
+        const buffers: Record<string, TraceBuffer> = {};
+        for (const slot of slots ?? []) {
+            buffers[slot.channelId] = new TraceBuffer(MAX_TRACE_SAMPLES);
+        }
+        buffersRef.current = buffers;
         setLatest({});
     }, [slots]);
 
-    const channelSlots = useMemo(
-        () => slots?.map(({channelId, voiceLabel, device}) => ({channelId, voiceLabel, deviceId: device.deviceId})) ?? null,
-        [slots],
-    );
-    useVoiceChannels(channelSlots, handleFrame);
+    useVoiceChannels(slots, handleFrame);
 
     const voices = useMemo<Record<string, VoiceStyle>>(() => {
         const out: Record<string, VoiceStyle> = {};
         for (const slot of slots ?? []) {
-            out[slot.channelId] = {label: slot.device.label, color: slot.color};
+            out[slot.channelId] = {label: slot.deviceLabel, color: slot.color};
         }
 
         return out;
@@ -120,7 +124,7 @@ export function App() {
                     return (
                         <NoteReadout
                             key={slot.channelId}
-                            deviceLabel={slot.device.label}
+                            deviceLabel={slot.deviceLabel}
                             fundamentalHz={frame?.fundamentalHz ?? 0}
                             confidence={frame?.confidence ?? 0}
                         />
@@ -129,7 +133,7 @@ export function App() {
             </div>
             <PitchPlot
                 voices={voices}
-                samplesRef={tracesRef}
+                buffersRef={buffersRef}
                 windowMs={PLOT_WINDOW_MS}
             />
         </main>

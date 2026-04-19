@@ -7,15 +7,15 @@ import {
     makeHzToY,
     resizeForDpr,
     type PaintFrame,
-    type TraceSample,
     type VoiceStyle,
 } from './pitchPlotPaint';
+import type {TraceBuffer} from '../session/traceBuffer';
 
-export type {TraceSample, VoiceStyle};
+export type {VoiceStyle};
 
 export interface PitchPlotProps {
     voices: Record<string, VoiceStyle>;          // channelId -> label + color
-    samplesRef: RefObject<Record<string, TraceSample[]>>;
+    buffersRef: RefObject<Record<string, TraceBuffer>>;
     windowMs: number;                            // rolling display window
     minHz?: number;                              // default 80
     maxHz?: number;                              // default 600
@@ -23,7 +23,7 @@ export interface PitchPlotProps {
 
 export function PitchPlot({
     voices,
-    samplesRef,
+    buffersRef,
     windowMs,
     minHz = 80,
     maxHz = 600,
@@ -33,7 +33,7 @@ export function PitchPlot({
     // The trace buffer updates at the worklet's publish rate (~47 Hz per
     // voice). Painting once per animation frame (<=60 Hz, zero when the tab
     // is hidden) decouples the paint rate from publish rate and lets the
-    // browser coalesce work with other rendering. The loop reads samplesRef
+    // browser coalesce work with other rendering. The loop reads buffersRef
     // directly so trace pushes don't need to cause React re-renders.
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -55,10 +55,11 @@ export function PitchPlot({
                 size,
                 hzToY: makeHzToY(range, size.height),
                 nowMs: performance.now(),
+                windowMs,
             };
             drawBackground(frame);
             drawGrid(frame, range);
-            drawTraces(frame, voices, samplesRef.current ?? {}, windowMs);
+            drawTraces(frame, voices, buffersRef.current ?? {});
             drawLegend(frame, voices);
 
             rafId = requestAnimationFrame(paint);
@@ -67,7 +68,7 @@ export function PitchPlot({
         rafId = requestAnimationFrame(paint);
 
         return () => cancelAnimationFrame(rafId);
-    }, [voices, samplesRef, windowMs, minHz, maxHz]);
+    }, [voices, buffersRef, windowMs, minHz, maxHz]);
 
     return (
         <canvas

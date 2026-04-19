@@ -51,11 +51,28 @@ public class PitchTests
         cents.Value.Should().BeApproximately(12, 0.01);
     }
 
-    [Fact]
-    public void Zero_or_negative_hz_throws()
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-1.0)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void Non_positive_or_non_finite_hz_throws(double hz)
     {
         // Arrange / Act
-        Action act = () => new Pitch(0).NearestNote();
+        Action act = () => new Pitch(hz).NearestNote();
+
+        // Assert
+        act.Should().Throw<InvalidOperationException>();
+    }
+
+    [Theory]
+    [InlineData(30_000.0)] // midiExact ~= 142, above MIDI 127
+    [InlineData(1.0)] // midiExact ~= -36, below MIDI 0
+    public void Hz_outside_midi_range_throws(double hz)
+    {
+        // Arrange / Act
+        Action act = () => new Pitch(hz).NearestNote();
 
         // Assert
         act.Should().Throw<InvalidOperationException>();

@@ -1,10 +1,5 @@
 import {MIN_DISPLAY_CONFIDENCE} from './formatPitch';
-
-export interface TraceSample {
-    tsMs: number;
-    fundamentalHz: number;
-    confidence: number;
-}
+import type {TraceBuffer} from '../session/traceBuffer';
 
 export interface VoiceStyle {
     label: string;
@@ -32,6 +27,7 @@ export interface PaintFrame {
     size: CanvasSize;
     hzToY: HzToY;
     nowMs: number;
+    windowMs: number;
 }
 
 const GRID_STEP_HZ = 50;
@@ -86,35 +82,35 @@ export function drawGrid(frame: PaintFrame, range: HzRange): void {
 export function drawTraces(
     frame: PaintFrame,
     voices: Record<string, VoiceStyle>,
-    samples: Record<string, TraceSample[]>,
-    windowMs: number,
+    buffers: Record<string, TraceBuffer>,
 ): void {
-    const {ctx, hzToY, size, nowMs} = frame;
+    const {ctx, hzToY, size, nowMs, windowMs} = frame;
     const startMs = nowMs - windowMs;
 
-    // Iterate voices (not samples) so legend and trace order stay in
-    // sync even if a sample buffer exists for a channel that is no
-    // longer in the voice set (or vice versa).
+    // Iterate voices (not buffers) so legend and trace order stay in
+    // sync even if a buffer exists for a channel that is no longer in
+    // the voice set (or vice versa).
     for (const [channelId, voice] of Object.entries(voices)) {
-        const trace = samples[channelId] ?? [];
+        const buffer = buffers[channelId];
         ctx.strokeStyle = voice.color;
         ctx.lineWidth = 2;
         ctx.beginPath();
         let pen = false;
-        for (const s of trace) {
-            if (s.tsMs < startMs || s.fundamentalHz <= 0 || s.confidence < MIN_DISPLAY_CONFIDENCE) {
+        buffer?.forEach((tsMs, fundamentalHz, confidence) => {
+            if (tsMs < startMs || fundamentalHz <= 0 || confidence < MIN_DISPLAY_CONFIDENCE) {
                 pen = false;
-                continue;
+
+                return;
             }
-            const x = ((s.tsMs - startMs) / windowMs) * size.width;
-            const y = hzToY(s.fundamentalHz);
+            const x = ((tsMs - startMs) / windowMs) * size.width;
+            const y = hzToY(fundamentalHz);
             if (!pen) {
                 ctx.moveTo(x, y);
                 pen = true;
             } else {
                 ctx.lineTo(x, y);
             }
-        }
+        });
         ctx.stroke();
     }
 }

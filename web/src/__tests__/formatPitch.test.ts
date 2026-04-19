@@ -32,4 +32,10 @@ describe('formatNoteWithCents', () => {
         expect(formatNoteWithCents(Number.NaN)).toBe('--');
         expect(formatNoteWithCents(Number.POSITIVE_INFINITY)).toBe('--');
     });
+
+    it('returns -- for Hz outside the displayable MIDI range', () => {
+        // Arrange / Act / Assert
+        expect(formatNoteWithCents(30_000)).toBe('--'); // above MIDI 127
+        expect(formatNoteWithCents(1)).toBe('--');      // below MIDI 0
+    });
 });
