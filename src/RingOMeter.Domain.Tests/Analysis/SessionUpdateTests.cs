@@ -1,0 +1,32 @@
+using FluentAssertions;
+using MessagePack;
+using RingOMeter.Domain.Analysis;
+
+namespace RingOMeter.Domain.Tests.Analysis;
+
+public class SessionUpdateTests
+{
+    [Fact]
+    public void Round_trips_through_messagepack_with_two_voices()
+    {
+        // Arrange
+        var frame1 = new AnalysisFrame("ch1", 100, 220f, 0.9f, -10f);
+        var frame2 = new AnalysisFrame("ch2", 100, 330f, 0.85f, -12f);
+        var update = new SessionUpdate(
+            "dev",
+            42,
+            200,
+            new Dictionary<string, AnalysisFrame> { ["ch1"] = frame1, ["ch2"] = frame2 });
+
+        // Act
+        var bytes = MessagePackSerializer.Serialize(update);
+        var restored = MessagePackSerializer.Deserialize<SessionUpdate>(bytes);
+
+        // Assert
+        restored.SessionId.Should().Be("dev");
+        restored.SeqNo.Should().Be(42);
+        restored.LatestPerChannel.Should().HaveCount(2);
+        restored.LatestPerChannel["ch1"].Should().Be(frame1);
+        restored.LatestPerChannel["ch2"].Should().Be(frame2);
+    }
+}
