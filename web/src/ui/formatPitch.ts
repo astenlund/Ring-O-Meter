@@ -1,3 +1,6 @@
+// Mirror: src/RingOMeter.Domain/Music/Pitch.cs + Note.cs. Both implement
+// the same A4=440 / MIDI 69 Hz-to-note math; keep semantics aligned when
+// either side changes.
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
 const A4_HZ = 440;
 const A4_MIDI = 69;

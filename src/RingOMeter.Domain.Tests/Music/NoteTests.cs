@@ -60,4 +60,20 @@ public class NoteTests
         // Assert
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
+
+    [Fact]
+    public void FromMidi_and_Parse_round_trip_for_every_valid_midi()
+    {
+        // Arrange / Act / Assert: the SharpNames array and NameToOffset
+        // dictionary are two encodings of the same pitch-class mapping.
+        // If someone edits one but forgets the other, this round-trip
+        // loop catches it: FromMidi uses SharpNames to produce a string,
+        // Parse uses NameToOffset to resolve it back to a midi number.
+        for (var midi = 0; midi <= 127; midi++)
+        {
+            var note = Note.FromMidi(midi);
+            var roundTripped = Note.Parse(note.Name + note.Octave);
+            roundTripped.MidiNumber.Should().Be(midi);
+        }
+    }
 }

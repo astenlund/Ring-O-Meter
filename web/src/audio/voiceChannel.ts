@@ -9,6 +9,8 @@ import type {AnalysisFrame} from '../wire/frames';
 
 export interface VoiceChannelOptions {
     channelId: string;
+    // voiceLabel is consumed by slice 1's SignalrClient.registerChannel()
+    // call (hub-side identity of a capturer). Unused in slice 0.
     voiceLabel: string;
     deviceId: string;
     audioContext: AudioContext;
@@ -20,6 +22,8 @@ export class VoiceChannel {
     private node: AudioWorkletNode | null = null;
     private source: MediaStreamAudioSourceNode | null = null;
     private stream: MediaStream | null = null;
+    // muted gates outbound frames client-side, wired by the per-singer mute
+    // UI that lands in slice 4 (SingerClient view). Unused in slice 0.
     private muted = false;
 
     constructor(opts: VoiceChannelOptions) {
@@ -64,6 +68,13 @@ export class VoiceChannel {
             return;
         }
         if (message.type !== 'pitch') {
+            return;
+        }
+        if (!Number.isFinite(message.fundamentalHz)) {
+            // Defensive: the worklet's pitchDetector is built to only emit
+            // finite Hz values (including 0 for "no pitch"), so NaN/Infinity
+            // would indicate a bug upstream. Silent drop keeps the UI from
+            // threading NaN through PitchPlot's log-Hz math.
             return;
         }
 

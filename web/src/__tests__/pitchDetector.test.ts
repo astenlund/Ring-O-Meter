@@ -1,7 +1,8 @@
 import {describe, expect, it} from 'vitest';
 import {detectPitch} from '../audio/pitchDetector';
+import {TARGET_SAMPLE_RATE_HZ} from '../audio/constants';
 
-const sampleRate = 48000;
+const sampleRate = TARGET_SAMPLE_RATE_HZ;
 
 function sineSamples(hz: number, n: number, amplitude = 0.8): Float32Array {
     const out = new Float32Array(n);
@@ -59,5 +60,19 @@ describe('detectPitch', () => {
 
         // Assert
         expect(result.fundamentalHz).toBe(0);
+    });
+
+    it('reuses scratch buffers safely across calls with shrinking buffer size', () => {
+        // Arrange: call with a larger buffer first, then a smaller one, then
+        // larger again. The hoisted module-scope scratch arrays must not
+        // leak stale values that would corrupt the subsequent call.
+        const large = sineSamples(440, 4096);
+        const small = sineSamples(880, 1024);
+
+        // Act / Assert: each call should produce a correct detection for
+        // its own input, regardless of the order of calls.
+        expect(Math.abs(centsBetween(440, detectPitch(large, sampleRate).fundamentalHz))).toBeLessThan(5);
+        expect(Math.abs(centsBetween(880, detectPitch(small, sampleRate).fundamentalHz))).toBeLessThan(5);
+        expect(Math.abs(centsBetween(440, detectPitch(large, sampleRate).fundamentalHz))).toBeLessThan(5);
     });
 });

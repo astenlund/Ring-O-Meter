@@ -4,6 +4,10 @@
 
 export const PITCH_PROCESSOR_NAME = 'pitch-processor';
 
+// The type discriminator has only one variant today but is kept as a seam
+// for future worklet→main messages (e.g. an error payload, or a formant
+// frame in slice 5). Drop it only if we decide the worklet will never
+// emit anything but pitch frames.
 export type ChannelMessageType = 'pitch';
 
 export interface ChannelMessage {

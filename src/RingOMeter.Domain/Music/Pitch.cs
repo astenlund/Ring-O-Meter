@@ -1,5 +1,8 @@
 namespace RingOMeter.Domain.Music;
 
+// Mirror: web/src/ui/formatPitch.ts nearestNote(). Both implement the same
+// A4=440 / MIDI 69 Hz-to-note math; keep semantics aligned when either
+// side changes.
 public readonly record struct Pitch(double Hz)
 {
     private const double A4Hz = 440.0;
