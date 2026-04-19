@@ -1,2 +1,5 @@
 <Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RingOMeter.Domain/RingOMeter.Domain.csproj" />
+  </Folder>
 </Solution>
