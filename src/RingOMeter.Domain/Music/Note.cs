@@ -46,7 +46,7 @@ public readonly record struct Note(string Name, int Octave, int MidiNumber)
 
     public static Note Parse(string input)
     {
-        var match = Pattern.Match(input ?? string.Empty);
+        var match = Pattern.Match(input);
         if (!match.Success)
         {
             throw new FormatException($"'{input}' is not a valid note name (expected e.g. C4, F#3, Bb5)");
