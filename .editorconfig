@@ -1,0 +1,53 @@
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.{ts,tsx,js,jsx,json,html,css}]
+indent_size = 4
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+# Modifier order
+dotnet_diagnostic.SA1206.severity = warning
+csharp_preferred_modifier_order = public, private, protected, internal, file, static, extern, new, virtual, abstract, sealed, override, readonly, unsafe, required, volatile, async:warning
+
+# Required keyword first
+dotnet_diagnostic.SA1206.severity = warning
+
+# Blank line before return
+dotnet_diagnostic.SA1516.severity = warning
+
+# Single-line if/else still uses braces
+csharp_prefer_braces = true:warning
+
+# Use modern language features
+csharp_style_pattern_matching_over_is_with_cast_check = true:suggestion
+csharp_style_pattern_matching_over_as_with_null_check = true:suggestion
+csharp_style_prefer_pattern_matching = true:suggestion
+dotnet_style_collection_initializer = true:suggestion
+
+# Soft 180-char line limit
+max_line_length = 180
+
+# StyleCop
+dotnet_diagnostic.SA0001.severity = none   # XML comment analysis off (no docs generated)
+dotnet_diagnostic.SA1101.severity = none   # this. prefix not required
+dotnet_diagnostic.SA1633.severity = none   # no file headers
+dotnet_diagnostic.SA1200.severity = none   # using outside namespace allowed
+dotnet_diagnostic.SA1309.severity = none   # _underscore field prefix allowed
+
+# Test-project relaxations: snake_case test method names are an xUnit
+# convention and must not fail the build here.
+[**/*.Tests/**/*.cs]
+dotnet_diagnostic.CA1707.severity = none
