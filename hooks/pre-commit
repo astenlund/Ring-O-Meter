@@ -1,0 +1,54 @@
+#!/bin/sh
+
+# Auto-fix formatting on staged C# and TS/JS files. Unfixable issues block.
+# Setup: git config core.hooksPath hooks  (one time per clone)
+
+set -e
+
+# Resolve repo root so the hook works regardless of the cwd git invokes it
+# from (commits made from a subdirectory must still find the .slnx and the
+# staged files, which git emits as repo-root-relative paths).
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+STAGED_CS=$(git diff --cached --name-only --diff-filter=ACM -- '*.cs')
+STAGED_JS=$(git diff --cached --name-only --diff-filter=ACM -- 'web/**/*.ts' 'web/**/*.tsx' 'web/**/*.js')
+
+if [ -n "$STAGED_CS" ]; then
+    if ! command -v dotnet >/dev/null 2>&1; then
+        echo "warning: dotnet not found, skipping C# format"
+    else
+        dotnet format Ring-O-Meter.slnx --include $STAGED_CS
+        echo "$STAGED_CS" | xargs git add
+    fi
+fi
+
+if [ -n "$STAGED_JS" ]; then
+    if ! command -v pnpm >/dev/null 2>&1; then
+        echo "warning: pnpm not found, skipping JS lint (install pnpm to enable)"
+    else
+        # Staged paths come back repo-root-relative (e.g. web/src/foo.ts).
+        # Strip the web/ prefix so they resolve when eslint runs with cwd=web.
+        STAGED_JS_REL=$(echo "$STAGED_JS" | sed 's|^web/||')
+
+        (cd web && pnpm exec eslint --fix $STAGED_JS_REL)
+        echo "$STAGED_JS" | xargs git add
+
+        # Final check fails on unfixable
+        (cd web && pnpm exec eslint $STAGED_JS_REL)
+
+        # Type-check the whole web/ project so type errors block the commit.
+        # Only runs if web/ has been bootstrapped (skip silently otherwise).
+        if [ -f web/tsconfig.json ]; then
+            (cd web && pnpm exec tsc --noEmit)
+        fi
+    fi
+fi
+
+if [ -n "$STAGED_CS" ]; then
+    # Final check that format actually settled (verify-no-changes will exit non-zero
+    # if there is anything still off)
+    dotnet format Ring-O-Meter.slnx --verify-no-changes --include $STAGED_CS
+fi
+
+exit 0
