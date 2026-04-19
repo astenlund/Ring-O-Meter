@@ -4,6 +4,7 @@
 // AudioWorkletGlobalScope cannot follow. We only want the URL form, not the
 // worker constructor form, so addModule() loads it like any ESM module.
 import workletUrl from './worklets/pitchWorklet.ts?worker&url';
+import {PITCH_PROCESSOR_NAME, type ChannelMessage} from './worklets/channelMessage';
 import type {AnalysisFrame} from '../wire/frames';
 
 export interface VoiceChannelOptions {
@@ -38,7 +39,7 @@ export class VoiceChannel {
         await this.opts.audioContext.audioWorklet.addModule(workletUrl);
 
         this.source = this.opts.audioContext.createMediaStreamSource(stream);
-        this.node = new AudioWorkletNode(this.opts.audioContext, 'pitch-processor');
+        this.node = new AudioWorkletNode(this.opts.audioContext, PITCH_PROCESSOR_NAME);
         this.node.port.onmessage = (event) => this.handleMessage(event.data);
 
         this.source.connect(this.node);
@@ -58,7 +59,7 @@ export class VoiceChannel {
         this.stream = null;
     }
 
-    private handleMessage(message: {type: string; fundamentalHz: number; confidence: number; rmsDb: number}): void {
+    private handleMessage(message: ChannelMessage): void {
         if (this.muted) {
             return;
         }

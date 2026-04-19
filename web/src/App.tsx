@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useState} from 'react';
 import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
 import {PitchPlot, type TraceSample} from './ui/PitchPlot';
@@ -37,8 +37,6 @@ export function App() {
         ];
     }, [selection]);
 
-    const channelsRef = useRef<VoiceChannel[]>([]);
-
     const handleFrame = useCallback((frame: AnalysisFrame) => {
         setLatest((prev) => ({...prev, [frame.channelId]: frame}));
         setTraces((prev) => {
@@ -69,21 +67,25 @@ export function App() {
             audioContext,
             onFrame: handleFrame,
         }));
-        channelsRef.current = channels;
 
-        (async () => {
-            for (let i = 0; i < channels.length; i++) {
-                const channel = channels[i];
-                const slot = slots[i];
-                const stream = await openInputStream(slot.device.deviceId);
-                if (cancelled) {
-                    stream.getTracks().forEach((t) => t.stop());
+        // Open both mic streams and start both worklet-backed channels in
+        // parallel; getUserMedia can cost hundreds of ms per device, so
+        // serialising doubles startup latency. Each branch has its own
+        // cancel checks: one before .start() runs (if the effect tore down
+        // during the stream await), one after (if it tore down during the
+        // worklet addModule await).
+        Promise.all(channels.map(async (channel, i) => {
+            const stream = await openInputStream(slots[i].device.deviceId);
+            if (cancelled) {
+                stream.getTracks().forEach((t) => t.stop());
 
-                    return;
-                }
-                await channel.start(stream);
+                return;
             }
-        })().catch((err) => console.error('Setup failed', err));
+            await channel.start(stream);
+            if (cancelled) {
+                channel.stop();
+            }
+        })).catch((err) => console.error('Setup failed', err));
 
         return () => {
             cancelled = true;

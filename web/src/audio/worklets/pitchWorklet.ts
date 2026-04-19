@@ -3,23 +3,15 @@
 // PitchResult-augmented messages back to the main thread.
 
 import {detectPitch} from '../pitchDetector';
+import {PITCH_PROCESSOR_NAME, type ChannelMessage} from './channelMessage';
 
 const FRAME_SIZE = 1024;
 const PUBLISH_INTERVAL_FRAMES = 1; // every ~21 ms at 48 kHz -> ~47 Hz publish (matches spec)
-
-interface ChannelMessage {
-    type: 'pitch';
-    fundamentalHz: number;
-    confidence: number;
-    rmsDb: number;
-    capturedAtFrame: number;
-}
 
 class PitchProcessor extends AudioWorkletProcessor {
     private readonly buffer = new Float32Array(FRAME_SIZE);
     private bufferIndex = 0;
     private framesSinceLastPublish = 0;
-    private totalFrames = 0;
 
     public process(
         inputs: Float32Array[][],
@@ -42,8 +34,6 @@ class PitchProcessor extends AudioWorkletProcessor {
             }
         }
 
-        this.totalFrames += channel.length;
-
         return true;
     }
 
@@ -55,7 +45,6 @@ class PitchProcessor extends AudioWorkletProcessor {
             fundamentalHz: result.fundamentalHz,
             confidence: result.confidence,
             rmsDb,
-            capturedAtFrame: this.totalFrames,
         };
         this.port.postMessage(message);
     }
@@ -74,4 +63,4 @@ function computeRmsDb(buffer: Float32Array): number {
     return 20 * Math.log10(rms);
 }
 
-registerProcessor('pitch-processor', PitchProcessor);
+registerProcessor(PITCH_PROCESSOR_NAME, PitchProcessor);

@@ -33,8 +33,11 @@ public sealed class SessionAggregator
     public SessionUpdate Snapshot()
     {
         var seq = Interlocked.Increment(ref _seqNo);
-        var snapshot = _latest.ToArray()
-            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+
+        // ConcurrentDictionary's copy constructor uses its snapshot enumerator
+        // under the hood, so one copy instead of the two that ToArray +
+        // ToDictionary produces.
+        var snapshot = new Dictionary<string, AnalysisFrame>(_latest);
 
         return new SessionUpdate(SessionId, seq, _nowMs(), snapshot);
     }

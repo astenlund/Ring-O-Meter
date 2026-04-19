@@ -1,4 +1,4 @@
-import {formatNoteWithCents} from './formatPitch';
+import {MIN_DISPLAY_CONFIDENCE, formatNoteWithCents} from './formatPitch';
 
 export interface NoteReadoutProps {
     voiceLabel: string;
@@ -8,7 +8,7 @@ export interface NoteReadoutProps {
 
 export function NoteReadout({voiceLabel, fundamentalHz, confidence}: NoteReadoutProps) {
     const text = formatNoteWithCents(fundamentalHz);
-    const dim = confidence < 0.5;
+    const dim = confidence < MIN_DISPLAY_CONFIDENCE;
 
     return (
         <div style={{

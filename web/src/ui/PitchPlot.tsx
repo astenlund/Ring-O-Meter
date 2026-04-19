@@ -1,4 +1,5 @@
 import {useEffect, useRef} from 'react';
+import {MIN_DISPLAY_CONFIDENCE} from './formatPitch';
 
 export interface TraceSample {
     tsMs: number;
@@ -69,7 +70,7 @@ export function PitchPlot({
             ctx.beginPath();
             let pen = false;
             for (const s of trace) {
-                if (s.tsMs < startMs || s.fundamentalHz <= 0 || s.confidence < 0.5) {
+                if (s.tsMs < startMs || s.fundamentalHz <= 0 || s.confidence < MIN_DISPLAY_CONFIDENCE) {
                     pen = false;
                     continue;
                 }

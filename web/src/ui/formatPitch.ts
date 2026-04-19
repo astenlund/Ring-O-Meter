@@ -2,6 +2,11 @@ const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 
 const A4_HZ = 440;
 const A4_MIDI = 69;
 
+// Shared "is the detector locked enough to display this voice at full
+// strength" threshold. Below this confidence the readout dims and the
+// plot breaks its trace; both UI surfaces must stay aligned.
+export const MIN_DISPLAY_CONFIDENCE = 0.5;
+
 export interface NearestNote {
     name: string;
     octave: number;

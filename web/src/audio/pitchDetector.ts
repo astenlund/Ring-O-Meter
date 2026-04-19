@@ -6,7 +6,14 @@ export interface PitchResult {
     confidence: number;      // 0..1
 }
 
-const DEFAULT_THRESHOLD = 0.15;
+export const DEFAULT_THRESHOLD = 0.15;
+
+// Reusable scratch buffers. AudioWorkletGlobalScope is single-threaded, so
+// module-level mutables are safe across detectPitch calls. Avoids ~8 KB of
+// per-frame allocation at 47 Hz × voice count on the audio thread, where GC
+// pauses would cause glitches.
+let diffScratch: Float32Array = new Float32Array(0);
+let cmndScratch: Float32Array = new Float32Array(0);
 
 export function detectPitch(
     samples: Float32Array,
@@ -16,8 +23,17 @@ export function detectPitch(
     const bufferSize = samples.length;
     const halfBufferSize = Math.floor(bufferSize / 2);
 
-    // 1. Difference function d(tau) = sum((x[i] - x[i+tau])^2)
-    const diff = new Float32Array(halfBufferSize);
+    if (diffScratch.length < halfBufferSize) {
+        diffScratch = new Float32Array(halfBufferSize);
+        cmndScratch = new Float32Array(halfBufferSize);
+    }
+    const diff = diffScratch;
+    const cmnd = cmndScratch;
+
+    // 1. Difference function d(tau) = sum((x[i] - x[i+tau])^2). We only
+    //    write indices 1..halfBufferSize-1, so clearing diff[0] keeps the
+    //    scratch buffer's stale value from leaking when bufferSize shrinks.
+    diff[0] = 0;
     for (let tau = 1; tau < halfBufferSize; tau++) {
         let sum = 0;
         for (let i = 0; i < halfBufferSize; i++) {
@@ -28,7 +44,6 @@ export function detectPitch(
     }
 
     // 2. Cumulative mean normalised difference d'(tau)
-    const cmnd = new Float32Array(halfBufferSize);
     cmnd[0] = 1;
     let runningSum = 0;
     for (let tau = 1; tau < halfBufferSize; tau++) {
@@ -78,5 +93,12 @@ function parabolicInterp(x0: number, x1: number, x2: number, y: Float32Array): n
     const s1 = y[x1];
     const s2 = y[x2];
 
-    return x1 + 0.5 * (s2 - s0) / (2 * s1 - s2 - s0);
+    // Degenerate: three equal values (flat minimum) give 0/0. Return x1
+    // unrefined so fundamentalHz stays finite.
+    const denom = 2 * s1 - s2 - s0;
+    if (denom === 0) {
+        return x1;
+    }
+
+    return x1 + 0.5 * (s2 - s0) / denom;
 }
