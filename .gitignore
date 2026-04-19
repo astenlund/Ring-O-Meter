@@ -480,3 +480,8 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Ring-O-Meter additions
+web/dist/
+web/.vite/
+*.Local.json
