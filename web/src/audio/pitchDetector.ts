@@ -69,8 +69,11 @@ export function detectPitch(
         return {fundamentalHz: 0, confidence: 0};
     }
 
-    // 4. Parabolic interpolation around tauEstimate
-    const x0 = tauEstimate < 1 ? tauEstimate : tauEstimate - 1;
+    // 4. Parabolic interpolation around tauEstimate. The search loop starts
+    //    at tau = 2, so tauEstimate >= 2 whenever it is not -1; x0 needs no
+    //    lower-bound guard. x2 still clamps when tauEstimate is the last
+    //    valid index.
+    const x0 = tauEstimate - 1;
     const x2 = tauEstimate + 1 < halfBufferSize ? tauEstimate + 1 : tauEstimate;
     const refined = parabolicInterp(x0, tauEstimate, x2, cmnd);
     const fundamentalHz = sampleRate / refined;

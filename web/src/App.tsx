@@ -73,8 +73,10 @@ export function App() {
         // serialising doubles startup latency. Each branch has its own
         // cancel checks: one before .start() runs (if the effect tore down
         // during the stream await), one after (if it tore down during the
-        // worklet addModule await).
-        Promise.all(channels.map(async (channel, i) => {
+        // worklet addModule await). Promise.allSettled (instead of all) so
+        // one mic failing (e.g. permission denied) does not leave the
+        // other mic's async branch running without a cleanup hook.
+        Promise.allSettled(channels.map(async (channel, i) => {
             const stream = await openInputStream(slots[i].device.deviceId);
             if (cancelled) {
                 stream.getTracks().forEach((t) => t.stop());
@@ -85,7 +87,16 @@ export function App() {
             if (cancelled) {
                 channel.stop();
             }
-        })).catch((err) => console.error('Setup failed', err));
+        })).then((results) => {
+            const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+            if (failures.length === 0) {
+                return;
+            }
+            failures.forEach((f) => console.error('Setup failed', f.reason));
+            // Any failure tears down every channel; the user can retry by
+            // reselecting devices.
+            channels.forEach((c) => c.stop());
+        });
 
         return () => {
             cancelled = true;
@@ -94,6 +105,17 @@ export function App() {
         };
     }, [slots, handleFrame]);
 
+    const {voiceLabels, voiceColors} = useMemo(() => {
+        const labels: Record<string, string> = {};
+        const colors: Record<string, string> = {};
+        for (const slot of slots ?? []) {
+            labels[slot.channelId] = slot.device.label;
+            colors[slot.channelId] = slot.color;
+        }
+
+        return {voiceLabels: labels, voiceColors: colors};
+    }, [slots]);
+
     if (!slots) {
         return (
             <main style={{padding: 24, fontFamily: 'sans-serif', color: '#eee', background: '#181818', minHeight: '100vh'}}>
@@ -101,13 +123,6 @@ export function App() {
                 <DeviceSetup onConfirm={setSelection} />
             </main>
         );
-    }
-
-    const voiceLabels: Record<string, string> = {};
-    const voiceColors: Record<string, string> = {};
-    for (const slot of slots) {
-        voiceLabels[slot.channelId] = slot.device.label;
-        voiceColors[slot.channelId] = slot.color;
     }
 
     return (
