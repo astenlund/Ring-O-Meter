@@ -2,9 +2,8 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
 import {PitchPlot, type TraceSample, type VoiceStyle} from './ui/PitchPlot';
-import {VoiceChannel} from './audio/voiceChannel';
-import {openInputStream, type AudioInputDevice} from './audio/deviceManager';
-import {TARGET_SAMPLE_RATE_HZ} from './audio/constants';
+import {useVoiceChannels} from './audio/useVoiceChannels';
+import type {AudioInputDevice} from './audio/deviceManager';
 import type {AnalysisFrame} from './wire/frames';
 
 // Plot window and the trace cap derived from it. If a voice ever publishes
@@ -68,65 +67,19 @@ export function App() {
         tracesRef.current[frame.channelId] = buf;
     }, []);
 
+    // Reset the trace ref each time the device selection changes so a new
+    // set of channelIds doesn't accumulate alongside the stale ones. Runs
+    // before useVoiceChannels' effect on the same dependency, so downstream
+    // frames only land in a fresh map.
     useEffect(() => {
-        if (!slots) {
-            return;
-        }
-
-        // Reset the trace ref each time the device selection changes so a
-        // new set of channelIds doesn't accumulate alongside the stale ones.
         tracesRef.current = {};
+    }, [slots]);
 
-        let cancelled = false;
-        const audioContext = new AudioContext({sampleRate: TARGET_SAMPLE_RATE_HZ});
-
-        const channels = slots.map((slot) => new VoiceChannel({
-            channelId: slot.channelId,
-            voiceLabel: slot.voiceLabel,
-            deviceId: slot.device.deviceId,
-            audioContext,
-            onFrame: handleFrame,
-        }));
-
-        // Open both mic streams and start both worklet-backed channels in
-        // parallel; getUserMedia can cost hundreds of ms per device, so
-        // serialising doubles startup latency. Each branch has its own
-        // cancel checks: one before .start() runs (if the effect tore down
-        // during the stream await), one after (if it tore down during the
-        // worklet addModule await). Promise.allSettled (instead of all) so
-        // one mic failing (e.g. permission denied) does not leave the
-        // other mic's async branch running without a cleanup hook.
-        Promise.allSettled(channels.map(async (channel, i) => {
-            const stream = await openInputStream(slots[i].device.deviceId);
-            if (cancelled) {
-                stream.getTracks().forEach((t) => t.stop());
-
-                return;
-            }
-            await channel.start(stream);
-            if (cancelled) {
-                channel.stop();
-            }
-        })).then((results) => {
-            const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
-            if (failures.length === 0) {
-                return;
-            }
-            failures.forEach((f) => console.error('Setup failed', f.reason));
-            // Any failure tears down every channel AND the AudioContext;
-            // the cleanup function would not otherwise close the context
-            // until slots change or the component unmounts, leaking audio
-            // hardware resources while the user stares at the error.
-            channels.forEach((c) => c.stop());
-            audioContext.close().catch(() => undefined);
-        });
-
-        return () => {
-            cancelled = true;
-            channels.forEach((c) => c.stop());
-            audioContext.close().catch(() => undefined);
-        };
-    }, [slots, handleFrame]);
+    const channelSlots = useMemo(
+        () => slots?.map(({channelId, voiceLabel, device}) => ({channelId, voiceLabel, deviceId: device.deviceId})) ?? null,
+        [slots],
+    );
+    useVoiceChannels(channelSlots, handleFrame);
 
     const voices = useMemo<Record<string, VoiceStyle>>(() => {
         const out: Record<string, VoiceStyle> = {};
