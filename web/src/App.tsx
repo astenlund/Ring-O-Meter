@@ -93,9 +93,12 @@ export function App() {
                 return;
             }
             failures.forEach((f) => console.error('Setup failed', f.reason));
-            // Any failure tears down every channel; the user can retry by
-            // reselecting devices.
+            // Any failure tears down every channel AND the AudioContext;
+            // the cleanup function would not otherwise close the context
+            // until slots change or the component unmounts, leaking audio
+            // hardware resources while the user stares at the error.
             channels.forEach((c) => c.stop());
+            audioContext.close().catch(() => undefined);
         });
 
         return () => {

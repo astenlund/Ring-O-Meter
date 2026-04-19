@@ -6,9 +6,7 @@ namespace RingOMeter.Domain.Music;
 public readonly record struct Note(string Name, int Octave, int MidiNumber)
 {
     private static readonly string[] SharpNames =
-    {
-        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
-    };
+        ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
     private static readonly Dictionary<string, int> NameToOffset = new(StringComparer.OrdinalIgnoreCase)
     {
