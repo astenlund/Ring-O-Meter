@@ -6,6 +6,7 @@ export interface PitchResult {
     confidence: number;      // 0..1
 }
 
+// heuristic: YIN absolute threshold - lower = more sensitive (more false positives), higher = stricter (missed pitches).
 export const DEFAULT_THRESHOLD = 0.15;
 
 // Reusable scratch buffers. AudioWorkletGlobalScope is single-threaded, so
