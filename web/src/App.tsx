@@ -25,7 +25,7 @@ const mainStyle: CSSProperties = {
 
 // Slot widens VoiceChannelSlot with the render-layer fields (deviceLabel
 // for readouts/legend, color for the plot trace). `extends` documents the
-// contract explicitly — without it, assignability is only structural and a
+// contract explicitly; without it, assignability is only structural and a
 // future rename of VoiceChannelSlot.deviceId would silently break the
 // relationship.
 interface Slot extends VoiceChannelSlot {
@@ -34,7 +34,6 @@ interface Slot extends VoiceChannelSlot {
 }
 
 export function App() {
-    const [selection, setSelection] = useState<DeviceSelection | null>(null);
     const [latest, setLatest] = useState<Record<string, AnalysisFrame>>({});
 
     // Trace samples accumulate at the worklet's publish rate (~47 Hz per
@@ -45,17 +44,17 @@ export function App() {
     // NoteReadout).
     const buffersRef = useRef<Record<string, TraceBuffer>>({});
 
-    // channelId is a client-minted GUID per selection so slice 1's aggregator
+    // channelId is a client-minted GUID per slot so slice 1's aggregator
     // (which keys LatestPerChannel by channelId) cannot collide across
-    // publishers. Regenerated on each fresh device selection; stable across
-    // re-renders. Keeping this shape in slice 0 means slice 1's wire upgrade
-    // is zero-delta on the App side.
-    const slots = useMemo<Slot[] | null>(() => {
-        if (!selection) {
-            return null;
-        }
+    // publishers. Minted inside the confirm handler rather than a useMemo:
+    // useMemo is documented as a best-effort cache, so a future React
+    // re-evaluation would regenerate every channelId and desync every key
+    // in `buffersRef` from the still-arriving frames. One-shot event
+    // handler is the correct place for non-idempotent work.
+    const [slots, setSlots] = useState<Slot[] | null>(null);
 
-        return [
+    const handleDeviceConfirm = useCallback((selection: DeviceSelection) => {
+        setSlots([
             {
                 channelId: crypto.randomUUID(),
                 voiceLabel: 'Voice 1',
@@ -70,8 +69,8 @@ export function App() {
                 deviceLabel: selection.voice2.label,
                 color: SLOT_COLORS[1],
             },
-        ];
-    }, [selection]);
+        ]);
+    }, []);
 
     const handleFrame = useCallback((frame: AnalysisFrame) => {
         setLatest((prev) => ({...prev, [frame.channelId]: frame}));
@@ -109,7 +108,7 @@ export function App() {
         return (
             <main style={mainStyle}>
                 <h1>Ring-O-Meter</h1>
-                <DeviceSetup onConfirm={setSelection} />
+                <DeviceSetup onConfirm={handleDeviceConfirm} />
             </main>
         );
     }
