@@ -1,7 +1,7 @@
 import {type CSSProperties, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
-import {PitchPlot, type VoiceStyle} from './ui/PitchPlot';
+import {PitchPlot, type VoiceEntry} from './ui/PitchPlot';
 import {MAX_PUBLISH_HZ} from './audio/constants';
 import {TraceBuffer} from './session/traceBuffer';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
@@ -95,14 +95,15 @@ export function App() {
 
     useVoiceChannels(slots, handleFrame);
 
-    const voices = useMemo<Record<string, VoiceStyle>>(() => {
-        const out: Record<string, VoiceStyle> = {};
-        for (const slot of slots ?? []) {
-            out[slot.channelId] = {label: slot.deviceLabel, color: slot.color};
-        }
-
-        return out;
-    }, [slots]);
+    const voices = useMemo<ReadonlyArray<VoiceEntry>>(
+        () =>
+            (slots ?? []).map((slot) => ({
+                channelId: slot.channelId,
+                label: slot.deviceLabel,
+                color: slot.color,
+            })),
+        [slots],
+    );
 
     if (!slots) {
         return (

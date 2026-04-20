@@ -9,14 +9,15 @@ import {
     type CanvasBacking,
     type CanvasSize,
     type PaintFrame,
+    type VoiceEntry,
     type VoiceStyle,
 } from './pitchPlotPaint';
 import type {TraceBuffer} from '../session/traceBuffer';
 
-export type {VoiceStyle};
+export type {VoiceEntry, VoiceStyle};
 
 export interface PitchPlotProps {
-    voices: Record<string, VoiceStyle>;          // channelId -> label + color
+    voices: ReadonlyArray<VoiceEntry>;           // flat roster: style + channelId
     buffersRef: RefObject<Record<string, TraceBuffer>>;
     windowMs: number;                            // rolling display window
     minHz?: number;                              // default 80
@@ -58,40 +59,7 @@ export function PitchPlot({
             dpr: window.devicePixelRatio || 1,
         };
 
-        const observer = new ResizeObserver((entries) => {
-            const entry = entries[0];
-            if (!entry) {
-                return;
-            }
-            const box = entry.contentBoxSize?.[0];
-            if (box) {
-                backing.cssWidth = box.inlineSize;
-                backing.cssHeight = box.blockSize;
-            } else {
-                backing.cssWidth = entry.contentRect.width;
-                backing.cssHeight = entry.contentRect.height;
-            }
-        });
-        observer.observe(canvas);
-
-        // A `(resolution: Xdppx)` media query only fires when DPR LEAVES X,
-        // so after each change we have to re-arm against the new value.
-        // This catches both user zoom and monitor swaps (laptop <-> external).
-        let mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
-        const onDprChange = () => {
-            backing.dpr = window.devicePixelRatio || 1;
-            mql.removeEventListener('change', onDprChange);
-            mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
-            mql.addEventListener('change', onDprChange);
-        };
-        mql.addEventListener('change', onDprChange);
-
         const range = {minHz, maxHz};
-        // voices identity is stable across rAF (memoised in App.tsx), so
-        // entries/values are pre-built once per effect run instead of
-        // reallocated on every paint. Effect deps rebuild them on change.
-        const voiceEntries = Object.entries(voices);
-        const voiceValues = Object.values(voices);
         // Scratch structures reused across rAF frames so the paint loop
         // allocates nothing in steady state: `size` is mutated by
         // applyCanvasBacking; `frame` fields are overwritten before each
@@ -99,10 +67,12 @@ export function PitchPlot({
         // (defensive) null-ref fallback.
         const emptyBuffers: Record<string, TraceBuffer> = {};
         const size: CanvasSize = {width: 0, height: 0};
-        applyCanvasBacking(canvas, ctx, backing, size);
         // hzToY depends only on range (constant here) and size.height,
         // which changes only on resize. Invalidate with a height sentinel
-        // so steady-state paints reuse the same closure.
+        // so steady-state paints reuse the same closure. Initialised
+        // against size.height=0 as a throwaway: the first paint() runs
+        // only once layout has reported a non-zero height, at which point
+        // the sentinel mismatch forces a rebuild before anything renders.
         let hzToY = makeHzToY(range, size.height);
         let hzToYHeight = size.height;
         const frame: PaintFrame = {ctx, size, hzToY, nowMs: 0, windowMs};
@@ -118,13 +88,54 @@ export function PitchPlot({
             frame.nowMs = performance.now();
             drawBackground(frame);
             drawGrid(frame, range);
-            drawTraces(frame, voiceEntries, buffersRef.current ?? emptyBuffers);
-            drawLegend(frame, voiceValues);
+            drawTraces(frame, voices, buffersRef.current ?? emptyBuffers);
+            drawLegend(frame, voices);
 
             rafId = requestAnimationFrame(paint);
         };
 
-        rafId = requestAnimationFrame(paint);
+        // Schedules the paint loop. Skips while the canvas has no layout
+        // height: painting then would build hzToY against height=0 and
+        // collapse every trace to the top edge until the observer fires
+        // with the real size. Called on effect entry (fast path) and from
+        // the ResizeObserver (once layout produces a usable height).
+        const startPaint = () => {
+            if (rafId !== 0 || backing.cssHeight <= 0) {
+                return;
+            }
+            rafId = requestAnimationFrame(paint);
+        };
+
+        const observer = new ResizeObserver((entries) => {
+            const entry = entries[0];
+            if (!entry) {
+                return;
+            }
+            const box = entry.contentBoxSize?.[0];
+            if (box) {
+                backing.cssWidth = box.inlineSize;
+                backing.cssHeight = box.blockSize;
+            } else {
+                backing.cssWidth = entry.contentRect.width;
+                backing.cssHeight = entry.contentRect.height;
+            }
+            startPaint();
+        });
+        observer.observe(canvas);
+
+        // A `(resolution: Xdppx)` media query only fires when DPR LEAVES X,
+        // so after each change we have to re-arm against the new value.
+        // This catches both user zoom and monitor swaps (laptop <-> external).
+        let mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+        const onDprChange = () => {
+            backing.dpr = window.devicePixelRatio || 1;
+            mql.removeEventListener('change', onDprChange);
+            mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+            mql.addEventListener('change', onDprChange);
+        };
+        mql.addEventListener('change', onDprChange);
+
+        startPaint();
 
         return () => {
             cancelAnimationFrame(rafId);
