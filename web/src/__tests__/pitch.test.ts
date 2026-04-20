@@ -39,6 +39,7 @@ describe('nearestNote', () => {
         expect(() => nearestNote(-1)).toThrow();
         expect(() => nearestNote(Number.NaN)).toThrow();
         expect(() => nearestNote(Number.POSITIVE_INFINITY)).toThrow();
+        expect(() => nearestNote(Number.NEGATIVE_INFINITY)).toThrow();
     });
 
     it('throws when hz maps outside MIDI 0..127, mirroring Pitch.cs', () => {

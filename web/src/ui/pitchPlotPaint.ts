@@ -1,4 +1,4 @@
-import {MIN_DISPLAY_CONFIDENCE} from './formatPitch';
+import {shouldDisplayPitch} from './displayGate';
 import type {TraceBuffer} from '../session/traceBuffer';
 
 export interface VoiceStyle {
@@ -32,20 +32,35 @@ export interface PaintFrame {
 
 const GRID_STEP_HZ = 50;
 
-// Matches the canvas backing-store size to its CSS size scaled by devicePixelRatio,
-// then installs a transform so callers can draw in CSS pixels. Returns the CSS size
-// so callers don't re-read clientWidth/Height.
-export function resizeForDpr(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): CanvasSize {
-    const dpr = window.devicePixelRatio || 1;
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
-    if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-    }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+// CSS-pixel size + device pixel ratio, populated externally from a
+// ResizeObserver (CSS size) and a matchMedia listener (DPR). Keeping this
+// as pre-measured state lets paint() stay layout-read-free.
+export interface CanvasBacking {
+    cssWidth: number;
+    cssHeight: number;
+    dpr: number;
+}
 
-    return {width, height};
+// Reconciles the canvas backing-store size against a pre-measured CSS
+// size + DPR. Only writes canvas.width/height (and re-installs the
+// transform) when the backing size actually changes, so steady-state
+// paints touch no DOM-mutating properties.
+export function applyCanvasBacking(
+    canvas: HTMLCanvasElement,
+    ctx: CanvasRenderingContext2D,
+    backing: CanvasBacking,
+): CanvasSize {
+    const backingW = Math.round(backing.cssWidth * backing.dpr);
+    const backingH = Math.round(backing.cssHeight * backing.dpr);
+    if (canvas.width !== backingW || canvas.height !== backingH) {
+        canvas.width = backingW;
+        canvas.height = backingH;
+        // Resetting canvas.width/height wipes the 2d context state, so
+        // re-install the DPR transform. Only paid on resize, not per frame.
+        ctx.setTransform(backing.dpr, 0, 0, backing.dpr, 0, 0);
+    }
+
+    return {width: backing.cssWidth, height: backing.cssHeight};
 }
 
 // Builds a reusable Hz-to-y-pixel mapper with the log bounds captured once.
@@ -70,13 +85,16 @@ export function drawGrid(frame: PaintFrame, range: HzRange): void {
     const {ctx, hzToY, size} = frame;
     ctx.strokeStyle = '#222';
     ctx.lineWidth = 1;
+    // All grid lines share the same stroke style, so batch them into a
+    // single path: one beginPath + many moveTo/lineTo + one stroke is ~11
+    // fewer driver flushes per paint at the default 80-600 Hz range.
+    ctx.beginPath();
     for (let f = range.minHz; f <= range.maxHz; f += GRID_STEP_HZ) {
         const y = hzToY(f);
-        ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(size.width, y);
-        ctx.stroke();
     }
+    ctx.stroke();
 }
 
 export function drawTraces(
@@ -97,7 +115,7 @@ export function drawTraces(
         ctx.beginPath();
         let pen = false;
         buffer?.forEach((tsMs, fundamentalHz, confidence) => {
-            if (tsMs < startMs || fundamentalHz <= 0 || confidence < MIN_DISPLAY_CONFIDENCE) {
+            if (tsMs < startMs || !shouldDisplayPitch(fundamentalHz, confidence)) {
                 pen = false;
 
                 return;

@@ -1,4 +1,5 @@
-import {MIN_DISPLAY_CONFIDENCE, formatNoteWithCents} from './formatPitch';
+import {shouldDisplayPitch} from './displayGate';
+import {formatNoteWithCents} from './formatPitch';
 
 export interface NoteReadoutProps {
     deviceLabel: string;
@@ -8,7 +9,7 @@ export interface NoteReadoutProps {
 
 export function NoteReadout({deviceLabel, fundamentalHz, confidence}: NoteReadoutProps) {
     const text = formatNoteWithCents(fundamentalHz);
-    const dim = confidence < MIN_DISPLAY_CONFIDENCE;
+    const dim = !shouldDisplayPitch(fundamentalHz, confidence);
 
     return (
         <div style={{

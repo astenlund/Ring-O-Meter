@@ -6,3 +6,10 @@
 // valid proxy for in-browser behaviour.
 
 export const TARGET_SAMPLE_RATE_HZ = 48000;
+
+// Ceiling on how fast the worklet is allowed to publish analysis frames.
+// The worklet currently runs at ~47 Hz; 60 Hz leaves headroom for tuning
+// without forcing consumers (plot ring buffer sizing, throttles) to grow
+// their bounds. Owned here because it's a property of the worklet's
+// publish cadence, not of any particular consumer.
+export const MAX_PUBLISH_HZ = 60;

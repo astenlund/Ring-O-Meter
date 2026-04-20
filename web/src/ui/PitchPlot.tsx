@@ -1,11 +1,12 @@
 import {type RefObject, useEffect, useRef} from 'react';
 import {
+    applyCanvasBacking,
     drawBackground,
     drawGrid,
     drawLegend,
     drawTraces,
     makeHzToY,
-    resizeForDpr,
+    type CanvasBacking,
     type PaintFrame,
     type VoiceStyle,
 } from './pitchPlotPaint';
@@ -35,6 +36,11 @@ export function PitchPlot({
     // is hidden) decouples the paint rate from publish rate and lets the
     // browser coalesce work with other rendering. The loop reads buffersRef
     // directly so trace pushes don't need to cause React re-renders.
+    //
+    // CSS size and DPR are tracked outside the paint loop (ResizeObserver +
+    // matchMedia) so paint() never reads clientWidth/clientHeight: those
+    // reads are layout-synchronous and at 60 fps add up to a steady stream
+    // of avoidable layout work.
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) {
@@ -45,11 +51,45 @@ export function PitchPlot({
             return;
         }
 
+        const backing: CanvasBacking = {
+            cssWidth: canvas.clientWidth,
+            cssHeight: canvas.clientHeight,
+            dpr: window.devicePixelRatio || 1,
+        };
+
+        const observer = new ResizeObserver((entries) => {
+            const entry = entries[0];
+            if (!entry) {
+                return;
+            }
+            const box = entry.contentBoxSize?.[0];
+            if (box) {
+                backing.cssWidth = box.inlineSize;
+                backing.cssHeight = box.blockSize;
+            } else {
+                backing.cssWidth = entry.contentRect.width;
+                backing.cssHeight = entry.contentRect.height;
+            }
+        });
+        observer.observe(canvas);
+
+        // A `(resolution: Xdppx)` media query only fires when DPR LEAVES X,
+        // so after each change we have to re-arm against the new value.
+        // This catches both user zoom and monitor swaps (laptop <-> external).
+        let mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+        const onDprChange = () => {
+            backing.dpr = window.devicePixelRatio || 1;
+            mql.removeEventListener('change', onDprChange);
+            mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+            mql.addEventListener('change', onDprChange);
+        };
+        mql.addEventListener('change', onDprChange);
+
         const range = {minHz, maxHz};
         let rafId = 0;
 
         const paint = () => {
-            const size = resizeForDpr(canvas, ctx);
+            const size = applyCanvasBacking(canvas, ctx, backing);
             const frame: PaintFrame = {
                 ctx,
                 size,
@@ -67,7 +107,11 @@ export function PitchPlot({
 
         rafId = requestAnimationFrame(paint);
 
-        return () => cancelAnimationFrame(rafId);
+        return () => {
+            cancelAnimationFrame(rafId);
+            observer.disconnect();
+            mql.removeEventListener('change', onDprChange);
+        };
     }, [voices, buffersRef, windowMs, minHz, maxHz]);
 
     return (

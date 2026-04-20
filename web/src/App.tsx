@@ -2,16 +2,15 @@ import {type CSSProperties, useCallback, useEffect, useMemo, useRef, useState} f
 import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
 import {PitchPlot, type VoiceStyle} from './ui/PitchPlot';
+import {MAX_PUBLISH_HZ} from './audio/constants';
 import {TraceBuffer} from './session/traceBuffer';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
 import type {AnalysisFrame} from './wire/frames';
 
 // Plot window and the trace cap derived from it. If a voice ever publishes
 // faster than MAX_PUBLISH_HZ the ring buffer will overwrite its oldest
-// frame, which is the intended behaviour; 60 Hz is a safe ceiling since the
-// worklet currently publishes at ~47 Hz.
+// frame, which is the intended behaviour.
 const PLOT_WINDOW_MS = 10_000;
-const MAX_PUBLISH_HZ = 60;
 const MAX_TRACE_SAMPLES = Math.ceil((PLOT_WINDOW_MS * MAX_PUBLISH_HZ) / 1000);
 
 const SLOT_COLORS = ['#5cf', '#fc5'] as const;
