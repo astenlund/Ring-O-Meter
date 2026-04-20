@@ -6,6 +6,12 @@ export interface VoiceStyle {
     color: string;
 }
 
+// A voice entry as consumed by the plot: style fields plus the channelId
+// that keys into the trace-buffer map. Kept as a flat array (not a Record)
+// so App owns iteration order and neither the props nor the paint helpers
+// need Object.entries / Object.values round-trips.
+export type VoiceEntry = VoiceStyle & {channelId: string};
+
 export interface HzRange {
     minHz: number;
     maxHz: number;
@@ -101,7 +107,7 @@ export function drawGrid(frame: PaintFrame, range: HzRange): void {
 
 export function drawTraces(
     frame: PaintFrame,
-    voiceEntries: ReadonlyArray<readonly [string, VoiceStyle]>,
+    voices: ReadonlyArray<VoiceEntry>,
     buffers: Record<string, TraceBuffer>,
 ): void {
     const {ctx, hzToY, size, nowMs, windowMs} = frame;
@@ -109,28 +115,55 @@ export function drawTraces(
 
     // Iterate voices (not buffers) so legend and trace order stay in
     // sync even if a buffer exists for a channel that is no longer in
-    // the voice set (or vice versa). Entries are precomputed by the
-    // caller so rAF paints don't each allocate a fresh entries array.
-    for (const [channelId, voice] of voiceEntries) {
-        const buffer = buffers[channelId];
+    // the voice set (or vice versa).
+    for (const voice of voices) {
+        const buffer = buffers[voice.channelId];
         ctx.strokeStyle = voice.color;
         ctx.lineWidth = 2;
         ctx.beginPath();
         let pen = false;
+        // Last displayable-but-pre-window sample; used to interpolate a
+        // moveTo at the window's left edge when the next sample lands
+        // in-window, so the leading segment connects to x=0 instead of
+        // breaking.
+        let prevTsMs = 0;
+        let prevHz = 0;
+        let prevPreWindow = false;
         buffer?.forEach((tsMs, fundamentalHz, confidence) => {
-            if (tsMs < startMs || !shouldDisplayPitch(fundamentalHz, confidence)) {
+            if (!shouldDisplayPitch(fundamentalHz, confidence)) {
                 pen = false;
+                prevPreWindow = false;
+
+                return;
+            }
+            if (tsMs < startMs) {
+                pen = false;
+                prevTsMs = tsMs;
+                prevHz = fundamentalHz;
+                prevPreWindow = true;
 
                 return;
             }
             const x = ((tsMs - startMs) / windowMs) * size.width;
             const y = hzToY(fundamentalHz);
             if (!pen) {
-                ctx.moveTo(x, y);
+                if (prevPreWindow && tsMs > prevTsMs) {
+                    // Interpolate y at x=0 (tsMs=startMs) between the last
+                    // pre-window sample and this in-window one. Linear in
+                    // screen-y, which matches what lineTo would draw if
+                    // the segment had not been clipped.
+                    const t = (startMs - prevTsMs) / (tsMs - prevTsMs);
+                    const yPrev = hzToY(prevHz);
+                    ctx.moveTo(0, yPrev + (y - yPrev) * t);
+                    ctx.lineTo(x, y);
+                } else {
+                    ctx.moveTo(x, y);
+                }
                 pen = true;
             } else {
                 ctx.lineTo(x, y);
             }
+            prevPreWindow = false;
         });
         ctx.stroke();
     }
