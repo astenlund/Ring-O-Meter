@@ -7,6 +7,7 @@ import {
     drawTraces,
     makeHzToY,
     type CanvasBacking,
+    type CanvasSize,
     type PaintFrame,
     type VoiceStyle,
 } from './pitchPlotPaint';
@@ -86,21 +87,39 @@ export function PitchPlot({
         mql.addEventListener('change', onDprChange);
 
         const range = {minHz, maxHz};
+        // voices identity is stable across rAF (memoised in App.tsx), so
+        // entries/values are pre-built once per effect run instead of
+        // reallocated on every paint. Effect deps rebuild them on change.
+        const voiceEntries = Object.entries(voices);
+        const voiceValues = Object.values(voices);
+        // Scratch structures reused across rAF frames so the paint loop
+        // allocates nothing in steady state: `size` is mutated by
+        // applyCanvasBacking; `frame` fields are overwritten before each
+        // helper reads them; `emptyBuffers` is a stable sentinel for the
+        // (defensive) null-ref fallback.
+        const emptyBuffers: Record<string, TraceBuffer> = {};
+        const size: CanvasSize = {width: 0, height: 0};
+        applyCanvasBacking(canvas, ctx, backing, size);
+        // hzToY depends only on range (constant here) and size.height,
+        // which changes only on resize. Invalidate with a height sentinel
+        // so steady-state paints reuse the same closure.
+        let hzToY = makeHzToY(range, size.height);
+        let hzToYHeight = size.height;
+        const frame: PaintFrame = {ctx, size, hzToY, nowMs: 0, windowMs};
         let rafId = 0;
 
         const paint = () => {
-            const size = applyCanvasBacking(canvas, ctx, backing);
-            const frame: PaintFrame = {
-                ctx,
-                size,
-                hzToY: makeHzToY(range, size.height),
-                nowMs: performance.now(),
-                windowMs,
-            };
+            applyCanvasBacking(canvas, ctx, backing, size);
+            if (hzToYHeight !== size.height) {
+                hzToY = makeHzToY(range, size.height);
+                hzToYHeight = size.height;
+                frame.hzToY = hzToY;
+            }
+            frame.nowMs = performance.now();
             drawBackground(frame);
             drawGrid(frame, range);
-            drawTraces(frame, voices, buffersRef.current ?? {});
-            drawLegend(frame, voices);
+            drawTraces(frame, voiceEntries, buffersRef.current ?? emptyBuffers);
+            drawLegend(frame, voiceValues);
 
             rafId = requestAnimationFrame(paint);
         };

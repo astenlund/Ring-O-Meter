@@ -44,12 +44,14 @@ export interface CanvasBacking {
 // Reconciles the canvas backing-store size against a pre-measured CSS
 // size + DPR. Only writes canvas.width/height (and re-installs the
 // transform) when the backing size actually changes, so steady-state
-// paints touch no DOM-mutating properties.
+// paints touch no DOM-mutating properties. Fills the caller-provided
+// `out` CanvasSize so rAF paints don't allocate a fresh size object.
 export function applyCanvasBacking(
     canvas: HTMLCanvasElement,
     ctx: CanvasRenderingContext2D,
     backing: CanvasBacking,
-): CanvasSize {
+    out: CanvasSize,
+): void {
     const backingW = Math.round(backing.cssWidth * backing.dpr);
     const backingH = Math.round(backing.cssHeight * backing.dpr);
     if (canvas.width !== backingW || canvas.height !== backingH) {
@@ -59,14 +61,14 @@ export function applyCanvasBacking(
         // re-install the DPR transform. Only paid on resize, not per frame.
         ctx.setTransform(backing.dpr, 0, 0, backing.dpr, 0, 0);
     }
-
-    return {width: backing.cssWidth, height: backing.cssHeight};
+    out.width = backing.cssWidth;
+    out.height = backing.cssHeight;
 }
 
 // Builds a reusable Hz-to-y-pixel mapper with the log bounds captured once.
-// Called once per paint (range and height are fixed across the frame), so the
-// per-sample hot path inside drawTraces only pays for one Math.log call instead
-// of three.
+// Called once per height change (PitchPlot caches the mapper across rAF
+// frames), so the per-sample hot path inside drawTraces only pays for one
+// Math.log call instead of three.
 export function makeHzToY(range: HzRange, height: number): HzToY {
     const logMin = Math.log(range.minHz);
     const logSpan = Math.log(range.maxHz) - logMin;
@@ -99,7 +101,7 @@ export function drawGrid(frame: PaintFrame, range: HzRange): void {
 
 export function drawTraces(
     frame: PaintFrame,
-    voices: Record<string, VoiceStyle>,
+    voiceEntries: ReadonlyArray<readonly [string, VoiceStyle]>,
     buffers: Record<string, TraceBuffer>,
 ): void {
     const {ctx, hzToY, size, nowMs, windowMs} = frame;
@@ -107,8 +109,9 @@ export function drawTraces(
 
     // Iterate voices (not buffers) so legend and trace order stay in
     // sync even if a buffer exists for a channel that is no longer in
-    // the voice set (or vice versa).
-    for (const [channelId, voice] of Object.entries(voices)) {
+    // the voice set (or vice versa). Entries are precomputed by the
+    // caller so rAF paints don't each allocate a fresh entries array.
+    for (const [channelId, voice] of voiceEntries) {
         const buffer = buffers[channelId];
         ctx.strokeStyle = voice.color;
         ctx.lineWidth = 2;
@@ -133,11 +136,11 @@ export function drawTraces(
     }
 }
 
-export function drawLegend(frame: PaintFrame, voices: Record<string, VoiceStyle>): void {
+export function drawLegend(frame: PaintFrame, voiceValues: ReadonlyArray<VoiceStyle>): void {
     const {ctx} = frame;
     let legendY = 12;
     ctx.font = '12px sans-serif';
-    for (const voice of Object.values(voices)) {
+    for (const voice of voiceValues) {
         ctx.fillStyle = voice.color;
         ctx.fillRect(8, legendY - 8, 12, 12);
         ctx.fillStyle = '#ccc';
