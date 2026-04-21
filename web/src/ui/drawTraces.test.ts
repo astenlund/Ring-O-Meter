@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {drawTraces, type PaintFrame, type VoiceEntry} from './pitchPlotPaint';
+import {drawTraces, type PaintFrame, type VoiceEntry} from '../plot/paint';
 import {TraceBuffer} from '../session/traceBuffer';
 
 // Minimal stub of CanvasRenderingContext2D that records only the path

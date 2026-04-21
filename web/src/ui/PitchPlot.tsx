@@ -11,7 +11,7 @@ import {
     type PaintFrame,
     type VoiceEntry,
     type VoiceStyle,
-} from './pitchPlotPaint';
+} from '../plot/paint';
 import type {TraceBuffer} from '../session/traceBuffer';
 
 export type {VoiceEntry, VoiceStyle};
