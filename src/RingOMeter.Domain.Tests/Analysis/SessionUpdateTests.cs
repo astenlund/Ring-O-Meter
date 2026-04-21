@@ -10,8 +10,8 @@ public class SessionUpdateTests
     public void Round_trips_through_messagepack_with_two_voices()
     {
         // Arrange
-        var frame1 = new AnalysisFrame("ch1", 100, 220f, 0.9f, -10f);
-        var frame2 = new AnalysisFrame("ch2", 100, 330f, 0.85f, -12f);
+        var frame1 = TestData.Frame(clientTsMs: 100, fundamentalHz: 220f);
+        var frame2 = TestData.Frame(channelId: "ch2", clientTsMs: 100, fundamentalHz: 330f, confidence: 0.85f, rmsDb: -12f);
         var update = new SessionUpdate(
             "dev",
             42,

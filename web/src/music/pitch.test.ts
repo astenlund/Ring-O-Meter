@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {nearestNote} from '../music/pitch';
+import {nearestNote} from './pitch';
 
 describe('nearestNote', () => {
     it('maps 440 Hz to A4 with ~0 cents', () => {

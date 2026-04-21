@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {formatNoteWithCents} from '../ui/formatPitch';
+import {formatNoteWithCents} from './formatPitch';
 
 describe('formatNoteWithCents', () => {
     it('formats a clean note as "A4 +0c"', () => {

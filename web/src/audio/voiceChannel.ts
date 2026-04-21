@@ -4,6 +4,7 @@
 // AudioWorkletGlobalScope cannot follow. We only want the URL form, not the
 // worker constructor form, so addModule() loads it like any ESM module.
 import workletUrl from './worklets/pitchWorklet.ts?worker&url';
+import {OctaveStabilizer} from './octaveStabilizer';
 import {PITCH_PROCESSOR_NAME, type ChannelMessage} from './worklets/channelMessage';
 import type {AnalysisFrame} from '../wire/frames';
 
@@ -18,6 +19,7 @@ export interface VoiceChannelOptions {
 
 export class VoiceChannel {
     private readonly opts: VoiceChannelOptions;
+    private readonly octaveStabilizer = new OctaveStabilizer();
     private node: AudioWorkletNode | null = null;
     private source: MediaStreamAudioSourceNode | null = null;
     private stream: MediaStream | null = null;
@@ -77,12 +79,15 @@ export class VoiceChannel {
             return;
         }
 
+        const {hz: stabilizedHz} = this.octaveStabilizer.apply(message.fundamentalHz);
+
         const frame: AnalysisFrame = {
             channelId: this.opts.channelId,
             clientTsMs: Math.round(performance.timeOrigin + performance.now()),
-            fundamentalHz: message.fundamentalHz,
+            fundamentalHz: stabilizedHz,
             confidence: message.confidence,
             rmsDb: message.rmsDb,
+            fundamentalHzRaw: message.fundamentalHz,
         };
         this.opts.onFrame(frame);
     }

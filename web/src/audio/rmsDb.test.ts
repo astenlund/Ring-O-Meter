@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {computeRmsDb} from '../audio/rmsDb';
+import {computeRmsDb} from './rmsDb';
 
 describe('computeRmsDb', () => {
     it('returns the silence floor for a zero buffer', () => {
