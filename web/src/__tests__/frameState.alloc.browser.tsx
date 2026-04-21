@@ -37,20 +37,23 @@ describe('frame-state allocation budget', () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const root: Root = createRoot(container);
-        let captured: ((frame: AnalysisFrame) => void) | null = null;
+        // Ref-object rather than a bare `let` so the post-render read
+        // gets its own local narrow; a closure-captured `let` collapses
+        // to `never` under verbatimModuleSyntax narrowing.
+        const capturedRef: {fn: ((frame: AnalysisFrame) => void) | null} = {fn: null};
         function Harness(): null {
             const {applyFrame} = useFrameState();
-            captured = applyFrame;
+            capturedRef.fn = applyFrame;
 
             return null;
         }
         await act(async () => {
             root.render(<Harness />);
         });
-        if (!captured) {
+        const apply = capturedRef.fn;
+        if (!apply) {
             throw new Error('useFrameState did not expose applyFrame');
         }
-        const apply = captured;
 
         const waitForFlushes = () => new Promise<void>((resolve) => {
             setTimeout(resolve, 300);
