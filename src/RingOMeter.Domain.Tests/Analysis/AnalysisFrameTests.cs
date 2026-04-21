@@ -10,8 +10,8 @@ public class AnalysisFrameTests
     public void Records_with_same_values_are_equal()
     {
         // Arrange
-        var a = new AnalysisFrame("ch1", 1000, 440.0f, 0.95f, -12.0f);
-        var b = new AnalysisFrame("ch1", 1000, 440.0f, 0.95f, -12.0f);
+        var a = TestData.Frame(clientTsMs: 1000, fundamentalHz: 440f, confidence: 0.95f, rmsDb: -12f);
+        var b = TestData.Frame(clientTsMs: 1000, fundamentalHz: 440f, confidence: 0.95f, rmsDb: -12f);
 
         // Act / Assert
         a.Should().Be(b);
@@ -20,8 +20,14 @@ public class AnalysisFrameTests
     [Fact]
     public void Round_trips_through_messagepack()
     {
-        // Arrange
-        var original = new AnalysisFrame("ch2", 12345, 220.5f, 0.8f, -18.0f);
+        // Arrange (raw differs from canonical to prove the new key survives)
+        var original = TestData.Frame(
+            channelId: "ch2",
+            clientTsMs: 12345,
+            fundamentalHz: 220.5f,
+            confidence: 0.8f,
+            rmsDb: -18f,
+            fundamentalHzRaw: 441f);
 
         // Act
         var bytes = MessagePackSerializer.Serialize(original);
@@ -35,9 +41,10 @@ public class AnalysisFrameTests
     public void Unvoiced_frame_has_zero_fundamental()
     {
         // Arrange
-        var frame = new AnalysisFrame("ch1", 0, 0f, 0f, -60f);
+        var frame = TestData.Frame(fundamentalHz: 0f, confidence: 0f, rmsDb: -60f);
 
         // Act / Assert
         frame.FundamentalHz.Should().Be(0);
+        frame.FundamentalHzRaw.Should().Be(0);
     }
 }

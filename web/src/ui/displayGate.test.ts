@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {MIN_DISPLAY_CONFIDENCE, shouldDisplayPitch} from '../ui/displayGate';
+import {MIN_DISPLAY_CONFIDENCE, shouldDisplayPitch} from './displayGate';
 
 describe('shouldDisplayPitch', () => {
     it('returns true for a confident, finite, positive pitch', () => {

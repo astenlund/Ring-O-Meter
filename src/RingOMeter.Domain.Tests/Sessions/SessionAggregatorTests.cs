@@ -1,5 +1,4 @@
 using FluentAssertions;
-using RingOMeter.Domain.Analysis;
 using RingOMeter.Domain.Sessions;
 
 namespace RingOMeter.Domain.Tests.Sessions;
@@ -11,7 +10,7 @@ public class SessionAggregatorTests
     {
         // Arrange
         var agg = new SessionAggregator("dev", () => 1000);
-        var frame = new AnalysisFrame("ch1", 500, 440f, 0.9f, -10f);
+        var frame = TestData.Frame(clientTsMs: 500, fundamentalHz: 440f);
 
         // Act
         agg.Apply(frame);
@@ -29,8 +28,8 @@ public class SessionAggregatorTests
     {
         // Arrange
         var agg = new SessionAggregator("dev", () => 1000);
-        var older = new AnalysisFrame("ch1", 500, 220f, 0.7f, -15f);
-        var newer = new AnalysisFrame("ch1", 600, 440f, 0.9f, -10f);
+        var older = TestData.Frame(clientTsMs: 500, fundamentalHz: 220f, confidence: 0.7f, rmsDb: -15f);
+        var newer = TestData.Frame(clientTsMs: 600, fundamentalHz: 440f);
 
         // Act
         agg.Apply(older);
@@ -45,8 +44,8 @@ public class SessionAggregatorTests
     {
         // Arrange
         var agg = new SessionAggregator("dev", () => 1000);
-        var newer = new AnalysisFrame("ch1", 600, 440f, 0.9f, -10f);
-        var older = new AnalysisFrame("ch1", 500, 220f, 0.7f, -15f);
+        var newer = TestData.Frame(clientTsMs: 600, fundamentalHz: 440f);
+        var older = TestData.Frame(clientTsMs: 500, fundamentalHz: 220f, confidence: 0.7f, rmsDb: -15f);
 
         // Act
         agg.Apply(newer);
@@ -63,8 +62,8 @@ public class SessionAggregatorTests
         // with the same ClientTsMs as the existing one wins. Locks the
         // behaviour against accidental change to `>`.
         var agg = new SessionAggregator("dev", () => 1000);
-        var first = new AnalysisFrame("ch1", 500, 220f, 0.7f, -15f);
-        var tied = new AnalysisFrame("ch1", 500, 440f, 0.9f, -10f);
+        var first = TestData.Frame(clientTsMs: 500, fundamentalHz: 220f, confidence: 0.7f, rmsDb: -15f);
+        var tied = TestData.Frame(clientTsMs: 500, fundamentalHz: 440f);
 
         // Act
         agg.Apply(first);
@@ -79,8 +78,8 @@ public class SessionAggregatorTests
     {
         // Arrange
         var agg = new SessionAggregator("dev", () => 1000);
-        var f1 = new AnalysisFrame("ch1", 100, 220f, 0.9f, -10f);
-        var f2 = new AnalysisFrame("ch2", 110, 330f, 0.85f, -11f);
+        var f1 = TestData.Frame(clientTsMs: 100, fundamentalHz: 220f);
+        var f2 = TestData.Frame(channelId: "ch2", clientTsMs: 110, fundamentalHz: 330f, confidence: 0.85f, rmsDb: -11f);
 
         // Act
         agg.Apply(f1);
@@ -97,9 +96,9 @@ public class SessionAggregatorTests
         var agg = new SessionAggregator("dev", () => 1000);
 
         // Act
-        agg.Apply(new AnalysisFrame("ch1", 100, 220f, 0.9f, -10f));
+        agg.Apply(TestData.Frame(clientTsMs: 100, fundamentalHz: 220f));
         var s1 = agg.Snapshot();
-        agg.Apply(new AnalysisFrame("ch1", 200, 230f, 0.9f, -10f));
+        agg.Apply(TestData.Frame(clientTsMs: 200, fundamentalHz: 230f));
         var s2 = agg.Snapshot();
 
         // Assert
@@ -111,8 +110,8 @@ public class SessionAggregatorTests
     {
         // Arrange
         var agg = new SessionAggregator("dev", () => 1000);
-        agg.Apply(new AnalysisFrame("ch1", 100, 220f, 0.9f, -10f));
-        agg.Apply(new AnalysisFrame("ch2", 100, 330f, 0.9f, -10f));
+        agg.Apply(TestData.Frame(clientTsMs: 100, fundamentalHz: 220f));
+        agg.Apply(TestData.Frame(channelId: "ch2", clientTsMs: 100, fundamentalHz: 330f));
 
         // Act
         agg.RemoveChannel("ch1");

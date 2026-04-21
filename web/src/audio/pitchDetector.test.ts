@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
-import {detectPitch} from '../audio/pitchDetector';
-import {TARGET_SAMPLE_RATE_HZ} from '../audio/constants';
+import {detectPitch} from './pitchDetector';
+import {TARGET_SAMPLE_RATE_HZ} from './constants';
 
 const sampleRate = TARGET_SAMPLE_RATE_HZ;
 

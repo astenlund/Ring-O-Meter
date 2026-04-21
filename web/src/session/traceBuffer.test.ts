@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {TraceBuffer} from '../session/traceBuffer';
+import {TraceBuffer} from './traceBuffer';
 
 describe('TraceBuffer', () => {
     it('iterates pushed samples in order when below capacity', () => {
