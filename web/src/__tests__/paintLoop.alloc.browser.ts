@@ -11,7 +11,7 @@ import {
     type HzRange,
     type PaintFrame,
     type VoiceEntry,
-} from '../ui/pitchPlotPaint';
+} from '../plot/paint';
 import {TraceBuffer} from '../session/traceBuffer';
 
 declare global {

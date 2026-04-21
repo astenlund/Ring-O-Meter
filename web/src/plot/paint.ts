@@ -1,5 +1,12 @@
-import {shouldDisplayPitch} from './displayGate';
+import {shouldDisplayPitch} from '../ui/displayGate';
 import type {TraceBuffer} from '../session/traceBuffer';
+
+// Both 2D contexts share the surface this module uses (rect ops, stroke
+// style, path ops, fillText). Typed as unions so the same helpers run
+// on the main thread (CanvasRenderingContext2D) AND inside the plot
+// worker (OffscreenCanvasRenderingContext2D).
+export type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
+export type AnyCanvasCtx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
 export interface VoiceStyle {
     label: string;
@@ -29,7 +36,7 @@ export type HzToY = (hz: number) => number;
 // positional parameter list. Fields a particular helper doesn't need are
 // simply ignored, same as in any render-pass pattern.
 export interface PaintFrame {
-    ctx: CanvasRenderingContext2D;
+    ctx: AnyCanvasCtx;
     size: CanvasSize;
     hzToY: HzToY;
     nowMs: number;
@@ -53,8 +60,8 @@ export interface CanvasBacking {
 // paints touch no DOM-mutating properties. Fills the caller-provided
 // `out` CanvasSize so rAF paints don't allocate a fresh size object.
 export function applyCanvasBacking(
-    canvas: HTMLCanvasElement,
-    ctx: CanvasRenderingContext2D,
+    canvas: AnyCanvas,
+    ctx: AnyCanvasCtx,
     backing: CanvasBacking,
     out: CanvasSize,
 ): void {
