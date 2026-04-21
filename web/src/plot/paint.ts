@@ -8,16 +8,15 @@ import type {TraceBuffer} from '../session/traceBuffer';
 export type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
 export type AnyCanvasCtx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
-export interface VoiceStyle {
-    label: string;
-    color: string;
-}
-
-// A voice entry as consumed by the plot: style fields plus the channelId
-// that keys into the trace-buffer map. Kept as a flat array (not a Record)
-// so App owns iteration order and neither the props nor the paint helpers
-// need Object.entries / Object.values round-trips.
-export type VoiceEntry = VoiceStyle & {channelId: string};
+// VoiceStyle + VoiceEntry are the wire shape shared with plotMessages.
+// Imported for local use in drawTraces / drawLegend signatures below AND
+// re-exported so callers importing from './paint' (drawTraces.test,
+// paintLoop alloc test) continue to resolve them. Under
+// verbatimModuleSyntax the bare re-export alone doesn't pull names into
+// scope — hence the split. Type-only; no runtime import cycle with
+// plotMessages (which never imports paint).
+import type {VoiceStyle, VoiceEntry} from './plotMessages';
+export type {VoiceStyle, VoiceEntry};
 
 export interface HzRange {
     minHz: number;

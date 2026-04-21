@@ -1,9 +1,8 @@
-import {type CSSProperties, useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {type CSSProperties, useCallback, useMemo, useRef, useState} from 'react';
 import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
-import {PitchPlot, type VoiceEntry} from './ui/PitchPlot';
+import {PitchPlot, type PitchPlotHandle, type VoiceEntry} from './ui/PitchPlot';
 import {MAX_PUBLISH_HZ} from './audio/constants';
-import {TraceBuffer} from './session/traceBuffer';
 import {useFrameState} from './session/useFrameState';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
 import type {AnalysisFrame} from './wire/frames';
@@ -36,26 +35,18 @@ interface Slot extends VoiceChannelSlot {
 
 export function App() {
     // useFrameState coalesces per-frame setState into ~15 Hz rAF-paced
-    // flushes so NoteReadout's re-render rate decouples from the
-    // worklet's ~47 Hz publish cadence. Trace samples stay at full rate
-    // via buffersRef (below); only the React-visible `latest` throttles.
+    // flushes for the NoteReadout pipeline; PlotController delivers every
+    // frame to the worker via publishFrame, unthrottled.
     const {latest, applyFrame} = useFrameState();
-
-    // Trace samples accumulate at the worklet's publish rate (~47 Hz per
-    // voice). Storing them in a ref (mutated in place via TraceBuffer)
-    // instead of React state avoids a setState + reconciliation every 21
-    // ms; PitchPlot reads the ref from its rAF paint loop and re-renders
-    // of the App component only happen when `latest` changes (driving
-    // NoteReadout).
-    const buffersRef = useRef<Record<string, TraceBuffer>>({});
+    const plotHandleRef = useRef<PitchPlotHandle | null>(null);
 
     // channelId is a client-minted GUID per slot so slice 1's aggregator
     // (which keys LatestPerChannel by channelId) cannot collide across
     // publishers. Minted inside the confirm handler rather than a useMemo:
     // useMemo is documented as a best-effort cache, so a future React
     // re-evaluation would regenerate every channelId and desync every key
-    // in `buffersRef` from the still-arriving frames. One-shot event
-    // handler is the correct place for non-idempotent work.
+    // in the worker's buffers from the still-arriving frames. One-shot
+    // event handler is the correct place for non-idempotent work.
     const [slots, setSlots] = useState<Slot[] | null>(null);
 
     const handleDeviceConfirm = useCallback((selection: DeviceSelection) => {
@@ -79,21 +70,8 @@ export function App() {
 
     const handleFrame = useCallback((frame: AnalysisFrame) => {
         applyFrame(frame);
-        buffersRef.current[frame.channelId]?.push(performance.now(), frame.fundamentalHz, frame.confidence);
+        plotHandleRef.current?.publishFrame(frame);
     }, [applyFrame]);
-
-    // Resets the per-channel trace buffers when the device selection
-    // changes. Stale frames from a previous slot selection cannot
-    // collide in the latest map because channelIds are crypto.randomUUID
-    // minted per handleDeviceConfirm; if live slot reconfiguration
-    // becomes a real path, add a resetLatest() method to useFrameState.
-    useEffect(() => {
-        const buffers: Record<string, TraceBuffer> = {};
-        for (const slot of slots ?? []) {
-            buffers[slot.channelId] = new TraceBuffer(MAX_TRACE_SAMPLES);
-        }
-        buffersRef.current = buffers;
-    }, [slots]);
 
     useVoiceChannels(slots, handleFrame);
 
@@ -135,8 +113,9 @@ export function App() {
             </div>
             <PitchPlot
                 voices={voices}
-                buffersRef={buffersRef}
                 windowMs={PLOT_WINDOW_MS}
+                traceCapacity={MAX_TRACE_SAMPLES}
+                handleRef={plotHandleRef}
             />
         </main>
     );

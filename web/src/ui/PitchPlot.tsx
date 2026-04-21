@@ -1,109 +1,82 @@
-import {type RefObject, useEffect, useRef} from 'react';
-import {
-    applyCanvasBacking,
-    drawBackground,
-    drawGrid,
-    drawLegend,
-    drawTraces,
-    makeHzToY,
-    type CanvasBacking,
-    type CanvasSize,
-    type PaintFrame,
-    type VoiceEntry,
-    type VoiceStyle,
-} from '../plot/paint';
-import type {TraceBuffer} from '../session/traceBuffer';
+import {type CSSProperties, type RefObject, useEffect, useRef} from 'react';
+import {PlotController} from '../plot/plotController';
+import type {AnalysisFrame} from '../wire/frames';
+import type {VoiceEntry} from '../plot/plotMessages';
 
-export type {VoiceEntry, VoiceStyle};
+export type {VoiceEntry};
 
-export interface PitchPlotProps {
-    voices: ReadonlyArray<VoiceEntry>;           // flat roster: style + channelId
-    buffersRef: RefObject<Record<string, TraceBuffer>>;
-    windowMs: number;                            // rolling display window
-    minHz?: number;                              // default 80
-    maxHz?: number;                              // default 600
+export interface PitchPlotHandle {
+    publishFrame(frame: AnalysisFrame): void;
 }
 
+export interface PitchPlotProps {
+    voices: ReadonlyArray<VoiceEntry>;
+    windowMs: number;
+    traceCapacity: number;
+    minHz?: number;
+    maxHz?: number;
+    handleRef: RefObject<PitchPlotHandle | null>;
+}
+
+const canvasStyle: CSSProperties = {
+    width: '100%',
+    height: 360,
+    borderRadius: 6,
+    border: '1px solid #444',
+};
+
+// Thin React shell over PlotController. On first mount, transfers the
+// canvas to the worker and spawns it; forwards ResizeObserver + DPR
+// changes via setBacking; forwards voices changes via setRoster.
+//
+// Strict-mode safety. transferControlToOffscreen() is one-shot per
+// <canvas> element and throws InvalidStateError on a second call.
+// React 19 dev strict mode double-invokes effects (mount -> cleanup ->
+// mount) against the same DOM element, so the attach path must be
+// idempotent:
+//   1. controllerRef persists across strict-mode re-entry; if the
+//      controller already exists on a re-mount, attach is skipped.
+//   2. cleanup defers controller.dispose() via queueMicrotask; if a
+//      subsequent mount arms the effect first (strict-mode re-entry),
+//      the deferred dispose sees pendingUnmountRef cleared and skips.
+//      Real unmounts dispose normally because no re-mount clears the
+//      flag.
 export function PitchPlot({
     voices,
-    buffersRef,
     windowMs,
+    traceCapacity,
     minHz = 80,
     maxHz = 600,
+    handleRef,
 }: PitchPlotProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const controllerRef = useRef<PlotController | null>(null);
+    const pendingUnmountRef = useRef(false);
 
-    // The trace buffer updates at the worklet's publish rate (~47 Hz per
-    // voice). Painting once per animation frame (<=60 Hz, zero when the tab
-    // is hidden) decouples the paint rate from publish rate and lets the
-    // browser coalesce work with other rendering. The loop reads buffersRef
-    // directly so trace pushes don't need to cause React re-renders.
-    //
-    // CSS size and DPR are tracked outside the paint loop (ResizeObserver +
-    // matchMedia) so paint() never reads clientWidth/clientHeight: those
-    // reads are layout-synchronous and at 60 fps add up to a steady stream
-    // of avoidable layout work.
     useEffect(() => {
+        pendingUnmountRef.current = false;
         const canvas = canvasRef.current;
         if (!canvas) {
             return;
         }
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-            return;
+        if (!controllerRef.current) {
+            const fresh = new PlotController();
+            const dpr = window.devicePixelRatio || 1;
+            fresh.attach(canvas, {
+                voices,
+                backing: {cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight, dpr},
+                windowMs,
+                minHz,
+                maxHz,
+                traceCapacity,
+            });
+            controllerRef.current = fresh;
         }
-
-        const backing: CanvasBacking = {
-            cssWidth: canvas.clientWidth,
-            cssHeight: canvas.clientHeight,
-            dpr: window.devicePixelRatio || 1,
-        };
-
-        const range = {minHz, maxHz};
-        // Scratch structures reused across rAF frames so the paint loop
-        // allocates nothing in steady state: `size` is mutated by
-        // applyCanvasBacking; `frame` fields are overwritten before each
-        // helper reads them; `emptyBuffers` is a stable sentinel for the
-        // (defensive) null-ref fallback.
-        const emptyBuffers: Record<string, TraceBuffer> = {};
-        const size: CanvasSize = {width: 0, height: 0};
-        // hzToY depends only on range (constant here) and size.height,
-        // which changes only on resize. Invalidate with a height sentinel
-        // so steady-state paints reuse the same closure. Initialised
-        // against size.height=0 as a throwaway: the first paint() runs
-        // only once layout has reported a non-zero height, at which point
-        // the sentinel mismatch forces a rebuild before anything renders.
-        let hzToY = makeHzToY(range, size.height);
-        let hzToYHeight = size.height;
-        const frame: PaintFrame = {ctx, size, hzToY, nowMs: 0, windowMs};
-        let rafId = 0;
-
-        const paint = () => {
-            applyCanvasBacking(canvas, ctx, backing, size);
-            if (hzToYHeight !== size.height) {
-                hzToY = makeHzToY(range, size.height);
-                hzToYHeight = size.height;
-                frame.hzToY = hzToY;
-            }
-            frame.nowMs = performance.now();
-            drawBackground(frame);
-            drawGrid(frame, range);
-            drawTraces(frame, voices, buffersRef.current ?? emptyBuffers);
-            drawLegend(frame, voices);
-
-            rafId = requestAnimationFrame(paint);
-        };
-
-        // Schedules the paint loop. Skips while the canvas has no layout
-        // height: painting then would build hzToY against height=0 and
-        // collapse every trace to the top edge until the observer fires
-        // with the real size. Called on effect entry (fast path) and from
-        // the ResizeObserver (once layout produces a usable height).
-        const startPaint = () => {
-            if (rafId !== 0 || backing.cssHeight <= 0) {
-                return;
-            }
-            rafId = requestAnimationFrame(paint);
+        const controller = controllerRef.current;
+        handleRef.current = {
+            publishFrame(frame) {
+                controller.publishFrame(frame);
+            },
         };
 
         const observer = new ResizeObserver((entries) => {
@@ -112,42 +85,42 @@ export function PitchPlot({
                 return;
             }
             const box = entry.contentBoxSize?.[0];
-            if (box) {
-                backing.cssWidth = box.inlineSize;
-                backing.cssHeight = box.blockSize;
-            } else {
-                backing.cssWidth = entry.contentRect.width;
-                backing.cssHeight = entry.contentRect.height;
-            }
-            startPaint();
+            const w = box ? box.inlineSize : entry.contentRect.width;
+            const h = box ? box.blockSize : entry.contentRect.height;
+            controller.setBacking(w, h, window.devicePixelRatio || 1);
         });
         observer.observe(canvas);
 
-        // A `(resolution: Xdppx)` media query only fires when DPR LEAVES X,
-        // so after each change we have to re-arm against the new value.
-        // This catches both user zoom and monitor swaps (laptop <-> external).
         let mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
         const onDprChange = () => {
-            backing.dpr = window.devicePixelRatio || 1;
+            controller.setBacking(canvas.clientWidth, canvas.clientHeight, window.devicePixelRatio || 1);
             mql.removeEventListener('change', onDprChange);
             mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
             mql.addEventListener('change', onDprChange);
         };
         mql.addEventListener('change', onDprChange);
 
-        startPaint();
-
         return () => {
-            cancelAnimationFrame(rafId);
             observer.disconnect();
             mql.removeEventListener('change', onDprChange);
+            handleRef.current = null;
+            pendingUnmountRef.current = true;
+            queueMicrotask(() => {
+                if (pendingUnmountRef.current && controllerRef.current) {
+                    controllerRef.current.dispose();
+                    controllerRef.current = null;
+                }
+            });
         };
-    }, [voices, buffersRef, windowMs, minHz, maxHz]);
+        // Attach runs once per controller lifetime. Voices changes flow
+        // via the roster effect below; windowMs / minHz / maxHz /
+        // traceCapacity are structurally fixed per mounted canvas.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-    return (
-        <canvas
-            ref={canvasRef}
-            style={{width: '100%', height: 360, borderRadius: 6, border: '1px solid #444'}}
-        />
-    );
+    useEffect(() => {
+        controllerRef.current?.setRoster(voices);
+    }, [voices]);
+
+    return <canvas ref={canvasRef} style={canvasStyle} />;
 }
