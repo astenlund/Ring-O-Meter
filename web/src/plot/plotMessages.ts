@@ -48,6 +48,12 @@ export interface SetBackingMessage {
 export interface FrameMessage {
     type: 'frame';
     frame: AnalysisFrame;
+    // Audio-thread-stamped capture instant converted to main's
+    // performance.now() basis (see VoiceChannelOptions.onFrame in
+    // voiceChannel.ts for the calibration). Stays aligned with the
+    // worker's paint nowMs epoch via the InitMessage.mainNowAtInitMs
+    // reconciliation, so trace positions reflect when audio was
+    // captured, not when main got around to posting.
     clientNowMs: number;
 }
 
