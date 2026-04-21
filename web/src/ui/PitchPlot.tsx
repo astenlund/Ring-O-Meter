@@ -6,7 +6,9 @@ import type {VoiceEntry} from '../plot/plotMessages';
 export type {VoiceEntry};
 
 export interface PitchPlotHandle {
-    publishFrame(frame: AnalysisFrame): void;
+    // perfNowCaptureMs is the audio-thread-stamped capture time in
+    // main's performance.now() basis; see VoiceChannelOptions.onFrame.
+    publishFrame(frame: AnalysisFrame, perfNowCaptureMs: number): void;
 }
 
 export interface PitchPlotProps {
@@ -74,8 +76,8 @@ export function PitchPlot({
         }
         const controller = controllerRef.current;
         handleRef.current = {
-            publishFrame(frame) {
-                controller.publishFrame(frame);
+            publishFrame(frame, perfNowCaptureMs) {
+                controller.publishFrame(frame, perfNowCaptureMs);
             },
         };
 

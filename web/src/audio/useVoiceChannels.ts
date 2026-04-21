@@ -22,7 +22,7 @@ export interface VoiceChannelSlot {
 // across that swap.
 export function useVoiceChannels(
     slots: readonly VoiceChannelSlot[] | null,
-    onFrame: (frame: AnalysisFrame) => void,
+    onFrame: (frame: AnalysisFrame, perfNowCaptureMs: number) => void,
 ): void {
     useEffect(() => {
         if (!slots) {

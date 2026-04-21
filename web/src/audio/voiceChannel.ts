@@ -14,7 +14,13 @@ export interface VoiceChannelOptions {
     // call (hub-side identity of a capturer). Unused in slice 0.
     voiceLabel: string;
     audioContext: AudioContext;
-    onFrame(frame: AnalysisFrame): void;
+    // perfNowCaptureMs is the main-thread performance.now() value that
+    // corresponds to the audio-thread capture instant for this frame.
+    // It is derived from the worklet-stamped captureContextTime via a
+    // one-shot offset calibration on the first frame, so consumers get
+    // a capture-accurate x-axis timestamp that is unaffected by
+    // main-thread GC-induced port-dispatch delay.
+    onFrame(frame: AnalysisFrame, perfNowCaptureMs: number): void;
 }
 
 export class VoiceChannel {
@@ -26,6 +32,13 @@ export class VoiceChannel {
     // muted gates outbound frames client-side, wired by the per-singer mute
     // UI that lands in slice 4 (SingerClient view). Unused in slice 0.
     private muted = false;
+    // perfNowAtContextTimeZero: main's performance.now() value corresponding
+    // to AudioContext.currentTime = 0. Set lazily from the first channel
+    // message; remains 0 until then. The first frame inherits any startup
+    // dispatch delay into the calibration, but all subsequent frames are
+    // capture-time-accurate relative to that baseline. See handleMessage.
+    private perfNowAtContextTimeZero = 0;
+    private offsetCalibrated = false;
 
     constructor(opts: VoiceChannelOptions) {
         this.opts = opts;
@@ -79,6 +92,18 @@ export class VoiceChannel {
             return;
         }
 
+        // First-frame calibration: anchor the AudioContext epoch against
+        // main's performance.now() epoch. Calibrating here (rather than in
+        // start()) waits until the context is definitely running so
+        // currentTime is meaningful. Any dispatch delay on this single
+        // reading becomes a global offset rather than per-frame error;
+        // subsequent frames are accurate relative to that baseline.
+        if (!this.offsetCalibrated) {
+            this.perfNowAtContextTimeZero = performance.now() - message.captureContextTime * 1000;
+            this.offsetCalibrated = true;
+        }
+        const perfNowCaptureMs = message.captureContextTime * 1000 + this.perfNowAtContextTimeZero;
+
         const {hz: stabilizedHz} = this.octaveStabilizer.apply(message.fundamentalHz);
 
         const frame: AnalysisFrame = {
@@ -89,6 +114,6 @@ export class VoiceChannel {
             rmsDb: message.rmsDb,
             fundamentalHzRaw: message.fundamentalHz,
         };
-        this.opts.onFrame(frame);
+        this.opts.onFrame(frame, perfNowCaptureMs);
     }
 }
