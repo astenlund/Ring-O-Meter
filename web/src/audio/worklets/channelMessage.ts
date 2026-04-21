@@ -15,4 +15,10 @@ export interface ChannelMessage {
     fundamentalHz: number;
     confidence: number;
     rmsDb: number;
+    // AudioContext-time seconds at the end of the analysis window that
+    // produced this message. Stamped in the worklet (audio thread) so
+    // it is immune to main-thread GC pauses. voiceChannel converts it
+    // to a main-thread performance.now() basis for paint positioning
+    // via a one-shot offset calibration on the first frame.
+    captureContextTime: number;
 }

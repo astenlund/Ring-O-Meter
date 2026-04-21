@@ -68,9 +68,9 @@ export function App() {
         ]);
     }, []);
 
-    const handleFrame = useCallback((frame: AnalysisFrame) => {
+    const handleFrame = useCallback((frame: AnalysisFrame, perfNowCaptureMs: number) => {
         applyFrame(frame);
-        plotHandleRef.current?.publishFrame(frame);
+        plotHandleRef.current?.publishFrame(frame, perfNowCaptureMs);
     }, [applyFrame]);
 
     useVoiceChannels(slots, handleFrame);

@@ -58,6 +58,11 @@ class PitchProcessor extends AudioWorkletProcessor {
             fundamentalHz: result.fundamentalHz,
             confidence: result.confidence,
             rmsDb,
+            // currentTime is the AudioContext time the audio thread is
+            // servicing right now. Capturing it here (audio thread)
+            // preserves the real capture instant across any main-thread
+            // GC-induced port-dispatch delay.
+            captureContextTime: currentTime,
         };
         this.port.postMessage(message);
     }

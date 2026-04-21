@@ -56,11 +56,16 @@ export class PlotController {
         this.worker.postMessage(msg);
     }
 
-    public publishFrame(frame: AnalysisFrame): void {
+    public publishFrame(frame: AnalysisFrame, perfNowCaptureMs: number): void {
         if (!this.worker) {
             return;
         }
-        const msg: PlotMessage = {type: 'frame', frame, clientNowMs: performance.now()};
+        // clientNowMs carries the audio-thread capture instant converted
+        // to main's performance.now() basis (see VoiceChannelOptions.onFrame).
+        // Stamping here with performance.now() at post-time would bunch
+        // queued frames after a GC pause onto the right edge of the plot;
+        // passing the captured value preserves the real cadence.
+        const msg: PlotMessage = {type: 'frame', frame, clientNowMs: perfNowCaptureMs};
         this.worker.postMessage(msg);
     }
 
