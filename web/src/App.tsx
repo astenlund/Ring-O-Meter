@@ -4,6 +4,7 @@ import {NoteReadout} from './ui/NoteReadout';
 import {PitchPlot, type VoiceEntry} from './ui/PitchPlot';
 import {MAX_PUBLISH_HZ} from './audio/constants';
 import {TraceBuffer} from './session/traceBuffer';
+import {useFrameState} from './session/useFrameState';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
 import type {AnalysisFrame} from './wire/frames';
 
@@ -34,7 +35,11 @@ interface Slot extends VoiceChannelSlot {
 }
 
 export function App() {
-    const [latest, setLatest] = useState<Record<string, AnalysisFrame>>({});
+    // useFrameState coalesces per-frame setState into ~15 Hz rAF-paced
+    // flushes so NoteReadout's re-render rate decouples from the
+    // worklet's ~47 Hz publish cadence. Trace samples stay at full rate
+    // via buffersRef (below); only the React-visible `latest` throttles.
+    const {latest, applyFrame} = useFrameState();
 
     // Trace samples accumulate at the worklet's publish rate (~47 Hz per
     // voice). Storing them in a ref (mutated in place via TraceBuffer)
@@ -73,23 +78,21 @@ export function App() {
     }, []);
 
     const handleFrame = useCallback((frame: AnalysisFrame) => {
-        setLatest((prev) => ({...prev, [frame.channelId]: frame}));
+        applyFrame(frame);
         buffersRef.current[frame.channelId]?.push(performance.now(), frame.fundamentalHz, frame.confidence);
-    }, []);
+    }, [applyFrame]);
 
-    // Resets the per-channel stores when the device selection changes and
-    // pre-populates a TraceBuffer for every slot, so stale channelIds from
-    // a previous selection cannot leak into `latest` or `buffersRef` and
-    // `handleFrame` does not need a lazy-allocation branch on every frame.
-    // Runs before useVoiceChannels' effect on the same dependency, so
-    // downstream frames land in fresh stores.
+    // Resets the per-channel trace buffers when the device selection
+    // changes. Stale frames from a previous slot selection cannot
+    // collide in the latest map because channelIds are crypto.randomUUID
+    // minted per handleDeviceConfirm; if live slot reconfiguration
+    // becomes a real path, add a resetLatest() method to useFrameState.
     useEffect(() => {
         const buffers: Record<string, TraceBuffer> = {};
         for (const slot of slots ?? []) {
             buffers[slot.channelId] = new TraceBuffer(MAX_TRACE_SAMPLES);
         }
         buffersRef.current = buffers;
-        setLatest({});
     }, [slots]);
 
     useVoiceChannels(slots, handleFrame);
