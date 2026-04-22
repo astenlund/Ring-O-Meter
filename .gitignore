@@ -97,6 +97,10 @@ StyleCopReport.xml
 *.tmp
 *.tmp_proj
 *_wpftmp.csproj
+# Scratch directory convention (per user's global CLAUDE.md). Already
+# matched by *.tmp above as a lucky collision, listed explicitly so
+# the convention survives future tidy-ups of the *.tmp pattern.
+.tmp/
 *.log
 *.tlog
 *.vspscc

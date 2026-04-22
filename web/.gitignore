@@ -13,6 +13,11 @@ dist-ssr
 test-fixtures/
 *.local
 
+# Flotsam left by failing vitest browser-mode test runs. Regenerated
+# on every failing run; never intended to be committed.
+.vitest-attachments/
+src/__tests__/__screenshots__/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
