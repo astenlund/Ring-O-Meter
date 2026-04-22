@@ -161,9 +161,9 @@ export class FrameRingReader {
      * pre-window sample for drawTraces's left-edge interpolation),
      * then forward-iterates invoking cb on each. Zero per-slot
      * allocation; the callback itself is allocated by the caller
-     * once per voice per paint (same shape as today's
-     * TraceBuffer.forEach — JIT closure hoisting keeps it zero-alloc
-     * in steady state, proven by paintLoop.alloc.browser.ts).
+     * once per voice per paint — JIT closure hoisting keeps it
+     * zero-alloc in steady state, proven by
+     * paintLoop.alloc.browser.ts.
      *
      * The tsMs passed to cb is in the paint epoch (contextMs +
      * offsetMs), so drawTraces' rolling-window math works unchanged.
