@@ -2,7 +2,7 @@ import {useEffect} from 'react';
 import {TARGET_SAMPLE_RATE_HZ} from './constants';
 import {openInputStream} from './deviceManager';
 import {VoiceChannel} from './voiceChannel';
-import type {AnalysisFrame} from '../wire/frames';
+import type {FrameRingReader} from '../session/frameRing';
 
 export interface VoiceChannelSlot {
     channelId: string;
@@ -11,18 +11,20 @@ export interface VoiceChannelSlot {
 }
 
 // Owns the AudioContext + VoiceChannel[] lifecycle for a given set of slots.
-// Creates a context per effect pass, tears it down on slots/onFrame change or
+// Creates a context per effect pass, tears it down on slots change or
 // unmount, and runs mic-stream acquisition + worklet load for each slot in
 // parallel (getUserMedia can cost hundreds of ms per device, so serialising
 // would double startup latency). Any setup failure tears down the whole
 // context to avoid leaking hardware while the user stares at an error.
 //
-// Slice 0 feeds onFrame directly into React state; slice 1 will feed it into
-// a SignalR publishFrame call. The hook's shape is intentionally stable
-// across that swap.
+// Per-frame data flows via SAB now (see frameRing.ts); this hook only
+// forwards lifecycle events. Slice 1's SignalR DisplayClient will reuse
+// the same event shape with a different event source.
 export function useVoiceChannels(
     slots: readonly VoiceChannelSlot[] | null,
-    onFrame: (frame: AnalysisFrame, perfNowCaptureMs: number) => void,
+    onFrameSourceReady: (channelId: string, reader: FrameRingReader, perfNowAtContextTimeZero: number) => void,
+    onFrameSourceGone: (channelId: string) => void,
+    onFrameSourceRebased: (channelId: string, perfNowAtContextTimeZero: number) => void,
 ): void {
     useEffect(() => {
         if (!slots) {
@@ -36,7 +38,9 @@ export function useVoiceChannels(
             channelId: slot.channelId,
             voiceLabel: slot.voiceLabel,
             audioContext,
-            onFrame,
+            onFrameSourceReady,
+            onFrameSourceGone,
+            onFrameSourceRebased,
         }));
 
         // Shared teardown path for both the effect-cleanup and the setup-failure
@@ -84,5 +88,5 @@ export function useVoiceChannels(
             cancelled = true;
             teardown();
         };
-    }, [slots, onFrame]);
+    }, [slots, onFrameSourceReady, onFrameSourceGone, onFrameSourceRebased]);
 }
