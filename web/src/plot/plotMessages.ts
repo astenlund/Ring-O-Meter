@@ -1,5 +1,3 @@
-import type {AnalysisFrame} from '../wire/frames';
-
 // Wire contract between main (plotController.ts) and worker
 // (plotWorker.ts). Per-frame data flows via SAB now;
 // AttachChannelMessage carries the SAB reference (shared, not
@@ -72,7 +70,3 @@ export type PlotMessage =
     | AttachChannelMessage
     | DetachChannelMessage
     | RebaseChannelMessage;
-
-// AnalysisFrame stays in the codebase (used by VoiceChannel and the
-// C# wire contract). It just no longer appears in PlotMessage.
-export type {AnalysisFrame};

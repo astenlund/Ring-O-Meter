@@ -111,17 +111,11 @@ export function drawGrid(frame: PaintFrame, range: HzRange): void {
     ctx.stroke();
 }
 
-// ChannelRing sourced via FrameRingReader; drawTraces iterates the
-// reader's window-bounded forEach directly. The inner `tsMs < startMs`
-// guard no longer doubles as a bulk filter — the reader emits only
-// in-window samples plus one leading pre-window sample — but still
-// handles the interpolation path so the leading segment connects to
-// x=0 instead of breaking. Exported so both the bridge phase
-// (worker-internal writer+reader) and the final reader-only shape can
-// pass the same object.
-export interface RingsRecord {
-    [channelId: string]: {reader: FrameRingReader};
-}
+// Per-channel reader map keyed by channelId. drawTraces iterates the
+// reader's window-bounded forEach directly; the inner `tsMs < startMs`
+// guard handles the pre-window interpolation path so the leading
+// segment connects to x=0 instead of breaking.
+export type RingsRecord = Record<string, FrameRingReader>;
 
 export function drawTraces(
     frame: PaintFrame,
@@ -135,7 +129,7 @@ export function drawTraces(
     // sync even if a ring exists for a channel that is no longer in
     // the voice set (or vice versa).
     for (const voice of voices) {
-        const ring = rings[voice.channelId];
+        const reader = rings[voice.channelId];
         ctx.strokeStyle = voice.color;
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -147,7 +141,7 @@ export function drawTraces(
         let prevTsMs = 0;
         let prevHz = 0;
         let prevPreWindow = false;
-        ring?.reader.forEach(startMs, (tsMs, fundamentalHz, confidence) => {
+        reader?.forEach(startMs, (tsMs, fundamentalHz, confidence) => {
             if (!shouldDisplayPitch(fundamentalHz, confidence)) {
                 pen = false;
                 prevPreWindow = false;
