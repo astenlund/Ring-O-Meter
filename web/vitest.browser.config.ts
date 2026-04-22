@@ -8,8 +8,21 @@ import react from '@vitejs/plugin-react';
 // provider is a factory (not a string name); launchOptions are
 // passed through the factory and flow to Playwright's
 // BrowserType.launch().
+//
+// The Vitest browser runner hosts the tests on its own Vite server;
+// SharedArrayBuffer requires cross-origin isolation there too, so
+// we mirror vite.config.ts's COOP/COEP headers onto this server
+// block. Without them, any alloc test that touches frameRing.ts
+// (which needs SAB) fails with ReferenceError: SharedArrayBuffer
+// is not defined.
 export default defineConfig({
     plugins: [react()],
+    server: {
+        headers: {
+            'Cross-Origin-Opener-Policy': 'same-origin',
+            'Cross-Origin-Embedder-Policy': 'require-corp',
+        },
+    },
     test: {
         include: ['src/**/*.browser.ts', 'src/**/*.browser.tsx'],
         browser: {
