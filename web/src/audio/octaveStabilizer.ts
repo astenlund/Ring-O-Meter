@@ -1,17 +1,20 @@
-// Per-channel capture-side policy: detect and correct YIN's periodic tendency
-// to latch onto 2^k times the true fundamental and emit the wrong octave for
-// a frame or two before recovering. An octave error is a structural failure,
-// not a random outlier - when the ratio `hz / lastStableHz` is close to an
-// integer power of two, dividing by that power yields the true pitch, so we
-// adjust the frame instead of dropping it.
+// Per-channel capture-side policy: detect and correct YIN's periodic
+// tendency to latch onto 2^k times the true fundamental and emit the
+// wrong octave for a frame or two before recovering. An octave error
+// is a structural failure, not a random outlier - when the ratio
+// `hz / lastStableHz` is close to an integer power of two, dividing
+// by that power yields the true pitch, so we adjust the frame
+// instead of dropping it.
 //
-// Stateful per instance; not thread-safe, but each VoiceChannel owns its own
-// stabilizer and both the main-thread consumer and the worklet-driven frame
-// source run on the same thread at the point this is invoked.
+// Stateful per instance; not thread-safe. Each PitchProcessor
+// instance owns its own stabilizer and process() runs on a single
+// audio thread per instance, so concurrent access is not possible.
 //
-// Kept deliberately consumer-agnostic: the caller (VoiceChannel) decides what
-// to do with the raw value and the stabilized value. Display-gate filtering
-// and smoothing are separate concerns.
+// Kept consumer-agnostic: the caller decides what to do with the
+// raw value and the stabilized value. The caller today is the
+// worklet's PitchProcessor (ring writer); it was formerly
+// VoiceChannel on main (before SAB frame transport). Display-gate
+// filtering and smoothing remain separate concerns.
 
 // heuristic: octave-correction tolerance - how close a frame's log2-ratio to
 // the last stable value must be to an integer power of two before we call it

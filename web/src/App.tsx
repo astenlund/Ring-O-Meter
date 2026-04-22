@@ -1,11 +1,10 @@
-import {type CSSProperties, useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {type CSSProperties, useCallback, useMemo, useRef, useState} from 'react';
 import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
 import {PitchPlot, type PitchPlotHandle, type VoiceEntry} from './ui/PitchPlot';
 import {useFrameState} from './session/useFrameState';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
-import {FrameRingWriter, createFrameRing} from './session/frameRing';
-import type {AnalysisFrame} from './wire/frames';
+import type {FrameRingReader} from './session/frameRing';
 
 const PLOT_WINDOW_MS = 10_000;
 
@@ -30,10 +29,7 @@ interface Slot extends VoiceChannelSlot {
 }
 
 export function App() {
-    // useFrameState coalesces per-frame setState into ~15 Hz rAF-paced
-    // flushes for the NoteReadout pipeline; PlotController delivers every
-    // frame to the worker via publishFrame, unthrottled.
-    const {latest, applyFrame} = useFrameState();
+    const {latest, registerReader, unregisterReader, setReaderOffset} = useFrameState();
     const plotHandleRef = useRef<PitchPlotHandle | null>(null);
 
     // channelId is a client-minted GUID per slot so slice 1's aggregator
@@ -41,7 +37,7 @@ export function App() {
     // publishers. Minted inside the confirm handler rather than a useMemo:
     // useMemo is documented as a best-effort cache, so a future React
     // re-evaluation would regenerate every channelId and desync every key
-    // in the worker's buffers from the still-arriving frames. One-shot
+    // in the worker's rings from the still-arriving frames. One-shot
     // event handler is the correct place for non-idempotent work.
     const [slots, setSlots] = useState<Slot[] | null>(null);
 
@@ -64,51 +60,31 @@ export function App() {
         ]);
     }, []);
 
-    // Per-channel plot writers live here in Task 7 because the worklet
-    // is not yet writing directly (Task 8 moves it there). Each slot
-    // transition creates a fresh SAB + writer and publishes the SAB
-    // over to the plot worker via attachChannel; handleFrame then
-    // writes into the writer per frame. When Task 8 lands, this ref
-    // map disappears and the worklet publishes straight into the SAB.
-    const writersRef = useRef<Record<string, FrameRingWriter>>({});
+    const handleFrameSourceReady = useCallback(
+        (channelId: string, reader: FrameRingReader, perfNowAtContextTimeZero: number) => {
+            registerReader(channelId, reader);
+            // Forward the same SAB that VoiceChannel created for the
+            // worklet to the plot worker - both sides must read/write
+            // the same ring or the plot paints nothing.
+            plotHandleRef.current?.attachChannel(channelId, reader.sab, perfNowAtContextTimeZero);
+        },
+        [registerReader],
+    );
 
-    useEffect(() => {
-        const handle = plotHandleRef.current;
-        if (!handle) {
-            return;
-        }
-        const nextWriters: Record<string, FrameRingWriter> = {};
-        for (const slot of slots ?? []) {
-            const existing = writersRef.current[slot.channelId];
-            if (existing) {
-                nextWriters[slot.channelId] = existing;
-            } else {
-                const sab = createFrameRing();
-                nextWriters[slot.channelId] = new FrameRingWriter(sab);
-                // Offset is 0 in this task: perfNowCaptureMs is already
-                // in main's paint epoch. Task 8 computes a real offset
-                // when stamping moves to the worklet.
-                handle.attachChannel(slot.channelId, sab, 0);
-            }
-        }
-        for (const existingChannelId of Object.keys(writersRef.current)) {
-            if (!nextWriters[existingChannelId]) {
-                handle.detachChannel(existingChannelId);
-            }
-        }
-        writersRef.current = nextWriters;
-    }, [slots]);
+    const handleFrameSourceGone = useCallback((channelId: string) => {
+        unregisterReader(channelId);
+        plotHandleRef.current?.detachChannel(channelId);
+    }, [unregisterReader]);
 
-    const handleFrame = useCallback((frame: AnalysisFrame, perfNowCaptureMs: number) => {
-        applyFrame(frame);
-        writersRef.current[frame.channelId]?.publish(
-            perfNowCaptureMs,
-            frame.fundamentalHz,
-            frame.confidence,
-        );
-    }, [applyFrame]);
+    const handleFrameSourceRebased = useCallback(
+        (channelId: string, perfNowAtContextTimeZero: number) => {
+            setReaderOffset(channelId, perfNowAtContextTimeZero);
+            plotHandleRef.current?.rebaseChannel(channelId, perfNowAtContextTimeZero);
+        },
+        [setReaderOffset],
+    );
 
-    useVoiceChannels(slots, handleFrame);
+    useVoiceChannels(slots, handleFrameSourceReady, handleFrameSourceGone, handleFrameSourceRebased);
 
     const voices = useMemo<ReadonlyArray<VoiceEntry>>(
         () =>
