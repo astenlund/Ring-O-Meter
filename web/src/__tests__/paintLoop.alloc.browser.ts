@@ -54,8 +54,8 @@ describe('paint loop allocation budget', () => {
         const writerA = new FrameRingWriter(sabA);
         const writerB = new FrameRingWriter(sabB);
         const rings: RingsRecord = {
-            a: {reader: new FrameRingReader(sabA, 0)},
-            b: {reader: new FrameRingReader(sabB, 0)},
+            a: new FrameRingReader(sabA, 0),
+            b: new FrameRingReader(sabB, 0),
         };
         const baseMs = performance.now();
         for (let i = 0; i < 470; i += 1) {

@@ -98,9 +98,7 @@ self.onmessage = (event: MessageEvent<PlotMessage>) => {
             return;
         }
         case 'attachChannel': {
-            rings[msg.channelId] = {
-                reader: new FrameRingReader(msg.sab, msg.perfNowAtContextTimeZero),
-            };
+            rings[msg.channelId] = new FrameRingReader(msg.sab, msg.perfNowAtContextTimeZero);
 
             return;
         }
@@ -110,7 +108,7 @@ self.onmessage = (event: MessageEvent<PlotMessage>) => {
             return;
         }
         case 'rebaseChannel': {
-            rings[msg.channelId]?.reader.setOffset(msg.perfNowAtContextTimeZero);
+            rings[msg.channelId]?.setOffset(msg.perfNowAtContextTimeZero);
 
             return;
         }

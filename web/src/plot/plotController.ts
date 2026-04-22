@@ -39,19 +39,11 @@ export class PlotController {
     }
 
     public setRoster(voices: ReadonlyArray<VoiceEntry>): void {
-        if (!this.worker) {
-            return;
-        }
-        const msg: PlotMessage = {type: 'setRoster', voices};
-        this.worker.postMessage(msg);
+        this.post({type: 'setRoster', voices});
     }
 
     public setBacking(cssWidth: number, cssHeight: number, dpr: number): void {
-        if (!this.worker) {
-            return;
-        }
-        const msg: PlotMessage = {type: 'setBacking', cssWidth, cssHeight, dpr};
-        this.worker.postMessage(msg);
+        this.post({type: 'setBacking', cssWidth, cssHeight, dpr});
     }
 
     /**
@@ -61,41 +53,24 @@ export class PlotController {
      * list - doing so throws DataCloneError.
      */
     public attachChannel(channelId: string, sab: SharedArrayBuffer, perfNowAtContextTimeZero: number): void {
-        if (!this.worker) {
-            return;
-        }
-        const msg: PlotMessage = {
-            type: 'attachChannel',
-            channelId,
-            sab,
-            perfNowAtContextTimeZero,
-        };
-        this.worker.postMessage(msg);
+        this.post({type: 'attachChannel', channelId, sab, perfNowAtContextTimeZero});
     }
 
     public detachChannel(channelId: string): void {
-        if (!this.worker) {
-            return;
-        }
-        const msg: PlotMessage = {type: 'detachChannel', channelId};
-        this.worker.postMessage(msg);
+        this.post({type: 'detachChannel', channelId});
     }
 
     public rebaseChannel(channelId: string, perfNowAtContextTimeZero: number): void {
-        if (!this.worker) {
-            return;
-        }
-        const msg: PlotMessage = {
-            type: 'rebaseChannel',
-            channelId,
-            perfNowAtContextTimeZero,
-        };
-        this.worker.postMessage(msg);
+        this.post({type: 'rebaseChannel', channelId, perfNowAtContextTimeZero});
     }
 
     public dispose(): void {
         this.worker?.terminate();
         this.worker = null;
         this.attached = false;
+    }
+
+    private post(msg: PlotMessage): void {
+        this.worker?.postMessage(msg);
     }
 }
