@@ -4,11 +4,11 @@ import type {VoiceEntry} from '../plot/plotMessages';
 
 export type {VoiceEntry};
 
-export interface PitchPlotHandle {
-    attachChannel(channelId: string, sab: SharedArrayBuffer, perfNowAtContextTimeZero: number): void;
-    detachChannel(channelId: string): void;
-    rebaseChannel(channelId: string, perfNowAtContextTimeZero: number): void;
-}
+// The handle exposed to parents is exactly the channel-lifecycle subset of
+// PlotController. Publishing the controller directly keeps the shape in one
+// place instead of shadowing each method with a wrapper that would drift on
+// signature changes.
+export type PitchPlotHandle = Pick<PlotController, 'attachChannel' | 'detachChannel' | 'rebaseChannel'>;
 
 export interface PitchPlotProps {
     voices: ReadonlyArray<VoiceEntry>;
@@ -71,17 +71,7 @@ export function PitchPlot({
             controllerRef.current = fresh;
         }
         const controller = controllerRef.current;
-        handleRef.current = {
-            attachChannel(channelId, sab, perfNowAtContextTimeZero) {
-                controller.attachChannel(channelId, sab, perfNowAtContextTimeZero);
-            },
-            detachChannel(channelId) {
-                controller.detachChannel(channelId);
-            },
-            rebaseChannel(channelId, perfNowAtContextTimeZero) {
-                controller.rebaseChannel(channelId, perfNowAtContextTimeZero);
-            },
-        };
+        handleRef.current = controller;
 
         const observer = new ResizeObserver((entries) => {
             const entry = entries[0];

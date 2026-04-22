@@ -61,7 +61,7 @@ function singleRing(samples: ReadonlyArray<readonly [number, number, number]>): 
         writer.publish(ts, hz, conf);
     }
 
-    return {v1: {reader: new FrameRingReader(sab, 0)}};
+    return {v1: new FrameRingReader(sab, 0)};
 }
 
 describe('drawTraces', () => {

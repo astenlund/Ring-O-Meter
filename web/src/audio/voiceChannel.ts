@@ -36,11 +36,6 @@ export class VoiceChannel {
     private node: AudioWorkletNode | null = null;
     private source: MediaStreamAudioSourceNode | null = null;
     private stream: MediaStream | null = null;
-    // muted gates outbound frames client-side, wired by the per-singer
-    // mute UI that lands in slice 4 (SingerClient view). Unused in
-    // slice 0. Slice 1: implement by disconnecting the worklet from
-    // the graph rather than adding a per-frame check.
-    private muted = false;
     private reader: FrameRingReader | null = null;
     // hasFiredRunningRebase tracks whether we've seen the first
     // 'running' state transition. The first one always fires a rebase
@@ -90,10 +85,6 @@ export class VoiceChannel {
         this.opts.onFrameSourceReady(this.opts.channelId, this.reader, initialOffset);
     }
 
-    public setMuted(muted: boolean): void {
-        this.muted = muted;
-    }
-
     public stop(): void {
         if (this.stateChangeHandler) {
             this.opts.audioContext.removeEventListener('statechange', this.stateChangeHandler);
@@ -110,12 +101,6 @@ export class VoiceChannel {
         if (wasReady) {
             this.opts.onFrameSourceGone(this.opts.channelId);
         }
-    }
-
-    // Accessed for diagnostics; the ring reader is primarily handed
-    // to consumers via onFrameSourceReady.
-    public get currentReader(): FrameRingReader | null {
-        return this.reader;
     }
 
     private computeOffset(): number {
@@ -140,10 +125,6 @@ export class VoiceChannel {
         this.hasFiredRunningRebase = true;
         this.lastPropagatedOffset = offset;
         this.reader?.setOffset(offset);
-        if (this.muted) {
-            // Keep the rebase guard state current without surfacing
-            // frames upstream; slice 4 mute UI uses setMuted.
-        }
         this.opts.onFrameSourceRebased(this.opts.channelId, offset);
     }
 }
