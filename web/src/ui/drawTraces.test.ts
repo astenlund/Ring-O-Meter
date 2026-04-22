@@ -52,8 +52,8 @@ const voices: ReadonlyArray<VoiceEntry> = [{channelId: 'v1', label: 'V1', color:
 
 // Builds a RingsRecord with a single channel 'v1' populated by writing
 // the sample triples into a fresh SAB via FrameRingWriter. Reader
-// offset is 0 so sample tsMs values pass through unchanged — matches
-// the previous TraceBuffer-based tests that stored tsMs directly.
+// offset is 0 so sample tsMs values pass through unchanged, letting
+// the test name absolute ts values in the (tsMs - startMs) math below.
 function singleRing(samples: ReadonlyArray<readonly [number, number, number]>): RingsRecord {
     const sab = createFrameRing();
     const writer = new FrameRingWriter(sab);
