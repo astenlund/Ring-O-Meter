@@ -10,9 +10,10 @@ import {
     type CanvasSize,
     type HzRange,
     type PaintFrame,
+    type RingsRecord,
     type VoiceEntry,
 } from '../plot/paint';
-import {TraceBuffer} from '../session/traceBuffer';
+import {createFrameRing, FrameRingReader, FrameRingWriter} from '../session/frameRing';
 
 declare global {
     var gc: (() => void) | undefined;
@@ -48,15 +49,19 @@ describe('paint loop allocation budget', () => {
             {channelId: 'a', label: 'Voice 1', color: '#5cf'},
             {channelId: 'b', label: 'Voice 2', color: '#fc5'},
         ];
-        const buffers: Record<string, TraceBuffer> = {
-            a: new TraceBuffer(470),
-            b: new TraceBuffer(470),
+        const sabA = createFrameRing();
+        const sabB = createFrameRing();
+        const writerA = new FrameRingWriter(sabA);
+        const writerB = new FrameRingWriter(sabB);
+        const rings: RingsRecord = {
+            a: {reader: new FrameRingReader(sabA, 0)},
+            b: {reader: new FrameRingReader(sabB, 0)},
         };
         const baseMs = performance.now();
         for (let i = 0; i < 470; i += 1) {
             const ts = baseMs + i * 21;
-            buffers.a.push(ts, 220 + Math.sin(i * 0.1) * 10, 0.9);
-            buffers.b.push(ts, 440 + Math.sin(i * 0.1) * 10, 0.9);
+            writerA.publish(ts, 220 + Math.sin(i * 0.1) * 10, 0.9);
+            writerB.publish(ts, 440 + Math.sin(i * 0.1) * 10, 0.9);
         }
 
         let hzToY = makeHzToY(range, 360);
@@ -72,7 +77,7 @@ describe('paint loop allocation budget', () => {
             frame.nowMs = performance.now();
             drawBackground(frame);
             drawGrid(frame, range);
-            drawTraces(frame, voices, buffers);
+            drawTraces(frame, voices, rings);
             drawLegend(frame, voices);
         };
 
