@@ -13,6 +13,17 @@ const OBSERVATION_MS = 60_000;
 const P99_FRAME_GAP_BUDGET_MS = 20;
 const MAX_FRAME_GAP_BUDGET_MS = 50;
 const LONGTASK_BUDGET = 0;
+// 600 KB = measured_clean_run * ~1.6 (two local runs at ~370 KB,
+// ~1% variance). This e2e delta measures the whole app's 60 s
+// churn - React reconciles from useFrameState flushes, rAF closures,
+// V8 heap-ratchet slack, FrameRingReader.readLatest's UiFrame
+// literal - NOT just the per-frame pipeline that the per-module
+// alloc tests cover in isolation. Do not calibrate this by summing
+// the per-module budgets; those answer a narrower question. Target
+// per the hot-path-allocation-discipline pattern:
+// `measured_clean_run * 1.5` after three green CI runs. Ratchet
+// down only when a churn-reduction change has landed AND three CI
+// runs confirm the new baseline.
 const HEAP_DELTA_BUDGET_BYTES = 600 * 1024;
 
 test('pitch plot is smooth for 60 seconds', async ({page, context}) => {
