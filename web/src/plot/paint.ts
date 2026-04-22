@@ -1,5 +1,5 @@
 import {shouldDisplayPitch} from '../ui/displayGate';
-import type {TraceBuffer} from '../session/traceBuffer';
+import type {FrameRingReader} from '../session/frameRing';
 
 // Both 2D contexts share the surface this module uses (rect ops, stroke
 // style, path ops, fillText). Typed as unions so the same helpers run
@@ -111,19 +111,31 @@ export function drawGrid(frame: PaintFrame, range: HzRange): void {
     ctx.stroke();
 }
 
+// ChannelRing sourced via FrameRingReader; drawTraces iterates the
+// reader's window-bounded forEach directly. The inner `tsMs < startMs`
+// guard no longer doubles as a bulk filter — the reader emits only
+// in-window samples plus one leading pre-window sample — but still
+// handles the interpolation path so the leading segment connects to
+// x=0 instead of breaking. Exported so both the bridge phase
+// (worker-internal writer+reader) and the final reader-only shape can
+// pass the same object.
+export interface RingsRecord {
+    [channelId: string]: {reader: FrameRingReader};
+}
+
 export function drawTraces(
     frame: PaintFrame,
     voices: ReadonlyArray<VoiceEntry>,
-    buffers: Record<string, TraceBuffer>,
+    rings: RingsRecord,
 ): void {
     const {ctx, hzToY, size, nowMs, windowMs} = frame;
     const startMs = nowMs - windowMs;
 
-    // Iterate voices (not buffers) so legend and trace order stay in
-    // sync even if a buffer exists for a channel that is no longer in
+    // Iterate voices (not rings) so legend and trace order stay in
+    // sync even if a ring exists for a channel that is no longer in
     // the voice set (or vice versa).
     for (const voice of voices) {
-        const buffer = buffers[voice.channelId];
+        const ring = rings[voice.channelId];
         ctx.strokeStyle = voice.color;
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -135,7 +147,7 @@ export function drawTraces(
         let prevTsMs = 0;
         let prevHz = 0;
         let prevPreWindow = false;
-        buffer?.forEach((tsMs, fundamentalHz, confidence) => {
+        ring?.reader.forEach(startMs, (tsMs, fundamentalHz, confidence) => {
             if (!shouldDisplayPitch(fundamentalHz, confidence)) {
                 pen = false;
                 prevPreWindow = false;

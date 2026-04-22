@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
-import {drawTraces, type PaintFrame, type VoiceEntry} from '../plot/paint';
-import {TraceBuffer} from '../session/traceBuffer';
+import {drawTraces, type PaintFrame, type RingsRecord, type VoiceEntry} from '../plot/paint';
+import {createFrameRing, FrameRingReader, FrameRingWriter} from '../session/frameRing';
 
 // Minimal stub of CanvasRenderingContext2D that records only the path
 // operations drawTraces invokes. Cast to the full type at the boundary so
@@ -50,26 +50,31 @@ function makeFrame(ctx: CanvasRenderingContext2D): PaintFrame {
 
 const voices: ReadonlyArray<VoiceEntry> = [{channelId: 'v1', label: 'V1', color: '#fff'}];
 
-function singleBuffer(samples: ReadonlyArray<readonly [number, number, number]>): Record<string, TraceBuffer> {
-    const buffer = new TraceBuffer(Math.max(1, samples.length));
+// Builds a RingsRecord with a single channel 'v1' populated by writing
+// the sample triples into a fresh SAB via FrameRingWriter. Reader
+// offset is 0 so sample tsMs values pass through unchanged — matches
+// the previous TraceBuffer-based tests that stored tsMs directly.
+function singleRing(samples: ReadonlyArray<readonly [number, number, number]>): RingsRecord {
+    const sab = createFrameRing();
+    const writer = new FrameRingWriter(sab);
     for (const [ts, hz, conf] of samples) {
-        buffer.push(ts, hz, conf);
+        writer.publish(ts, hz, conf);
     }
 
-    return {v1: buffer};
+    return {v1: {reader: new FrameRingReader(sab, 0)}};
 }
 
 describe('drawTraces', () => {
     it('draws a single voice with moveTo then lineTo for an all-in-window run', () => {
         // Arrange
         const {ctx, ops} = makeRecorder();
-        const buffers = singleBuffer([
+        const rings = singleRing([
             [1010, 300, 0.9],
             [1050, 400, 0.9],
         ]);
 
         // Act
-        drawTraces(makeFrame(ctx), voices, buffers);
+        drawTraces(makeFrame(ctx), voices, rings);
 
         // Assert
         expect(ops).toEqual([
@@ -87,13 +92,13 @@ describe('drawTraces', () => {
         // t = (1000 - 900) / (1100 - 900) = 0.5; yInterp = 200 + (400-200)*0.5 = 300.
         // cur x = (1100 - 1000) = 100.
         const {ctx, ops} = makeRecorder();
-        const buffers = singleBuffer([
+        const rings = singleRing([
             [900, 200, 0.9],
             [1100, 400, 0.9],
         ]);
 
         // Act
-        drawTraces(makeFrame(ctx), voices, buffers);
+        drawTraces(makeFrame(ctx), voices, rings);
 
         // Assert
         expect(ops).toEqual([
@@ -109,14 +114,14 @@ describe('drawTraces', () => {
         // Low-confidence mid-window sample must clear prevPreWindow so the
         // next in-window sample does NOT interpolate from the pre-window one.
         const {ctx, ops} = makeRecorder();
-        const buffers = singleBuffer([
+        const rings = singleRing([
             [900, 200, 0.9],  // pre-window, displayable (sets prevPreWindow)
             [1020, 999, 0.1], // in-window but gate fails (clears prevPreWindow)
             [1050, 400, 0.9], // in-window, displayable; must be a plain moveTo
         ]);
 
         // Act
-        drawTraces(makeFrame(ctx), voices, buffers);
+        drawTraces(makeFrame(ctx), voices, rings);
 
         // Assert
         expect(ops).toEqual([
@@ -129,33 +134,36 @@ describe('drawTraces', () => {
     it('draws nothing when every sample is pre-window', () => {
         // Arrange
         const {ctx, ops} = makeRecorder();
-        const buffers = singleBuffer([
+        const rings = singleRing([
             [800, 200, 0.9],
             [900, 250, 0.9],
         ]);
 
         // Act
-        drawTraces(makeFrame(ctx), voices, buffers);
+        drawTraces(makeFrame(ctx), voices, rings);
 
         // Assert
+        // Reader emits only the latest pre-window sample as the leading
+        // interpolation handoff; drawTraces's pen stays false because
+        // there is no in-window sample to draw to, so the inner branch
+        // is never taken and only the beginPath / stroke pair lands.
         expect(ops).toEqual([{op: 'beginPath'}, {op: 'stroke'}]);
     });
 
-    it('tolerates a voice with no matching buffer and keeps drawing remaining voices', () => {
+    it('tolerates a voice with no matching ring and keeps drawing remaining voices', () => {
         // Arrange
         // Simulates channelId drift during device reselection: v2 exists in
-        // the roster but has no buffer entry yet. drawTraces must not throw
-        // and must still emit the path boundary calls for v2 (so the stroke
-        // is called for the voice's beginPath).
+        // the roster but has no ring entry yet. drawTraces must not throw
+        // and must still emit the path boundary calls for v2.
         const {ctx, ops} = makeRecorder();
         const twoVoices: ReadonlyArray<VoiceEntry> = [
             {channelId: 'v1', label: 'V1', color: '#fff'},
             {channelId: 'v2', label: 'V2', color: '#ccc'},
         ];
-        const buffers = singleBuffer([[1020, 300, 0.9]]);
+        const rings = singleRing([[1020, 300, 0.9]]);
 
         // Act
-        drawTraces(makeFrame(ctx), twoVoices, buffers);
+        drawTraces(makeFrame(ctx), twoVoices, rings);
 
         // Assert
         expect(ops).toEqual([
@@ -172,13 +180,13 @@ describe('drawTraces', () => {
         // Covers the branch where pen is false AND prevPreWindow is false
         // at the first in-window encounter because that sample is undisplayable.
         const {ctx, ops} = makeRecorder();
-        const buffers = singleBuffer([
+        const rings = singleRing([
             [1010, 300, 0.1], // in-window, gate fails
             [1050, 400, 0.9], // in-window, first displayable
         ]);
 
         // Act
-        drawTraces(makeFrame(ctx), voices, buffers);
+        drawTraces(makeFrame(ctx), voices, rings);
 
         // Assert
         expect(ops).toEqual([
