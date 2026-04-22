@@ -7,6 +7,12 @@ import react from '@vitejs/plugin-react';
 // preview) need the headers. Bundle is fully self-contained (no CDN
 // scripts, no cross-origin embeds), so COEP require-corp does not fight
 // any subresource.
+//
+// Sibling config: web/vitest.browser.config.ts mirrors these headers
+// for the Vitest browser-mode test host. If you change either side,
+// change the other. Slice 1 adds a third location (ASP.NET Core
+// middleware). Diagnostic: if `self.crossOriginIsolated` is false in
+// any environment, one of those three is missing the headers.
 const crossOriginHeaders = {
     'Cross-Origin-Opener-Policy': 'same-origin',
     'Cross-Origin-Embedder-Policy': 'require-corp',
