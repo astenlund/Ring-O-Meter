@@ -1,17 +1,13 @@
-import {type CSSProperties, useCallback, useMemo, useRef, useState} from 'react';
+import {type CSSProperties, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
 import {PitchPlot, type PitchPlotHandle, type VoiceEntry} from './ui/PitchPlot';
-import {MAX_PUBLISH_HZ} from './audio/constants';
 import {useFrameState} from './session/useFrameState';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
+import {FrameRingWriter, createFrameRing} from './session/frameRing';
 import type {AnalysisFrame} from './wire/frames';
 
-// Plot window and the trace cap derived from it. If a voice ever publishes
-// faster than MAX_PUBLISH_HZ the ring buffer will overwrite its oldest
-// frame, which is the intended behaviour.
 const PLOT_WINDOW_MS = 10_000;
-const MAX_TRACE_SAMPLES = Math.ceil((PLOT_WINDOW_MS * MAX_PUBLISH_HZ) / 1000);
 
 const SLOT_COLORS = ['#5cf', '#fc5'] as const;
 
@@ -68,9 +64,48 @@ export function App() {
         ]);
     }, []);
 
+    // Per-channel plot writers live here in Task 7 because the worklet
+    // is not yet writing directly (Task 8 moves it there). Each slot
+    // transition creates a fresh SAB + writer and publishes the SAB
+    // over to the plot worker via attachChannel; handleFrame then
+    // writes into the writer per frame. When Task 8 lands, this ref
+    // map disappears and the worklet publishes straight into the SAB.
+    const writersRef = useRef<Record<string, FrameRingWriter>>({});
+
+    useEffect(() => {
+        const handle = plotHandleRef.current;
+        if (!handle) {
+            return;
+        }
+        const nextWriters: Record<string, FrameRingWriter> = {};
+        for (const slot of slots ?? []) {
+            const existing = writersRef.current[slot.channelId];
+            if (existing) {
+                nextWriters[slot.channelId] = existing;
+            } else {
+                const sab = createFrameRing();
+                nextWriters[slot.channelId] = new FrameRingWriter(sab);
+                // Offset is 0 in this task: perfNowCaptureMs is already
+                // in main's paint epoch. Task 8 computes a real offset
+                // when stamping moves to the worklet.
+                handle.attachChannel(slot.channelId, sab, 0);
+            }
+        }
+        for (const existingChannelId of Object.keys(writersRef.current)) {
+            if (!nextWriters[existingChannelId]) {
+                handle.detachChannel(existingChannelId);
+            }
+        }
+        writersRef.current = nextWriters;
+    }, [slots]);
+
     const handleFrame = useCallback((frame: AnalysisFrame, perfNowCaptureMs: number) => {
         applyFrame(frame);
-        plotHandleRef.current?.publishFrame(frame, perfNowCaptureMs);
+        writersRef.current[frame.channelId]?.publish(
+            perfNowCaptureMs,
+            frame.fundamentalHz,
+            frame.confidence,
+        );
     }, [applyFrame]);
 
     useVoiceChannels(slots, handleFrame);
@@ -114,7 +149,6 @@ export function App() {
             <PitchPlot
                 voices={voices}
                 windowMs={PLOT_WINDOW_MS}
-                traceCapacity={MAX_TRACE_SAMPLES}
                 handleRef={plotHandleRef}
             />
         </main>
