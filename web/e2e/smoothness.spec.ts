@@ -13,7 +13,7 @@ const OBSERVATION_MS = 60_000;
 const P99_FRAME_GAP_BUDGET_MS = 20;
 const MAX_FRAME_GAP_BUDGET_MS = 50;
 const LONGTASK_BUDGET = 0;
-const HEAP_DELTA_BUDGET_BYTES = 1024 * 1024;
+const HEAP_DELTA_BUDGET_BYTES = 600 * 1024;
 
 test('pitch plot is smooth for 60 seconds', async ({page, context}) => {
     // Chromium's --use-fake-device-for-media-stream exposes one fake
