@@ -1,20 +1,18 @@
 import {type CSSProperties, type RefObject, useEffect, useRef} from 'react';
 import {PlotController} from '../plot/plotController';
-import type {AnalysisFrame} from '../wire/frames';
 import type {VoiceEntry} from '../plot/plotMessages';
 
 export type {VoiceEntry};
 
 export interface PitchPlotHandle {
-    // perfNowCaptureMs is the audio-thread-stamped capture time in
-    // main's performance.now() basis; see VoiceChannelOptions.onFrame.
-    publishFrame(frame: AnalysisFrame, perfNowCaptureMs: number): void;
+    attachChannel(channelId: string, sab: SharedArrayBuffer, perfNowAtContextTimeZero: number): void;
+    detachChannel(channelId: string): void;
+    rebaseChannel(channelId: string, perfNowAtContextTimeZero: number): void;
 }
 
 export interface PitchPlotProps {
     voices: ReadonlyArray<VoiceEntry>;
     windowMs: number;
-    traceCapacity: number;
     minHz?: number;
     maxHz?: number;
     handleRef: RefObject<PitchPlotHandle | null>;
@@ -46,7 +44,6 @@ const canvasStyle: CSSProperties = {
 export function PitchPlot({
     voices,
     windowMs,
-    traceCapacity,
     minHz = 80,
     maxHz = 600,
     handleRef,
@@ -70,14 +67,19 @@ export function PitchPlot({
                 windowMs,
                 minHz,
                 maxHz,
-                traceCapacity,
             });
             controllerRef.current = fresh;
         }
         const controller = controllerRef.current;
         handleRef.current = {
-            publishFrame(frame, perfNowCaptureMs) {
-                controller.publishFrame(frame, perfNowCaptureMs);
+            attachChannel(channelId, sab, perfNowAtContextTimeZero) {
+                controller.attachChannel(channelId, sab, perfNowAtContextTimeZero);
+            },
+            detachChannel(channelId) {
+                controller.detachChannel(channelId);
+            },
+            rebaseChannel(channelId, perfNowAtContextTimeZero) {
+                controller.rebaseChannel(channelId, perfNowAtContextTimeZero);
             },
         };
 
@@ -115,8 +117,8 @@ export function PitchPlot({
             });
         };
         // Attach runs once per controller lifetime. Voices changes flow
-        // via the roster effect below; windowMs / minHz / maxHz /
-        // traceCapacity are structurally fixed per mounted canvas.
+        // via the roster effect below; windowMs / minHz / maxHz are
+        // structurally fixed per mounted canvas.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 

@@ -1,5 +1,4 @@
 import workerUrl from './plotWorker.ts?worker&url';
-import type {AnalysisFrame} from '../wire/frames';
 import type {PlotMessage, VoiceEntry} from './plotMessages';
 
 export interface PlotControllerOptions {
@@ -8,13 +7,13 @@ export interface PlotControllerOptions {
     windowMs: number;
     minHz: number;
     maxHz: number;
-    traceCapacity: number;
 }
 
-// Main-thread side of the plot worker. One controller per mounted
-// canvas; attach() transfers the OffscreenCanvas and spins the worker
-// up, dispose() terminates it. publishFrame is the per-frame hot path
-// and stays non-allocating beyond the single postMessage wrapper.
+// Main-thread side of the plot worker. Owns the canvas-transfer
+// lifecycle and forwards per-channel lifecycle events to the
+// worker. Does NOT create SABs itself - the caller provides them,
+// because SAB ownership lives with the frame producer
+// (VoiceChannel in slice 0, the SignalR DisplayClient in slice 1+).
 export class PlotController {
     private worker: Worker | null = null;
     private attached = false;
@@ -34,7 +33,6 @@ export class PlotController {
             windowMs: opts.windowMs,
             minHz: opts.minHz,
             maxHz: opts.maxHz,
-            traceCapacity: opts.traceCapacity,
             mainNowAtInitMs: performance.now(),
         };
         this.worker.postMessage(init, [offscreen]);
@@ -56,16 +54,42 @@ export class PlotController {
         this.worker.postMessage(msg);
     }
 
-    public publishFrame(frame: AnalysisFrame, perfNowCaptureMs: number): void {
+    /**
+     * Tell the worker to start reading from this SAB for the given
+     * channel. SAB is passed by reference (SharedArrayBuffer is
+     * shared, not transferred); do NOT include it in the transfer
+     * list - doing so throws DataCloneError.
+     */
+    public attachChannel(channelId: string, sab: SharedArrayBuffer, perfNowAtContextTimeZero: number): void {
         if (!this.worker) {
             return;
         }
-        // clientNowMs carries the audio-thread capture instant converted
-        // to main's performance.now() basis (see VoiceChannelOptions.onFrame).
-        // Stamping here with performance.now() at post-time would bunch
-        // queued frames after a GC pause onto the right edge of the plot;
-        // passing the captured value preserves the real cadence.
-        const msg: PlotMessage = {type: 'frame', frame, clientNowMs: perfNowCaptureMs};
+        const msg: PlotMessage = {
+            type: 'attachChannel',
+            channelId,
+            sab,
+            perfNowAtContextTimeZero,
+        };
+        this.worker.postMessage(msg);
+    }
+
+    public detachChannel(channelId: string): void {
+        if (!this.worker) {
+            return;
+        }
+        const msg: PlotMessage = {type: 'detachChannel', channelId};
+        this.worker.postMessage(msg);
+    }
+
+    public rebaseChannel(channelId: string, perfNowAtContextTimeZero: number): void {
+        if (!this.worker) {
+            return;
+        }
+        const msg: PlotMessage = {
+            type: 'rebaseChannel',
+            channelId,
+            perfNowAtContextTimeZero,
+        };
         this.worker.postMessage(msg);
     }
 
