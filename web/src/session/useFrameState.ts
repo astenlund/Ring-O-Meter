@@ -21,7 +21,6 @@ export interface FrameStateControl {
     latest: Record<string, UiFrame>;
     registerReader(channelId: string, reader: FrameRingReader): void;
     unregisterReader(channelId: string): void;
-    setReaderOffset(channelId: string, perfNowAtContextTimeZero: number): void;
 }
 
 export function useFrameState(): FrameStateControl {
@@ -110,11 +109,6 @@ export function useFrameState(): FrameStateControl {
         }
     }, []);
 
-    const setReaderOffset = useCallback((channelId: string, perfNowAtContextTimeZero: number) => {
-        const entry = readersRef.current.get(channelId);
-        entry?.reader.setOffset(perfNowAtContextTimeZero);
-    }, []);
-
     useEffect(() => {
         return () => {
             if (rafIdRef.current !== 0) {
@@ -124,5 +118,5 @@ export function useFrameState(): FrameStateControl {
         };
     }, []);
 
-    return {latest, registerReader, unregisterReader, setReaderOffset};
+    return {latest, registerReader, unregisterReader};
 }
