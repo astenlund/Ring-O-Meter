@@ -29,7 +29,7 @@ interface Slot extends VoiceChannelSlot {
 }
 
 export function App() {
-    const {latest, registerReader, unregisterReader, setReaderOffset} = useFrameState();
+    const {latest, registerReader, unregisterReader} = useFrameState();
     const plotHandleRef = useRef<PitchPlotHandle | null>(null);
 
     // channelId is a client-minted GUID per slot so slice 1's aggregator
@@ -78,10 +78,16 @@ export function App() {
 
     const handleFrameSourceRebased = useCallback(
         (channelId: string, perfNowAtContextTimeZero: number) => {
-            setReaderOffset(channelId, perfNowAtContextTimeZero);
+            // The reader we registered with useFrameState is the same
+            // FrameRingReader instance VoiceChannel owns (identity, not
+            // a copy), and VoiceChannel.handleStateChange already
+            // mutated its offset before firing this callback. The plot
+            // worker's reader is a DIFFERENT instance over the same SAB
+            // (class instances cannot cross the worker boundary) and
+            // must be synced independently, which is what this does.
             plotHandleRef.current?.rebaseChannel(channelId, perfNowAtContextTimeZero);
         },
-        [setReaderOffset],
+        [],
     );
 
     useVoiceChannels(slots, handleFrameSourceReady, handleFrameSourceGone, handleFrameSourceRebased);
