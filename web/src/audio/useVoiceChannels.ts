@@ -1,8 +1,7 @@
 import {useEffect} from 'react';
 import {TARGET_SAMPLE_RATE_HZ} from './constants';
 import {openInputStream} from './deviceManager';
-import {VoiceChannel} from './voiceChannel';
-import type {FrameRingReader} from '../session/frameRing';
+import {VoiceChannel, type VoiceChannelEvents} from './voiceChannel';
 
 export interface VoiceChannelSlot {
     channelId: string;
@@ -20,11 +19,14 @@ export interface VoiceChannelSlot {
 // Per-frame data flows via SAB now (see frameRing.ts); this hook only
 // forwards lifecycle events. Slice 1's SignalR DisplayClient will reuse
 // the same event shape with a different event source.
+//
+// `events` must be referentially stable across renders (useMemo over
+// useCallback'd handlers at the call site); this hook treats it as an
+// effect dependency so a fresh object identity forces a full channel
+// teardown + restart.
 export function useVoiceChannels(
     slots: readonly VoiceChannelSlot[] | null,
-    onFrameSourceReady: (channelId: string, reader: FrameRingReader, perfNowAtContextTimeZero: number) => void,
-    onFrameSourceGone: (channelId: string) => void,
-    onFrameSourceRebased: (channelId: string, perfNowAtContextTimeZero: number) => void,
+    events: VoiceChannelEvents,
 ): void {
     useEffect(() => {
         if (!slots) {
@@ -38,9 +40,7 @@ export function useVoiceChannels(
             channelId: slot.channelId,
             voiceLabel: slot.voiceLabel,
             audioContext,
-            onFrameSourceReady,
-            onFrameSourceGone,
-            onFrameSourceRebased,
+            ...events,
         }));
 
         // Shared teardown path for both the effect-cleanup and the setup-failure
@@ -88,5 +88,5 @@ export function useVoiceChannels(
             cancelled = true;
             teardown();
         };
-    }, [slots, onFrameSourceReady, onFrameSourceGone, onFrameSourceRebased]);
+    }, [slots, events]);
 }

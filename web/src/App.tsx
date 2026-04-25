@@ -90,7 +90,16 @@ export function App() {
         [],
     );
 
-    useVoiceChannels(slots, handleFrameSourceReady, handleFrameSourceGone, handleFrameSourceRebased);
+    const voiceChannelEvents = useMemo(
+        () => ({
+            onFrameSourceReady: handleFrameSourceReady,
+            onFrameSourceGone: handleFrameSourceGone,
+            onFrameSourceRebased: handleFrameSourceRebased,
+        }),
+        [handleFrameSourceReady, handleFrameSourceGone, handleFrameSourceRebased],
+    );
+
+    useVoiceChannels(slots, voiceChannelEvents);
 
     const voices = useMemo<ReadonlyArray<VoiceEntry>>(
         () =>
