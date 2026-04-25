@@ -40,6 +40,24 @@ public class SessionAggregatorTests
     }
 
     [Fact]
+    public void Apply_increments_sequence_even_for_stale_frame()
+    {
+        // Arrange: pin the documented "Apply always increments, even when
+        // the tie-break drops the frame" semantic. A future refactor that
+        // skips the increment in the AddOrUpdate-keeps-existing branch
+        // would silently break the contract clients rely on.
+        var agg = new SessionAggregator("dev", () => 1000);
+        agg.Apply(TestData.Frame(clientTsMs: 600, fundamentalHz: 440f));
+        var before = agg.Snapshot().SeqNo;
+
+        // Act
+        agg.Apply(TestData.Frame(clientTsMs: 500, fundamentalHz: 220f));
+
+        // Assert
+        agg.Snapshot().SeqNo.Should().BeGreaterThan(before);
+    }
+
+    [Fact]
     public void Stale_frame_is_dropped()
     {
         // Arrange
@@ -90,7 +108,7 @@ public class SessionAggregatorTests
     }
 
     [Fact]
-    public void Snapshot_increments_sequence()
+    public void Apply_increments_sequence()
     {
         // Arrange
         var agg = new SessionAggregator("dev", () => 1000);
@@ -106,6 +124,25 @@ public class SessionAggregatorTests
     }
 
     [Fact]
+    public void Consecutive_snapshots_without_apply_share_seq_no()
+    {
+        // Arrange: the flipped-from-Snapshot-driven semantic. Two
+        // Display clients polling at different wall-clock times must
+        // see the same (state, SeqNo) pair so a reconnecting client
+        // can distinguish "missed a mutation" from "polled between
+        // mutations".
+        var agg = new SessionAggregator("dev", () => 1000);
+        agg.Apply(TestData.Frame(clientTsMs: 100, fundamentalHz: 220f));
+
+        // Act
+        var s1 = agg.Snapshot();
+        var s2 = agg.Snapshot();
+
+        // Assert
+        s2.SeqNo.Should().Be(s1.SeqNo);
+    }
+
+    [Fact]
     public void ChannelRemoved_drops_the_channel_from_snapshot()
     {
         // Arrange
@@ -118,5 +155,35 @@ public class SessionAggregatorTests
 
         // Assert
         agg.Snapshot().LatestPerChannel.Should().ContainKey("ch2").And.NotContainKey("ch1");
+    }
+
+    [Fact]
+    public void RemoveChannel_increments_sequence_when_channel_present()
+    {
+        // Arrange
+        var agg = new SessionAggregator("dev", () => 1000);
+        agg.Apply(TestData.Frame(clientTsMs: 100, fundamentalHz: 220f));
+        var before = agg.Snapshot().SeqNo;
+
+        // Act
+        agg.RemoveChannel("ch1");
+
+        // Assert
+        agg.Snapshot().SeqNo.Should().BeGreaterThan(before);
+    }
+
+    [Fact]
+    public void RemoveChannel_does_not_increment_when_channel_absent()
+    {
+        // Arrange
+        var agg = new SessionAggregator("dev", () => 1000);
+        agg.Apply(TestData.Frame(clientTsMs: 100, fundamentalHz: 220f));
+        var before = agg.Snapshot().SeqNo;
+
+        // Act
+        agg.RemoveChannel("nonexistent");
+
+        // Assert
+        agg.Snapshot().SeqNo.Should().Be(before);
     }
 }
