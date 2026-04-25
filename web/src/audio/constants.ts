@@ -13,3 +13,10 @@ export const TARGET_SAMPLE_RATE_HZ = 48000;
 // their bounds. Owned here because it's a property of the worklet's
 // publish cadence, not of any particular consumer.
 export const MAX_PUBLISH_HZ = 60;
+
+// Name registered by the AudioWorklet (registerProcessor side) and
+// consumed by the main thread (new AudioWorkletNode side). Owned here
+// because both sides need to agree on the literal and the constant must
+// import-cleanly from both realms — pitchWorklet.ts itself runs
+// registerProcessor at top level and is not main-thread-import-safe.
+export const PITCH_PROCESSOR_NAME = 'pitch-processor';

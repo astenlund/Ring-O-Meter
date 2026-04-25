@@ -2,7 +2,7 @@ import {type CSSProperties, useCallback, useMemo, useRef, useState} from 'react'
 import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
 import {PitchPlot, type PitchPlotHandle, type VoiceEntry} from './ui/PitchPlot';
-import {useFrameState} from './session/useFrameState';
+import {useFrameState} from './audio/useFrameState';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
 import type {FrameRingReader} from './audio/frameRing';
 

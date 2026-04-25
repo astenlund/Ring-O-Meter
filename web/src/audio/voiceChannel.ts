@@ -4,7 +4,7 @@
 // AudioWorkletGlobalScope cannot follow. We only want the URL form, not the
 // worker constructor form, so addModule() loads it like any ESM module.
 import workletUrl from './worklets/pitchWorklet.ts?worker&url';
-import {PITCH_PROCESSOR_NAME} from './worklets/channelMessage';
+import {PITCH_PROCESSOR_NAME} from './constants';
 import {FrameRingReader, createFrameRing} from './frameRing';
 
 export interface VoiceChannelEvents {
@@ -94,6 +94,9 @@ export class VoiceChannel {
         this.node = new AudioWorkletNode(this.opts.audioContext, PITCH_PROCESSOR_NAME, {
             processorOptions: {frameRingSab: sab},
         });
+        // slice N: worklet -> main port message variants will be wired
+        // here (errors, diagnostics, parameter updates). Per-frame data
+        // flows via SAB; the port is currently unused at steady state.
         this.source.connect(this.node);
         // No audible output; don't connect to destination.
 
