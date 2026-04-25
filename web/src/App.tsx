@@ -4,7 +4,7 @@ import {NoteReadout} from './ui/NoteReadout';
 import {PitchPlot, type PitchPlotHandle, type VoiceEntry} from './ui/PitchPlot';
 import {useFrameState} from './session/useFrameState';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
-import type {FrameRingReader} from './session/frameRing';
+import type {FrameRingReader} from './audio/frameRing';
 
 const PLOT_WINDOW_MS = 10_000;
 

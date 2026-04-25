@@ -5,7 +5,7 @@
 // worker constructor form, so addModule() loads it like any ESM module.
 import workletUrl from './worklets/pitchWorklet.ts?worker&url';
 import {PITCH_PROCESSOR_NAME} from './worklets/channelMessage';
-import {FrameRingReader, createFrameRing} from '../session/frameRing';
+import {FrameRingReader, createFrameRing} from './frameRing';
 
 export interface VoiceChannelEvents {
     // A fresh ring is available. The reader is bound to the channel's

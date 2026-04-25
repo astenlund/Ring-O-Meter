@@ -13,7 +13,7 @@ import {
     type PaintFrame,
     type RingsRecord,
 } from './paint';
-import {FrameRingReader} from '../session/frameRing';
+import {FrameRingReader} from '../audio/frameRing';
 import type {PlotMessage, VoiceEntry} from './plotMessages';
 
 let canvas: OffscreenCanvas | null = null;

@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import type {FrameRingReader, UiFrame} from './frameRing';
+import type {FrameRingReader, UiFrame} from '../audio/frameRing';
 
 // Polls each registered reader on an rAF-paced schedule (capped at
 // ~15 Hz) and builds a new `latest` map only when at least one

@@ -8,7 +8,7 @@ import {detectPitch} from '../pitchDetector';
 import {computeRmsDb} from '../rmsDb';
 import {OctaveStabilizer} from '../octaveStabilizer';
 import {PITCH_PROCESSOR_NAME} from './channelMessage';
-import {FrameRingWriter} from '../../session/frameRing';
+import {FrameRingWriter} from '../frameRing';
 
 const FRAME_SIZE = 1024;
 const PUBLISH_INTERVAL_FRAMES = 1; // every ~21 ms at 48 kHz -> ~47 Hz publish

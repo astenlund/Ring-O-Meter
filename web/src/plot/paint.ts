@@ -1,5 +1,5 @@
 import {shouldDisplayPitch} from '../ui/displayGate';
-import type {FrameRingReader} from '../session/frameRing';
+import type {FrameRingReader} from '../audio/frameRing';
 
 // Both 2D contexts share the surface this module uses (rect ops, stroke
 // style, path ops, fillText). Typed as unions so the same helpers run
