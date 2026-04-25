@@ -7,7 +7,7 @@
 import {detectPitch} from '../pitchDetector';
 import {computeRmsDb} from '../rmsDb';
 import {OctaveStabilizer} from '../octaveStabilizer';
-import {PITCH_PROCESSOR_NAME} from './channelMessage';
+import {PITCH_PROCESSOR_NAME} from '../constants';
 import {FrameRingWriter} from '../frameRing';
 
 const FRAME_SIZE = 1024;
