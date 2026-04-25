@@ -13,7 +13,7 @@ import {
     type RingsRecord,
     type VoiceEntry,
 } from '../plot/paint';
-import {createFrameRing, FrameRingReader, FrameRingWriter} from '../session/frameRing';
+import {createFrameRing, FrameRingReader, FrameRingWriter} from '../audio/frameRing';
 
 declare global {
     var gc: (() => void) | undefined;

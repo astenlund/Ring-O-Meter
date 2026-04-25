@@ -2,7 +2,7 @@ import {describe, test, expect} from 'vitest';
 import {createRoot, type Root} from 'react-dom/client';
 import {act} from 'react';
 import {useFrameState, type FrameStateControl} from '../session/useFrameState';
-import {createFrameRing, FrameRingReader, FrameRingWriter} from '../session/frameRing';
+import {createFrameRing, FrameRingReader, FrameRingWriter} from '../audio/frameRing';
 
 declare global {
     var gc: (() => void) | undefined;
