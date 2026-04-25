@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {drawTraces, type PaintFrame, type RingsRecord, type VoiceEntry} from '../plot/paint';
-import {createFrameRing, FrameRingReader, FrameRingWriter} from '../session/frameRing';
+import {createFrameRing, FrameRingReader, FrameRingWriter} from '../audio/frameRing';
 
 // Minimal stub of CanvasRenderingContext2D that records only the path
 // operations drawTraces invokes. Cast to the full type at the boundary so

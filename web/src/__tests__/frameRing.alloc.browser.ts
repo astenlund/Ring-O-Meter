@@ -3,7 +3,7 @@ import {
     FrameRingReader,
     FrameRingWriter,
     createFrameRing,
-} from '../session/frameRing';
+} from '../audio/frameRing';
 
 declare global {
     var gc: (() => void) | undefined;
