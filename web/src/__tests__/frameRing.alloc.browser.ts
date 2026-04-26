@@ -16,8 +16,8 @@ interface PerformanceWithMemory extends Performance {
 const PUBLISH_ITERATIONS = 10_000;
 const READ_ITERATIONS = 10_000;
 const WARMUP_ITERATIONS = 500;
-const WRITER_BUDGET_BYTES = 50 * 1024;
-const READER_BUDGET_BYTES = 50 * 1024;
+const WRITER_BUDGET_BYTES = 12 * 1024;
+const READER_BUDGET_BYTES = 4 * 1024;
 
 describe('frameRing writer allocation budget', () => {
     test(`${PUBLISH_ITERATIONS} publishes leave heap under ${WRITER_BUDGET_BYTES / 1024} KB above warmup baseline`, () => {
