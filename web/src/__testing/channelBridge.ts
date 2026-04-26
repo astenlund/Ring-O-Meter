@@ -19,11 +19,10 @@ export const CHANNEL_BRIDGE_KEY = '__ringOMeterChannels';
 export interface ChannelTestBridge {
     audioContext: AudioContext;
     reader: FrameRingReader;
-    // Incremented by VoiceChannel.handleStateChange after the offset
-    // propagation completes, so a harness can wait for the rebase to
-    // have observably taken effect rather than racing statechange
-    // listener order against audioContext.resume().
-    rebaseCount: number;
+    // Reflects VoiceChannel.rebaseCount via a getter, so a harness can
+    // wait for a rebase to have observably taken effect rather than
+    // racing statechange listener order against audioContext.resume().
+    readonly rebaseCount: number;
 }
 
 type ChannelBridgeMap = Map<string, ChannelTestBridge>;
@@ -34,25 +33,31 @@ function bridgeMap(): ChannelBridgeMap | undefined {
         | undefined;
 }
 
-// Registers a channel with the bridge if one is armed; returns the
-// live entry (mutating its rebaseCount field is observed by the
-// harness on its next read) or null if the bridge is not armed. The
-// armer (today: smoothness.spec.ts via Playwright addInitScript)
-// assigns `new Map()` to globalThis[CHANNEL_BRIDGE_KEY] inline because
-// addInitScript closures cannot import from this module.
+// Registers a channel with the bridge if one is armed; no-op
+// otherwise. `getRebaseCount` is invoked on every harness read of
+// `entry.rebaseCount`, so it should be a thin getter over the
+// channel's own counter (not a snapshot). The armer (today:
+// smoothness.spec.ts via Playwright addInitScript) assigns `new Map()`
+// to globalThis[CHANNEL_BRIDGE_KEY] inline because addInitScript
+// closures cannot import from this module.
 export function publishChannel(
     channelId: string,
     audioContext: AudioContext,
     reader: FrameRingReader,
-): ChannelTestBridge | null {
+    getRebaseCount: () => number,
+): void {
     const map = bridgeMap();
     if (!map) {
-        return null;
+        return;
     }
-    const entry: ChannelTestBridge = {audioContext, reader, rebaseCount: 0};
+    const entry: ChannelTestBridge = {
+        audioContext,
+        reader,
+        get rebaseCount(): number {
+            return getRebaseCount();
+        },
+    };
     map.set(channelId, entry);
-
-    return entry;
 }
 
 // Removes a channel's entry from the bridge. No-op when the bridge
