@@ -11,8 +11,17 @@ export interface VoiceStyle {
 
 export type VoiceEntry = VoiceStyle & {channelId: string};
 
+export const PlotMessageType = {
+    Init: 'init',
+    SetRoster: 'setRoster',
+    SetBacking: 'setBacking',
+    AttachChannel: 'attachChannel',
+    DetachChannel: 'detachChannel',
+    RebaseChannel: 'rebaseChannel',
+} as const;
+
 export interface InitMessage {
-    type: 'init';
+    type: typeof PlotMessageType.Init;
     canvas: OffscreenCanvas;
     voices: ReadonlyArray<VoiceEntry>;
     backing: {cssWidth: number; cssHeight: number; dpr: number};
@@ -31,19 +40,19 @@ export interface InitMessage {
 }
 
 export interface SetRosterMessage {
-    type: 'setRoster';
+    type: typeof PlotMessageType.SetRoster;
     voices: ReadonlyArray<VoiceEntry>;
 }
 
 export interface SetBackingMessage {
-    type: 'setBacking';
+    type: typeof PlotMessageType.SetBacking;
     cssWidth: number;
     cssHeight: number;
     dpr: number;
 }
 
 export interface AttachChannelMessage {
-    type: 'attachChannel';
+    type: typeof PlotMessageType.AttachChannel;
     channelId: string;
     // SAB is shared, not transferred. Do NOT include in the
     // postMessage transfer list - SharedArrayBuffer is not
@@ -53,12 +62,12 @@ export interface AttachChannelMessage {
 }
 
 export interface DetachChannelMessage {
-    type: 'detachChannel';
+    type: typeof PlotMessageType.DetachChannel;
     channelId: string;
 }
 
 export interface RebaseChannelMessage {
-    type: 'rebaseChannel';
+    type: typeof PlotMessageType.RebaseChannel;
     channelId: string;
     perfNowAtContextTimeZero: number;
 }
