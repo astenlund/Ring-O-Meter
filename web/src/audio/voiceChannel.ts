@@ -6,6 +6,7 @@
 import workletUrl from './worklets/pitchWorklet.ts?worker&url';
 import {PITCH_PROCESSOR_NAME} from './constants';
 import {FrameRingReader, createFrameRing} from './frameRing';
+import {AudioContextEpoch} from './audioContextEpoch';
 import {publishChannel, revokeChannel} from '../__testing/channelBridge';
 
 export interface VoiceChannelEvents {
@@ -39,30 +40,18 @@ export interface VoiceChannelOptions extends VoiceChannelEvents {
 
 export class VoiceChannel {
     private readonly opts: VoiceChannelOptions;
+    private readonly epoch: AudioContextEpoch;
     private node: AudioWorkletNode | null = null;
     private source: MediaStreamAudioSourceNode | null = null;
     private stream: MediaStream | null = null;
     private reader: FrameRingReader | null = null;
-    // hasFiredRunningRebase tracks whether we've seen the first
-    // 'running' state transition. The first one always fires a rebase
-    // so the perfNow->contextTimeZero offset reflects the real anchor
-    // (start() may return before the context actually resumes on
-    // user-gesture-gated platforms). Subsequent 'running' events only
-    // fire if the offset drifted (fold-in after suspend/resume).
-    private hasFiredRunningRebase = false;
-    private lastPropagatedOffset = 0;
-    private stateChangeHandler: (() => void) | null = null;
-    // Lifecycle introspection: how many times this channel's
-    // AudioContext entered 'running' with enough offset drift (or for
-    // the first time) to propagate a rebase. Read-only to outside
-    // consumers; mutated only inside handleStateChange. Underscore
-    // disambiguates the backing field from the public `rebaseCount`
-    // getter; bare-name fields elsewhere in this class don't shadow
-    // any accessor.
-    private _rebaseCount = 0;
 
     public constructor(opts: VoiceChannelOptions) {
         this.opts = opts;
+        this.epoch = new AudioContextEpoch({
+            audioContext: opts.audioContext,
+            onRebase: (offsetMs) => this.handleRebase(offsetMs),
+        });
     }
 
     public get channelId(): string {
@@ -73,8 +62,13 @@ export class VoiceChannel {
         return this.opts.voiceLabel;
     }
 
+    // Lifecycle introspection: how many times this channel's
+    // AudioContext entered 'running' with enough offset drift (or for
+    // the first time) to propagate a rebase. Read-only handle for
+    // tests + the channel test bridge; gating policy lives in
+    // AudioContextEpoch.
     public get rebaseCount(): number {
-        return this._rebaseCount;
+        return this.epoch.rebaseCount;
     }
 
     public async start(stream: MediaStream): Promise<void> {
@@ -82,9 +76,7 @@ export class VoiceChannel {
         await this.opts.audioContext.audioWorklet.addModule(workletUrl);
 
         const sab = createFrameRing();
-
-        const initialOffset = this.computeOffset();
-        this.lastPropagatedOffset = initialOffset;
+        const initialOffset = this.epoch.captureInitialOffset();
         this.reader = new FrameRingReader(sab, initialOffset);
 
         this.source = this.opts.audioContext.createMediaStreamSource(stream);
@@ -101,8 +93,13 @@ export class VoiceChannel {
         this.source.connect(this.node);
         // No audible output; don't connect to destination.
 
-        this.stateChangeHandler = () => this.handleStateChange();
-        this.opts.audioContext.addEventListener('statechange', this.stateChangeHandler);
+        // Arm the statechange listener after the worklet is wired so
+        // the listener-arming order matches the pre-extraction
+        // baseline. The reader has already been seeded with the
+        // placeholder offset above; the first 'running' transition
+        // will rebase via handleRebase as soon as the user-gesture
+        // resume fires.
+        this.epoch.arm();
 
         // Emit the ready event after the worklet is wired so consumers
         // can register the reader + attach the plot worker as soon as
@@ -113,15 +110,12 @@ export class VoiceChannel {
             this.opts.channelId,
             this.opts.audioContext,
             this.reader,
-            () => this._rebaseCount,
+            () => this.epoch.rebaseCount,
         );
     }
 
     public stop(): void {
-        if (this.stateChangeHandler) {
-            this.opts.audioContext.removeEventListener('statechange', this.stateChangeHandler);
-            this.stateChangeHandler = null;
-        }
+        this.epoch.stop();
         this.source?.disconnect();
         this.node?.disconnect();
         this.stream?.getTracks().forEach((t) => t.stop());
@@ -136,29 +130,8 @@ export class VoiceChannel {
         }
     }
 
-    private computeOffset(): number {
-        // While the AudioContext is suspended (pre-user-gesture),
-        // currentTime = 0 and the offset = performance.now() at eval
-        // time; the first entry to 'running' triggers a rebase that
-        // corrects this placeholder.
-        return performance.now() - this.opts.audioContext.currentTime * 1000;
-    }
-
-    private handleStateChange(): void {
-        const state = this.opts.audioContext.state;
-        if (state !== 'running') {
-            return;
-        }
-        const offset = this.computeOffset();
-        const shouldFire = !this.hasFiredRunningRebase
-            || Math.abs(offset - this.lastPropagatedOffset) > 1;
-        if (!shouldFire) {
-            return;
-        }
-        this.hasFiredRunningRebase = true;
-        this.lastPropagatedOffset = offset;
-        this.reader?.setOffset(offset);
-        this._rebaseCount += 1;
-        this.opts.onFrameSourceRebased(this.opts.channelId, offset);
+    private handleRebase(offsetMs: number): void {
+        this.reader?.setOffset(offsetMs);
+        this.opts.onFrameSourceRebased(this.opts.channelId, offsetMs);
     }
 }
