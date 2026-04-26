@@ -6,7 +6,7 @@
 import workletUrl from './worklets/pitchWorklet.ts?worker&url';
 import {PITCH_PROCESSOR_NAME} from './constants';
 import {FrameRingReader, createFrameRing} from './frameRing';
-import {publishChannel, revokeChannel, type ChannelTestBridge} from '../__testing/channelBridge';
+import {publishChannel, revokeChannel} from '../__testing/channelBridge';
 
 export interface VoiceChannelEvents {
     // A fresh ring is available. The reader is bound to the channel's
@@ -52,7 +52,14 @@ export class VoiceChannel {
     private hasFiredRunningRebase = false;
     private lastPropagatedOffset = 0;
     private stateChangeHandler: (() => void) | null = null;
-    private testBridge: ChannelTestBridge | null = null;
+    // Lifecycle introspection: how many times this channel's
+    // AudioContext entered 'running' with enough offset drift (or for
+    // the first time) to propagate a rebase. Read-only to outside
+    // consumers; mutated only inside handleStateChange. Underscore
+    // disambiguates the backing field from the public `rebaseCount`
+    // getter; bare-name fields elsewhere in this class don't shadow
+    // any accessor.
+    private _rebaseCount = 0;
 
     public constructor(opts: VoiceChannelOptions) {
         this.opts = opts;
@@ -64,6 +71,10 @@ export class VoiceChannel {
 
     public get voiceLabel(): string {
         return this.opts.voiceLabel;
+    }
+
+    public get rebaseCount(): number {
+        return this._rebaseCount;
     }
 
     public async start(stream: MediaStream): Promise<void> {
@@ -80,9 +91,13 @@ export class VoiceChannel {
         this.node = new AudioWorkletNode(this.opts.audioContext, PITCH_PROCESSOR_NAME, {
             processorOptions: {frameRingSab: sab},
         });
-        // slice N: worklet -> main port message variants will be wired
-        // here (errors, diagnostics, parameter updates). Per-frame data
-        // flows via SAB; the port is currently unused at steady state.
+        // slice N (slice number TBD): worklet -> main port message
+        // variants will be wired here (errors, diagnostics, parameter
+        // updates). Per-frame data flows via SAB; the port is currently
+        // unused at steady state. The literal `N` is the documented
+        // marker for indeterminate future slices (see CLAUDE.md's
+        // Future-slice plumbing section); substitute the real number
+        // once a concrete slice claims this seam.
         this.source.connect(this.node);
         // No audible output; don't connect to destination.
 
@@ -94,7 +109,12 @@ export class VoiceChannel {
         // frames may start flowing.
         this.opts.onFrameSourceReady(this.opts.channelId, this.reader, initialOffset);
 
-        this.testBridge = publishChannel(this.opts.channelId, this.opts.audioContext, this.reader);
+        publishChannel(
+            this.opts.channelId,
+            this.opts.audioContext,
+            this.reader,
+            () => this._rebaseCount,
+        );
     }
 
     public stop(): void {
@@ -110,11 +130,8 @@ export class VoiceChannel {
         this.stream = null;
         const wasReady = this.reader !== null;
         this.reader = null;
-        if (this.testBridge !== null) {
-            revokeChannel(this.opts.channelId);
-            this.testBridge = null;
-        }
         if (wasReady) {
+            revokeChannel(this.opts.channelId);
             this.opts.onFrameSourceGone(this.opts.channelId);
         }
     }
@@ -141,9 +158,7 @@ export class VoiceChannel {
         this.hasFiredRunningRebase = true;
         this.lastPropagatedOffset = offset;
         this.reader?.setOffset(offset);
-        if (this.testBridge !== null) {
-            this.testBridge.rebaseCount += 1;
-        }
+        this._rebaseCount += 1;
         this.opts.onFrameSourceRebased(this.opts.channelId, offset);
     }
 }
