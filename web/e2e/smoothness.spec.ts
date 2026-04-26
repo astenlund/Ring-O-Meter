@@ -1,4 +1,5 @@
 import {test, expect} from '@playwright/test';
+import {CHANNEL_BRIDGE_KEY} from '../src/__testing/channelBridge';
 
 // End-to-end regression net covering two distinct invariants, both
 // driven through the same fake-audio harness:
@@ -66,8 +67,8 @@ const POST_RESUME_GUARD_MS = 200;
 // first test ignores it, but arming once in beforeEach keeps the two
 // tests' setup paths identical.
 test.beforeEach(async ({context}) => {
-    await context.addInitScript(() => {
-        (globalThis as {__ringOMeterChannels?: Map<string, unknown>}).__ringOMeterChannels = new Map();
+    await context.addInitScript((bridgeKey: string) => {
+        (globalThis as Record<string, unknown>)[bridgeKey] = new Map();
 
         const md = navigator.mediaDevices;
         const originalEnumerate = md.enumerateDevices.bind(md);
@@ -101,7 +102,7 @@ test.beforeEach(async ({context}) => {
 
             return originalGetUserMedia(constraints);
         };
-    });
+    }, CHANNEL_BRIDGE_KEY);
 });
 
 test('pitch plot is smooth for 60 seconds', async ({page}) => {
@@ -191,10 +192,12 @@ test('pitch plot stays in sync across suspend/resume rebase', async ({page}) => 
     await expect(page.locator('canvas')).toBeVisible();
 
     const result = await page.evaluate(
-        async ({longGapMs, postResumeGuardMs}) => {
-            // Shape of the test bridge populated by VoiceChannel.start.
-            // Kept inline so this evaluate block has no import
-            // dependencies on the app bundle.
+        async ({longGapMs, postResumeGuardMs, bridgeKey}) => {
+            // Realm-boundary mirror of ChannelTestBridge / FrameRingReader
+            // from web/src/__testing/channelBridge.ts. This evaluate body is
+            // serialised into the browser realm and cannot import; the two
+            // shapes must be kept in sync by hand. TestReader is the subset
+            // of FrameRingReader this test actually consumes.
             interface TestReader {
                 published(): number;
                 forEach(
@@ -202,15 +205,16 @@ test('pitch plot stays in sync across suspend/resume rebase', async ({page}) => 
                     cb: (tsMs: number, hz: number, conf: number) => void,
                 ): void;
             }
-            interface TestBridge {
+            interface ChannelTestBridge {
                 audioContext: AudioContext;
                 reader: TestReader;
                 rebaseCount: number;
             }
-            const bridgeMap = (globalThis as {__ringOMeterChannels?: Map<string, TestBridge>})
-                .__ringOMeterChannels;
+            const bridgeMap = (globalThis as Record<string, unknown>)[bridgeKey] as
+                | Map<string, ChannelTestBridge>
+                | undefined;
             if (!bridgeMap) {
-                throw new Error('__ringOMeterChannels is not armed on the page');
+                throw new Error(`${bridgeKey} is not armed on the page`);
             }
 
             // Step 1: poll for the post-click channel-registration. Up
@@ -226,7 +230,7 @@ test('pitch plot stays in sync across suspend/resume rebase', async ({page}) => 
                 }
                 await new Promise((r) => setTimeout(r, 50));
             }
-            const bridge = bridgeMap.values().next().value as TestBridge;
+            const bridge = bridgeMap.values().next().value as ChannelTestBridge;
             const {audioContext, reader} = bridge;
             const rebaseCountBefore = bridge.rebaseCount;
 
@@ -376,7 +380,7 @@ test('pitch plot stays in sync across suspend/resume rebase', async ({page}) => 
                 postResumePublished: reader.published(),
             };
         },
-        {longGapMs: LONG_GAP_MS, postResumeGuardMs: POST_RESUME_GUARD_MS},
+        {longGapMs: LONG_GAP_MS, postResumeGuardMs: POST_RESUME_GUARD_MS, bridgeKey: CHANNEL_BRIDGE_KEY},
     );
 
     // Preconditions: measurement windows produced useful samples, the
