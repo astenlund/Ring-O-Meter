@@ -31,7 +31,8 @@ describe('frameRing writer allocation budget', () => {
         let t = 0;
         const publish = () => {
             t += 21;
-            writer.publish(t, 220 + (t & 0xff) * 0.01, 0.9);
+            const hz = 220 + (t & 0xff) * 0.01;
+            writer.publish(t, hz, 0.9, -30, hz);
         };
 
         for (let i = 0; i < WARMUP_ITERATIONS; i += 1) {
@@ -63,7 +64,8 @@ describe('frameRing reader.forEach allocation budget', () => {
         // Populate the ring to ~plot-window fullness.
         const baseMs = 0;
         for (let i = 0; i < 470; i += 1) {
-            writer.publish(baseMs + i * 21, 220 + Math.sin(i * 0.1) * 10, 0.9);
+            const hz = 220 + Math.sin(i * 0.1) * 10;
+            writer.publish(baseMs + i * 21, hz, 0.9, -30, hz);
         }
 
         const readAll = () => {

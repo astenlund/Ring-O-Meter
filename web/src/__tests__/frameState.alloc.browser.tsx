@@ -57,8 +57,10 @@ describe('frame-state allocation budget', () => {
         });
 
         const advance = (idx: number) => {
-            writerA.publish(idx * 21, 220 + (idx & 0xff) * 0.01, 0.9);
-            writerB.publish(idx * 21, 440 + (idx & 0xff) * 0.01, 0.9);
+            const hzA = 220 + (idx & 0xff) * 0.01;
+            const hzB = 440 + (idx & 0xff) * 0.01;
+            writerA.publish(idx * 21, hzA, 0.9, -30, hzA);
+            writerB.publish(idx * 21, hzB, 0.9, -30, hzB);
         };
 
         for (let i = 0; i < WARMUP_ITERATIONS; i += 1) {
