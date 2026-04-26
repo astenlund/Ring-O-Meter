@@ -186,4 +186,90 @@ public class SessionAggregatorTests
         // Assert
         agg.Snapshot().SeqNo.Should().Be(before);
     }
+
+    [Fact]
+    public async Task Concurrent_writers_under_a_reader_loop_preserve_documented_invariants()
+    {
+        // Arrange: stress the lock-free Apply / Snapshot pair against the
+        // doc-claim multi-thread bounds. Single-threaded SeqNo semantics
+        // are pinned by Consecutive_snapshots_without_apply_share_seq_no;
+        // the concurrent bound is documented in SessionAggregator.Snapshot's
+        // XML comment but otherwise unenforced. A future refactor that
+        // tightens the comment to a stricter "(state, SeqNo) atomically
+        // paired" claim would silently change the contract clients rely
+        // on -- this test pins the looser-but-correct semantic.
+        // Properties asserted, mirroring QUICK_WINS.md's stress-test spec:
+        //   (a) every Apply's frame is eventually visible in the final
+        //       snapshot (mutations are never lost),
+        //   (b) no snapshot reports a SeqNo lower than its predecessor's
+        //       (the bound is one-poll re-acknowledgement, not retraction),
+        //   (c) the final SeqNo equals the total Apply count (Interlocked
+        //       does not drop increments under contention).
+        // Deliberately not pinned: the doc-comment's stronger claim that
+        // the reader-order choice (dict copy first, SeqNo read second)
+        // bounds the fresh-seq-stale-state interleaving to a single
+        // re-acknowledgement poll. That's the floor; the bound itself
+        // would need per-snapshot (state, seq) pairs and recovery-latency
+        // assertions, hard to do non-flakily on fast hardware.
+        const int writerCount = 4;
+        const int framesPerWriter = 1_000;
+        const int totalApplies = writerCount * framesPerWriter;
+
+        var agg = new SessionAggregator("stress", () => 0);
+        using var writersDone = new CancellationTokenSource();
+        var snapshotSeqNos = new List<long>(capacity: 4096);
+
+        // Act: a single reader spins on Snapshot while N writers Apply
+        // unique-channelId frames in parallel. Unique channelIds keep
+        // the visibility assertion sharp -- no tie-break overwrites
+        // to reason about, every Apply contributes a fresh entry.
+        var readerTask = Task.Run(() =>
+        {
+            while (!writersDone.IsCancellationRequested)
+            {
+                snapshotSeqNos.Add(agg.Snapshot().SeqNo);
+            }
+
+            // Drain one final post-writers snapshot so the tail of the
+            // monotonic sequence reflects the settled state, not a
+            // mid-flight reading.
+            snapshotSeqNos.Add(agg.Snapshot().SeqNo);
+        });
+
+        var writerTasks = Enumerable.Range(0, writerCount)
+            .Select(writerIdx => Task.Run(() =>
+            {
+                for (var i = 0; i < framesPerWriter; i++)
+                {
+                    agg.Apply(TestData.Frame(
+                        channelId: $"w{writerIdx}-f{i}",
+                        clientTsMs: i,
+                        fundamentalHz: 200f + writerIdx));
+                }
+            }))
+            .ToArray();
+
+        await Task.WhenAll(writerTasks);
+        writersDone.Cancel();
+        await readerTask;
+
+        // Assert
+        var final = agg.Snapshot();
+
+        // (a) Mutations are never lost: every unique channelId an Apply
+        // published is present in the final snapshot.
+        final.LatestPerChannel.Should().HaveCount(totalApplies);
+
+        // (c) Final SeqNo equals operation count: Interlocked.Increment
+        // is atomic, and the documented "stale Apply still increments"
+        // semantic holds under contention.
+        final.SeqNo.Should().Be(totalApplies);
+
+        // (b) Reader's SeqNo sequence is monotonic non-decreasing.
+        snapshotSeqNos.Should().NotBeEmpty();
+        for (var i = 1; i < snapshotSeqNos.Count; i++)
+        {
+            snapshotSeqNos[i].Should().BeGreaterThanOrEqualTo(snapshotSeqNos[i - 1]);
+        }
+    }
 }
