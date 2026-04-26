@@ -15,7 +15,15 @@ const CAP_MASK = CAPACITY - 1;
 
 // Byte layout inside one ring's SAB. Int32 header first (natural
 // alignment for Atomics), then 8-byte-aligned Float64 for
-// captureContextMs, then two Float32 columns.
+// captureContextMs, then four Float32 columns. The trailing two
+// (rmsDb, hzRaw) are written by the worklet but not yet surfaced by
+// the reader; they will gain reader-side accessors when the first
+// reader-side consumer lands. Slice 1's SignalR publish sink is the
+// proximate driver (it forwards every column on the wire, where
+// AnalysisFrame already carries them at [Key(4)]/[Key(5)]); downstream
+// analytical consumers include vowel-matching mic calibration,
+// chop-cop amplitude envelope, and heuristic-introspection raw-YIN
+// audit.
 const HEADER_OFFSET = 0;
 const HEADER_BYTES = 8;  // 4 bytes header + 4 bytes pad for Float64 alignment
 const CTX_MS_OFFSET = HEADER_BYTES;
@@ -24,7 +32,11 @@ const HZ_OFFSET = CTX_MS_OFFSET + CTX_MS_BYTES;
 const HZ_BYTES = CAPACITY * 4;
 const CONF_OFFSET = HZ_OFFSET + HZ_BYTES;
 const CONF_BYTES = CAPACITY * 4;
-export const RING_SAB_BYTES = CONF_OFFSET + CONF_BYTES;  // 8 + 16 * CAPACITY = 16392
+const RMS_DB_OFFSET = CONF_OFFSET + CONF_BYTES;
+const RMS_DB_BYTES = CAPACITY * 4;
+const HZ_RAW_OFFSET = RMS_DB_OFFSET + RMS_DB_BYTES;
+const HZ_RAW_BYTES = CAPACITY * 4;
+export const RING_SAB_BYTES = HZ_RAW_OFFSET + HZ_RAW_BYTES;  // 8 + 24 * CAPACITY = 24584
 
 export interface UiFrame {
     fundamentalHz: number;
@@ -41,14 +53,16 @@ export function createFrameRing(): SharedArrayBuffer {
     return new SharedArrayBuffer(RING_SAB_BYTES);
 }
 
-// Shape the three typed-array views a ring user needs. Factored so
-// writer and reader construct identical views from the same
-// constants, with no drift risk.
+// Shape the typed-array views a ring user needs. Factored so writer
+// and reader construct identical views from the same constants, with
+// no drift risk. Header + five data columns.
 interface RingViews {
     header: Int32Array;
     contextMs: Float64Array;
     hz: Float32Array;
     conf: Float32Array;
+    rmsDb: Float32Array;
+    hzRaw: Float32Array;
 }
 
 function viewsOver(sab: SharedArrayBuffer): RingViews {
@@ -57,6 +71,8 @@ function viewsOver(sab: SharedArrayBuffer): RingViews {
         contextMs: new Float64Array(sab, CTX_MS_OFFSET, CAPACITY),
         hz: new Float32Array(sab, HZ_OFFSET, CAPACITY),
         conf: new Float32Array(sab, CONF_OFFSET, CAPACITY),
+        rmsDb: new Float32Array(sab, RMS_DB_OFFSET, CAPACITY),
+        hzRaw: new Float32Array(sab, HZ_RAW_OFFSET, CAPACITY),
     };
 }
 
@@ -70,6 +86,8 @@ export class FrameRingWriter {
     private readonly contextMs: Float64Array;
     private readonly hz: Float32Array;
     private readonly conf: Float32Array;
+    private readonly rmsDb: Float32Array;
+    private readonly hzRaw: Float32Array;
     // Monotonic, per-instance. Not atomic itself — only the publish
     // via Atomics.store on this.header is observable externally.
     private writeIdx = 0;
@@ -80,20 +98,30 @@ export class FrameRingWriter {
         this.contextMs = views.contextMs;
         this.hz = views.hz;
         this.conf = views.conf;
+        this.rmsDb = views.rmsDb;
+        this.hzRaw = views.hzRaw;
     }
 
     /**
-     * Publish a new frame. Writes all three field slots first, then
+     * Publish a new frame. Writes all five field slots first, then
      * Atomics.store on the header as the "commit" signal. JS
      * Atomics.store is sequentially consistent: any consumer that
      * sees the new writeIdx via Atomics.load is guaranteed to see
      * the preceding field writes. Zero allocations per call.
      */
-    public publish(captureContextMs: number, fundamentalHz: number, confidence: number): void {
+    public publish(
+        captureContextMs: number,
+        fundamentalHz: number,
+        confidence: number,
+        rmsDb: number,
+        fundamentalHzRaw: number,
+    ): void {
         const slot = this.writeIdx & CAP_MASK;
         this.contextMs[slot] = captureContextMs;
         this.hz[slot] = fundamentalHz;
         this.conf[slot] = confidence;
+        this.rmsDb[slot] = rmsDb;
+        this.hzRaw[slot] = fundamentalHzRaw;
         this.writeIdx += 1;
         Atomics.store(this.header, 0, this.writeIdx);
     }
@@ -127,6 +155,8 @@ export class FrameRingReader {
         this.contextMs = views.contextMs;
         this.hz = views.hz;
         this.conf = views.conf;
+        // viewsOver also returns rmsDb/hzRaw; bind them here when a
+        // reader-side consumer lands (see top-of-file comment).
     }
 
     /** Current write index (monotonic, unbounded modulo Int32 wrap). */
