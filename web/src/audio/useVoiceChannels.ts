@@ -1,4 +1,4 @@
-import {useEffect} from 'react';
+import {useEffect, useRef} from 'react';
 import {TARGET_SAMPLE_RATE_HZ} from './constants';
 import {openInputStream} from './deviceManager';
 import {VoiceChannel, type VoiceChannelEvents} from './voiceChannel';
@@ -20,14 +20,18 @@ export interface VoiceChannelSlot {
 // forwards lifecycle events. Slice 1's SignalR DisplayClient will reuse
 // the same event shape with a different event source.
 //
-// `events` must be referentially stable across renders (useMemo over
-// useCallback'd handlers at the call site); this hook treats it as an
-// effect dependency so a fresh object identity forces a full channel
-// teardown + restart.
+// `events` does NOT need to be referentially stable. Callers may pass an
+// inline object literal each render; latest callbacks are read through a
+// ref so a fresh `events` identity reroutes invocations rather than tearing
+// down the AudioContext + worklet + mic streams. Teardown is reserved for
+// `slots` changes, which is the only structural shape change in scope.
 export function useVoiceChannels(
     slots: readonly VoiceChannelSlot[] | null,
     events: VoiceChannelEvents,
 ): void {
+    const eventsRef = useRef(events);
+    eventsRef.current = events;
+
     useEffect(() => {
         if (!slots) {
             return;
@@ -36,11 +40,23 @@ export function useVoiceChannels(
         let cancelled = false;
         const audioContext = new AudioContext({sampleRate: TARGET_SAMPLE_RATE_HZ});
 
+        // Stable wrappers that route through the ref so VoiceChannel can
+        // capture them once at construction without pinning a stale render's
+        // callback closure.
+        const channelEvents: VoiceChannelEvents = {
+            onFrameSourceReady: (channelId, reader, perfNow) =>
+                eventsRef.current.onFrameSourceReady(channelId, reader, perfNow),
+            onFrameSourceGone: (channelId) =>
+                eventsRef.current.onFrameSourceGone(channelId),
+            onFrameSourceRebased: (channelId, perfNow) =>
+                eventsRef.current.onFrameSourceRebased(channelId, perfNow),
+        };
+
         const channels = slots.map((slot) => new VoiceChannel({
             channelId: slot.channelId,
             voiceLabel: slot.voiceLabel,
             audioContext,
-            ...events,
+            ...channelEvents,
         }));
 
         // Shared teardown path for both the effect-cleanup and the setup-failure
@@ -88,5 +104,5 @@ export function useVoiceChannels(
             cancelled = true;
             teardown();
         };
-    }, [slots, events]);
+    }, [slots]);
 }
