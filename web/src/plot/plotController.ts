@@ -1,5 +1,5 @@
 import workerUrl from './plotWorker.ts?worker&url';
-import type {PlotMessage, VoiceEntry} from './plotMessages';
+import {PlotMessageType, type PlotMessage, type VoiceEntry} from './plotMessages';
 
 export interface PlotControllerOptions {
     voices: ReadonlyArray<VoiceEntry>;
@@ -26,7 +26,7 @@ export class PlotController {
         const offscreen = canvas.transferControlToOffscreen();
         this.worker = new Worker(workerUrl, {type: 'module'});
         const init: PlotMessage = {
-            type: 'init',
+            type: PlotMessageType.Init,
             canvas: offscreen,
             voices: opts.voices,
             backing: opts.backing,
@@ -39,11 +39,11 @@ export class PlotController {
     }
 
     public setRoster(voices: ReadonlyArray<VoiceEntry>): void {
-        this.post({type: 'setRoster', voices});
+        this.post({type: PlotMessageType.SetRoster, voices});
     }
 
     public setBacking(cssWidth: number, cssHeight: number, dpr: number): void {
-        this.post({type: 'setBacking', cssWidth, cssHeight, dpr});
+        this.post({type: PlotMessageType.SetBacking, cssWidth, cssHeight, dpr});
     }
 
     /**
@@ -53,15 +53,15 @@ export class PlotController {
      * list - doing so throws DataCloneError.
      */
     public attachChannel(channelId: string, sab: SharedArrayBuffer, perfNowAtContextTimeZero: number): void {
-        this.post({type: 'attachChannel', channelId, sab, perfNowAtContextTimeZero});
+        this.post({type: PlotMessageType.AttachChannel, channelId, sab, perfNowAtContextTimeZero});
     }
 
     public detachChannel(channelId: string): void {
-        this.post({type: 'detachChannel', channelId});
+        this.post({type: PlotMessageType.DetachChannel, channelId});
     }
 
     public rebaseChannel(channelId: string, perfNowAtContextTimeZero: number): void {
-        this.post({type: 'rebaseChannel', channelId, perfNowAtContextTimeZero});
+        this.post({type: PlotMessageType.RebaseChannel, channelId, perfNowAtContextTimeZero});
     }
 
     public dispose(): void {

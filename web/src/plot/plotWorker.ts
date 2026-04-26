@@ -14,7 +14,7 @@ import {
     type RingsRecord,
 } from './paint';
 import {FrameRingReader} from '../audio/frameRing';
-import type {PlotMessage, VoiceEntry} from './plotMessages';
+import {PlotMessageType, type PlotMessage, type VoiceEntry} from './plotMessages';
 
 let canvas: OffscreenCanvas | null = null;
 let ctx: OffscreenCanvasRenderingContext2D | null = null;
@@ -61,7 +61,7 @@ function paint(): void {
 self.onmessage = (event: MessageEvent<PlotMessage>) => {
     const msg = event.data;
     switch (msg.type) {
-        case 'init': {
+        case PlotMessageType.Init: {
             mainEpochOffsetMs = msg.mainNowAtInitMs - performance.now();
             canvas = msg.canvas;
             const got = canvas.getContext('2d');
@@ -82,12 +82,12 @@ self.onmessage = (event: MessageEvent<PlotMessage>) => {
 
             return;
         }
-        case 'setRoster': {
+        case PlotMessageType.SetRoster: {
             voices = msg.voices;
 
             return;
         }
-        case 'setBacking': {
+        case PlotMessageType.SetBacking: {
             backing.cssWidth = msg.cssWidth;
             backing.cssHeight = msg.cssHeight;
             backing.dpr = msg.dpr;
@@ -97,17 +97,17 @@ self.onmessage = (event: MessageEvent<PlotMessage>) => {
 
             return;
         }
-        case 'attachChannel': {
+        case PlotMessageType.AttachChannel: {
             rings[msg.channelId] = new FrameRingReader(msg.sab, msg.perfNowAtContextTimeZero);
 
             return;
         }
-        case 'detachChannel': {
+        case PlotMessageType.DetachChannel: {
             delete rings[msg.channelId];
 
             return;
         }
-        case 'rebaseChannel': {
+        case PlotMessageType.RebaseChannel: {
             rings[msg.channelId]?.setOffset(msg.perfNowAtContextTimeZero);
 
             return;
