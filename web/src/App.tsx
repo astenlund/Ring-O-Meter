@@ -1,7 +1,8 @@
 import {type CSSProperties, useCallback, useMemo, useRef, useState} from 'react';
 import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
-import {PitchPlot, type PitchPlotHandle, type VoiceEntry} from './ui/PitchPlot';
+import {PitchPlot, type PitchPlotHandle} from './ui/PitchPlot';
+import {slotsToVoices} from './ui/rosterToVoices';
 import {useFrameState} from './audio/useFrameState';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
 import type {FrameRingReader} from './audio/frameRing';
@@ -96,15 +97,7 @@ export function App() {
         onFrameSourceRebased: handleFrameSourceRebased,
     });
 
-    const voices = useMemo<ReadonlyArray<VoiceEntry>>(
-        () =>
-            (slots ?? []).map((slot) => ({
-                channelId: slot.channelId,
-                label: slot.deviceLabel,
-                color: slot.color,
-            })),
-        [slots],
-    );
+    const voices = useMemo(() => slotsToVoices(slots ?? []), [slots]);
 
     if (!slots) {
         return (
