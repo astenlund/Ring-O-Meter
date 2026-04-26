@@ -60,8 +60,10 @@ describe('paint loop allocation budget', () => {
         const baseMs = performance.now();
         for (let i = 0; i < 470; i += 1) {
             const ts = baseMs + i * 21;
-            writerA.publish(ts, 220 + Math.sin(i * 0.1) * 10, 0.9);
-            writerB.publish(ts, 440 + Math.sin(i * 0.1) * 10, 0.9);
+            const hzA = 220 + Math.sin(i * 0.1) * 10;
+            const hzB = 440 + Math.sin(i * 0.1) * 10;
+            writerA.publish(ts, hzA, 0.9, -30, hzA);
+            writerB.publish(ts, hzB, 0.9, -30, hzB);
         }
 
         let hzToY = makeHzToY(range, 360);

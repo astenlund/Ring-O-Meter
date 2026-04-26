@@ -78,17 +78,17 @@ class PitchProcessor extends AudioWorkletProcessor {
             // the frame so no corrupted value enters the ring.
             return;
         }
-        // rmsDb is not yet surfaced in the ring; when a consumer
-        // materialises (vowel-matching, chop-cop), add a Float32
-        // column to frameRing.ts at the next byte offset and write it
-        // alongside the existing fields. Compute it here to keep the
-        // shape consistent across future column additions.
-        computeRmsDb(this.buffer);
-        const {hz: stabilizedHz} = this.stabilizer.apply(result.fundamentalHz);
+        const rmsDb = computeRmsDb(this.buffer);
+        // Capture the verbatim YIN reading: stabilizer.apply() returns
+        // only the (possibly corrected) hz, not the input, so the raw
+        // must be bound here. Preserved on the wire as fundamentalHzRaw
+        // so future tooling can audit octave corrections after the fact.
+        const fundamentalHzRaw = result.fundamentalHz;
+        const stabilized = this.stabilizer.apply(fundamentalHzRaw);
         // currentTime is AudioContext seconds; multiply by 1000 for
         // ms matching the ring's contextMs field semantics. Readers
         // (main + worker) convert to paint epoch via their offset.
-        this.writer.publish(currentTime * 1000, stabilizedHz, result.confidence);
+        this.writer.publish(currentTime * 1000, stabilized.hz, result.confidence, rmsDb, fundamentalHzRaw);
     }
 }
 

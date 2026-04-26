@@ -22,8 +22,9 @@ describe('createFrameRing', () => {
         const sab = createFrameRing();
         expect(sab).toBeInstanceOf(SharedArrayBuffer);
         expect(sab.byteLength).toBe(RING_SAB_BYTES);
-        // 8 header + 16 bytes per slot * 1024 slots
-        expect(RING_SAB_BYTES).toBe(8 + 16 * CAPACITY);
+        // 8 header + 24 bytes per slot * 1024 slots (Float64 contextMs
+        // + four Float32 columns: hz, conf, rmsDb, hzRaw).
+        expect(RING_SAB_BYTES).toBe(8 + 24 * CAPACITY);
     });
 });
 
@@ -38,9 +39,9 @@ describe('FrameRingReader.readLatest', () => {
         const sab = createFrameRing();
         const w = writer(sab);
         const r = reader(sab);
-        w.publish(100, 220, 0.9);
-        w.publish(101, 330, 0.85);
-        w.publish(102, 440, 0.95);
+        w.publish(100, 220, 0.9, -30, 220);
+        w.publish(101, 330, 0.85, -30, 330);
+        w.publish(102, 440, 0.95, -30, 440);
         const latest = r.readLatest();
         expect(latest).toEqual({fundamentalHz: 440, confidence: expect.closeTo(0.95, 5)});
     });
@@ -49,9 +50,12 @@ describe('FrameRingReader.readLatest', () => {
         const sab = createFrameRing();
         const w = writer(sab);
         const r = reader(sab, 999);
-        w.publish(50, 220, 0.9);
+        w.publish(50, 220, 0.9, -30, 220);
         const latest = r.readLatest()!;
         // No tsMs field; offset does not leak through readLatest.
+        // rmsDb and fundamentalHzRaw are written into the SAB but
+        // intentionally not exposed by the reader yet — they grow
+        // on-demand when the first consumer lands.
         expect(Object.keys(latest).sort()).toEqual(['confidence', 'fundamentalHz']);
     });
 });
@@ -67,10 +71,10 @@ describe('FrameRingReader.published', () => {
         const sab = createFrameRing();
         const w = writer(sab);
         const r = reader(sab);
-        w.publish(0, 200, 0.5);
+        w.publish(0, 200, 0.5, -30, 200);
         expect(r.published()).toBe(1);
-        w.publish(0, 200, 0.5);
-        w.publish(0, 200, 0.5);
+        w.publish(0, 200, 0.5, -30, 200);
+        w.publish(0, 200, 0.5, -30, 200);
         expect(r.published()).toBe(3);
     });
 });
@@ -89,9 +93,9 @@ describe('FrameRingReader.forEach', () => {
         const w = writer(sab);
         const r = reader(sab, OFFSET_MS);
         // contextMs values 100, 200, 300
-        w.publish(100, 220, 0.9);
-        w.publish(200, 330, 0.85);
-        w.publish(300, 440, 0.95);
+        w.publish(100, 220, 0.9, -30, 220);
+        w.publish(200, 330, 0.85, -30, 330);
+        w.publish(300, 440, 0.95, -30, 440);
         const samples: Array<[number, number, number]> = [];
         r.forEach(0, (tsMs, hz, conf) => samples.push([tsMs, hz, conf]));
         // tsMs = contextMs + OFFSET_MS
@@ -107,10 +111,10 @@ describe('FrameRingReader.forEach', () => {
         const w = writer(sab);
         const r = reader(sab, OFFSET_MS);
         // Publishing with contextMs 100, 200, 300, 400
-        w.publish(100, 220, 0.9);
-        w.publish(200, 330, 0.85);
-        w.publish(300, 440, 0.95);
-        w.publish(400, 550, 0.92);
+        w.publish(100, 220, 0.9, -30, 220);
+        w.publish(200, 330, 0.85, -30, 330);
+        w.publish(300, 440, 0.95, -30, 440);
+        w.publish(400, 550, 0.92, -30, 550);
         // Paint window starts at tsMs = 10_250, so contextMs 200 is
         // the leading pre-window sample, 300 and 400 are in-window.
         const samples: number[] = [];
@@ -124,7 +128,7 @@ describe('FrameRingReader.forEach', () => {
         const sab = createFrameRing();
         const w = writer(sab);
         const r = reader(sab, OFFSET_MS);
-        w.publish(100, 220, 0.9);
+        w.publish(100, 220, 0.9, -30, 220);
         const before: number[] = [];
         r.forEach(0, (tsMs) => before.push(tsMs));
         expect(before[0]).toBe(OFFSET_MS + 100);
@@ -140,7 +144,7 @@ describe('FrameRingReader.forEach', () => {
         const r = reader(sab, 0);
         // Publish 2 * CAPACITY frames so the ring has fully wrapped.
         for (let i = 0; i < 2 * CAPACITY; i += 1) {
-            w.publish(i, 100 + i, 0.5);
+            w.publish(i, 100 + i, 0.5, -30, 100 + i);
         }
         // After 2*C publishes, writeIdx = 2*C; next write target slot
         // = 2*C & (C-1) = 0. Reader should iterate slots 1..1023,
@@ -157,5 +161,36 @@ describe('FrameRingReader.forEach', () => {
             }
         });
         expect(seenSlotZeroData).toBe(false);
+    });
+});
+
+describe('FrameRingWriter trailing-column writes', () => {
+    // Mirror of the production byte offsets. Production keeps these
+    // module-private; the test reproduces them so a typed-array view
+    // can read the columns the reader does not yet surface. If the
+    // production layout changes, the size-invariant assertion at
+    // `RING_SAB_BYTES` line 26 catches the drift first; this block's
+    // fixed values then need a coordinated update.
+    const HEADER_BYTES = 8;
+    const CTX_MS_BYTES = CAPACITY * 8;
+    const COL_BYTES = CAPACITY * 4;
+    const HZ_OFFSET = HEADER_BYTES + CTX_MS_BYTES;
+    const CONF_OFFSET = HZ_OFFSET + COL_BYTES;
+    const RMS_DB_OFFSET = CONF_OFFSET + COL_BYTES;
+    const HZ_RAW_OFFSET = RMS_DB_OFFSET + COL_BYTES;
+
+    it('lays rmsDb and fundamentalHzRaw bytes at the expected offsets', () => {
+        const sab = createFrameRing();
+        const w = writer(sab);
+        // Distinct sentinel values so a swap of the two columns
+        // would be observable.
+        w.publish(100, 440, 0.9, -27.5, 880);
+
+        const rmsDbView = new Float32Array(sab, RMS_DB_OFFSET, CAPACITY);
+        const hzRawView = new Float32Array(sab, HZ_RAW_OFFSET, CAPACITY);
+        // Float32 round-trip is exact for values representable in
+        // single precision; -27.5 and 880 both are.
+        expect(rmsDbView[0]).toBe(-27.5);
+        expect(hzRawView[0]).toBe(880);
     });
 });
