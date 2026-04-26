@@ -3,7 +3,9 @@ import {
     CAPACITY,
     FrameRingReader,
     FrameRingWriter,
+    HZ_RAW_OFFSET,
     RING_SAB_BYTES,
+    RMS_DB_OFFSET,
     createFrameRing,
 } from './frameRing';
 
@@ -165,20 +167,6 @@ describe('FrameRingReader.forEach', () => {
 });
 
 describe('FrameRingWriter trailing-column writes', () => {
-    // Mirror of the production byte offsets. Production keeps these
-    // module-private; the test reproduces them so a typed-array view
-    // can read the columns the reader does not yet surface. If the
-    // production layout changes, the size-invariant assertion at
-    // `RING_SAB_BYTES` line 26 catches the drift first; this block's
-    // fixed values then need a coordinated update.
-    const HEADER_BYTES = 8;
-    const CTX_MS_BYTES = CAPACITY * 8;
-    const COL_BYTES = CAPACITY * 4;
-    const HZ_OFFSET = HEADER_BYTES + CTX_MS_BYTES;
-    const CONF_OFFSET = HZ_OFFSET + COL_BYTES;
-    const RMS_DB_OFFSET = CONF_OFFSET + COL_BYTES;
-    const HZ_RAW_OFFSET = RMS_DB_OFFSET + COL_BYTES;
-
     it('lays rmsDb and fundamentalHzRaw bytes at the expected offsets', () => {
         const sab = createFrameRing();
         const w = writer(sab);

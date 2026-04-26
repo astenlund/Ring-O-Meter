@@ -17,13 +17,15 @@ const CAP_MASK = CAPACITY - 1;
 // alignment for Atomics), then 8-byte-aligned Float64 for
 // captureContextMs, then four Float32 columns. The trailing two
 // (rmsDb, hzRaw) are written by the worklet but not yet surfaced by
-// the reader; they will gain reader-side accessors when the first
-// reader-side consumer lands. Slice 1's SignalR publish sink is the
-// proximate driver (it forwards every column on the wire, where
-// AnalysisFrame already carries them at [Key(4)]/[Key(5)]); downstream
-// analytical consumers include vowel-matching mic calibration,
-// chop-cop amplitude envelope, and heuristic-introspection raw-YIN
-// audit.
+// the FrameRingReader API; they will gain reader-side accessors when
+// the first reader-side consumer lands. Slice 1's SignalR publish
+// sink is the proximate driver (it forwards every column on the
+// wire, where AnalysisFrame already carries them at [Key(4)]/[Key(5)]);
+// downstream analytical consumers include vowel-matching mic
+// calibration, chop-cop amplitude envelope, and heuristic-introspection
+// raw-YIN audit. RMS_DB_OFFSET and HZ_RAW_OFFSET are exported so
+// frameRing.test.ts can read these columns directly via raw typed
+// views until that reader API lands.
 const HEADER_OFFSET = 0;
 const HEADER_BYTES = 8;  // 4 bytes header + 4 bytes pad for Float64 alignment
 const CTX_MS_OFFSET = HEADER_BYTES;
@@ -32,11 +34,15 @@ const HZ_OFFSET = CTX_MS_OFFSET + CTX_MS_BYTES;
 const HZ_BYTES = CAPACITY * 4;
 const CONF_OFFSET = HZ_OFFSET + HZ_BYTES;
 const CONF_BYTES = CAPACITY * 4;
-const RMS_DB_OFFSET = CONF_OFFSET + CONF_BYTES;
+export const RMS_DB_OFFSET = CONF_OFFSET + CONF_BYTES;
 const RMS_DB_BYTES = CAPACITY * 4;
-const HZ_RAW_OFFSET = RMS_DB_OFFSET + RMS_DB_BYTES;
+export const HZ_RAW_OFFSET = RMS_DB_OFFSET + RMS_DB_BYTES;
 const HZ_RAW_BYTES = CAPACITY * 4;
-export const RING_SAB_BYTES = HZ_RAW_OFFSET + HZ_RAW_BYTES;  // 8 + 24 * CAPACITY = 24584
+// Layout-drift tripwire: any column add/remove/resize updates this
+// total. createFrameRing's size-invariant test pins 8 + 24 * CAPACITY
+// = 24584; the trailing-column offset test then catches column
+// reordering at finer grain.
+export const RING_SAB_BYTES = HZ_RAW_OFFSET + HZ_RAW_BYTES;
 
 export interface UiFrame {
     fundamentalHz: number;
