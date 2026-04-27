@@ -7,7 +7,7 @@
 
 // Slot count. Power of 2 so slot = writeIdx & (CAPACITY - 1).
 // 1024 slots at ~47 Hz per channel = ~21.8 s of history, ~2.2x the
-// 10 s plot window — gives ample headroom over consumer lag and
+// 10 s plot window, which gives ample headroom over consumer lag and
 // ensures the skip-oldest tearing convention bites only if a reader
 // stalls mid-forEach by >21 ms (see tearing section of spec).
 export const CAPACITY = 1024;
@@ -47,6 +47,28 @@ export const RING_SAB_BYTES = HZ_RAW_OFFSET + HZ_RAW_BYTES;
 export interface UiFrame {
     fundamentalHz: number;
     confidence: number;
+}
+
+/**
+ * Writer-side input shape for FrameRingWriter.publish. One named
+ * field per ring column. Mirror of the reader's `readLatest(out:
+ * UiFrame)` pattern: the caller owns the struct's lifetime, hoists
+ * one instance, mutates fields in place, and passes it by reference
+ * each publish. That keeps the publish path zero-alloc in steady
+ * state while making column transposition (the failure mode of the
+ * previous 5-positional-number signature) a TypeScript error rather
+ * than a silent miswire that only the byte-offset test in
+ * frameRing.test.ts would catch via sentinels. Adding a sixth ring
+ * column is now: extend this interface, write the new column in
+ * publish(), assign the new field at every caller; TypeScript
+ * surfaces the missing assignment at the worklet caller.
+ */
+export interface PublishFrame {
+    captureContextMs: number;
+    fundamentalHz: number;
+    confidence: number;
+    rmsDb: number;
+    fundamentalHzRaw: number;
 }
 
 /**
@@ -110,7 +132,7 @@ export class FrameRingWriter {
     private readonly conf: Float32Array;
     private readonly rmsDb: Float32Array;
     private readonly hzRaw: Float32Array;
-    // Monotonic, per-instance. Not atomic itself — only the publish
+    // Monotonic, per-instance. Not atomic itself; only the publish
     // via Atomics.store on this.header is observable externally.
     private writeIdx = 0;
 
@@ -129,21 +151,19 @@ export class FrameRingWriter {
      * Atomics.store on the header as the "commit" signal. JS
      * Atomics.store is sequentially consistent: any consumer that
      * sees the new writeIdx via Atomics.load is guaranteed to see
-     * the preceding field writes. Zero allocations per call.
+     * the preceding field writes. Zero allocations per call when
+     * the caller hoists `frame` once and mutates it in place across
+     * publishes (see PublishFrame docstring); object-literal
+     * arguments allocate per call and are intentionally tolerated
+     * only in non-alloc tests where readability beats GC pressure.
      */
-    public publish(
-        captureContextMs: number,
-        fundamentalHz: number,
-        confidence: number,
-        rmsDb: number,
-        fundamentalHzRaw: number,
-    ): void {
+    public publish(frame: PublishFrame): void {
         const slot = this.writeIdx & CAP_MASK;
-        this.contextMs[slot] = captureContextMs;
-        this.hz[slot] = fundamentalHz;
-        this.conf[slot] = confidence;
-        this.rmsDb[slot] = rmsDb;
-        this.hzRaw[slot] = fundamentalHzRaw;
+        this.contextMs[slot] = frame.captureContextMs;
+        this.hz[slot] = frame.fundamentalHz;
+        this.conf[slot] = frame.confidence;
+        this.rmsDb[slot] = frame.rmsDb;
+        this.hzRaw[slot] = frame.fundamentalHzRaw;
         this.writeIdx += 1;
         Atomics.store(this.header, 0, this.writeIdx);
     }
@@ -197,7 +217,7 @@ export class FrameRingReader {
      * Main-side pull. Writes the newest published frame's UI shape
      * into the caller-supplied `out` and returns true; returns false
      * (leaving `out` untouched) when no frame has been published yet.
-     * Out-param shape is what makes steady-state zero-alloc — the
+     * Out-param shape is what makes steady-state zero-alloc: the
      * caller owns one UiFrame per registered reader, lifetime-bound
      * to the reader entry.
      */
@@ -219,7 +239,7 @@ export class FrameRingReader {
      * pre-window sample for drawTraces's left-edge interpolation),
      * then forward-iterates invoking cb on each. Zero per-slot
      * allocation; the callback itself is allocated by the caller
-     * once per voice per paint — JIT closure hoisting keeps it
+     * once per voice per paint, but JIT closure hoisting keeps it
      * zero-alloc in steady state, proven by
      * paintLoop.alloc.browser.ts.
      *

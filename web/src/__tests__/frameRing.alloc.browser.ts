@@ -2,6 +2,7 @@ import {describe, test, expect} from 'vitest';
 import {
     FrameRingReader,
     FrameRingWriter,
+    type PublishFrame,
     createFrameRing,
 } from '../audio/frameRing';
 
@@ -29,10 +30,17 @@ describe('frameRing writer allocation budget', () => {
         const sab = createFrameRing();
         const writer = new FrameRingWriter(sab);
         let t = 0;
+        // Scratch hoisted out of the publish closure so the budget
+        // measures the writer's per-call cost (atomic store + five
+        // typed-array writes), not a per-call object literal.
+        const scratch: PublishFrame = {captureContextMs: 0, fundamentalHz: 0, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 0};
         const publish = () => {
             t += 21;
             const hz = 220 + (t & 0xff) * 0.01;
-            writer.publish(t, hz, 0.9, -30, hz);
+            scratch.captureContextMs = t;
+            scratch.fundamentalHz = hz;
+            scratch.fundamentalHzRaw = hz;
+            writer.publish(scratch);
         };
 
         for (let i = 0; i < WARMUP_ITERATIONS; i += 1) {
@@ -61,11 +69,15 @@ describe('frameRing reader.forEach allocation budget', () => {
         const sab = createFrameRing();
         const writer = new FrameRingWriter(sab);
         const reader = new FrameRingReader(sab, 0);
-        // Populate the ring to ~plot-window fullness.
+        // Populate the ring to ~plot-window fullness. Setup loop runs
+        // before the warmup baseline gc(), so per-iteration object
+        // literals here don't contribute to the budget that measures
+        // readAll() below; readability beats scratch hoisting (matches
+        // the convention in paintLoop.alloc.browser.ts).
         const baseMs = 0;
         for (let i = 0; i < 470; i += 1) {
             const hz = 220 + Math.sin(i * 0.1) * 10;
-            writer.publish(baseMs + i * 21, hz, 0.9, -30, hz);
+            writer.publish({captureContextMs: baseMs + i * 21, fundamentalHz: hz, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: hz});
         }
 
         const readAll = () => {

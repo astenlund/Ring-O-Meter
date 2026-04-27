@@ -8,7 +8,7 @@ import {detectPitch} from '../pitchDetector';
 import {computeRmsDb} from '../rmsDb';
 import {OctaveStabilizer} from '../octaveStabilizer';
 import {PITCH_PROCESSOR_NAME} from '../constants';
-import {FrameRingWriter} from '../frameRing';
+import {FrameRingWriter, type PublishFrame} from '../frameRing';
 
 const FRAME_SIZE = 1024;
 const PUBLISH_INTERVAL_FRAMES = 1; // every ~21 ms at 48 kHz -> ~47 Hz publish
@@ -23,6 +23,16 @@ class PitchProcessor extends AudioWorkletProcessor {
     private framesSinceLastPublish = 0;
     private readonly writer: FrameRingWriter;
     private readonly stabilizer = new OctaveStabilizer();
+    // Hoisted scratch reused across every publish so the hot-path
+    // stays zero-alloc; the writer reads the fields and copies them
+    // into the SAB ring slot. Mutated in place inside publish().
+    private readonly scratch: PublishFrame = {
+        captureContextMs: 0,
+        fundamentalHz: 0,
+        confidence: 0,
+        rmsDb: 0,
+        fundamentalHzRaw: 0,
+    };
 
     public constructor(options?: AudioWorkletNodeOptions) {
         super();
@@ -88,7 +98,12 @@ class PitchProcessor extends AudioWorkletProcessor {
         // currentTime is AudioContext seconds; multiply by 1000 for
         // ms matching the ring's contextMs field semantics. Readers
         // (main + worker) convert to paint epoch via their offset.
-        this.writer.publish(currentTime * 1000, stabilized.hz, result.confidence, rmsDb, fundamentalHzRaw);
+        this.scratch.captureContextMs = currentTime * 1000;
+        this.scratch.fundamentalHz = stabilized.hz;
+        this.scratch.confidence = result.confidence;
+        this.scratch.rmsDb = rmsDb;
+        this.scratch.fundamentalHzRaw = fundamentalHzRaw;
+        this.writer.publish(this.scratch);
     }
 }
 
