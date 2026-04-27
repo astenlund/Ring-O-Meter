@@ -42,4 +42,19 @@ describe('shouldDisplayPitch', () => {
         // Arrange / Act / Assert
         expect(shouldDisplayPitch(440, -0.1)).toBe(false);
     });
+
+    it('includes confidence at the upper end of the normal range', () => {
+        // Arrange / Act / Assert
+        expect(shouldDisplayPitch(440, 1.0)).toBe(true);
+    });
+
+    it('includes confidence above the normal range (no upper bound by design)', () => {
+        // Arrange / Act / Assert
+        expect(shouldDisplayPitch(440, Number.POSITIVE_INFINITY)).toBe(true);
+    });
+
+    it('excludes hz = 0 regardless of confidence sanity', () => {
+        // Arrange / Act / Assert
+        expect(shouldDisplayPitch(0, Number.NaN)).toBe(false);
+    });
 });
