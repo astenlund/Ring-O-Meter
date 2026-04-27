@@ -61,7 +61,7 @@ function singleRing(samples: ReadonlyArray<readonly [number, number, number]>): 
         // rmsDb / fundamentalHzRaw are not part of drawTraces' input
         // surface; pass placeholder values (rmsDb -30 dBFS, raw equal
         // to stabilized hz as if no octave correction fired).
-        writer.publish(ts, hz, conf, -30, hz);
+        writer.publish({captureContextMs: ts, fundamentalHz: hz, confidence: conf, rmsDb: -30, fundamentalHzRaw: hz});
     }
 
     return {v1: new FrameRingReader(sab, 0)};
