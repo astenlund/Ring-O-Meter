@@ -1,10 +1,32 @@
-# Infra (slice 1a)
+# Infra
 
 Trimmed Azure deployment: a single test environment in Sweden Central
 (`rg-ringometer-test`) hosting the RingOMeter.Server static-file host
 on Azure Container Apps Consumption tier with HTTPS termination and
-COOP/COEP for SharedArrayBuffer. This slice ships the subset
-needed to unblock Phase 2 of the rendering-diagnostics plan.
+COOP/COEP for SharedArrayBuffer. This directory ships the
+subset needed to unblock Phase 2 of the rendering-diagnostics plan.
+
+## Quickest path: `Deploy-RingOMeter.ps1`
+
+The PowerShell script at the repo root wraps the `az` commands below
+into three modes:
+
+```powershell
+# First-time deploy (Bicep with quickstart placeholder image):
+.\Deploy-RingOMeter.ps1 -Bootstrap
+
+# Code roll (build + push image + roll Container App). This is what
+# the CI workflow does on push to main; run it locally for hotfixes
+# or out-of-band deploys:
+.\Deploy-RingOMeter.ps1
+
+# Infra-only redeploy (capture current image, run Bicep with it):
+.\Deploy-RingOMeter.ps1 -Infrastructure
+```
+
+The script uses `az acr build` so no local Docker is required. The
+sections below document the underlying commands for manual use,
+debugging, or porting the flow to another shell.
 
 ## One-time setup
 
@@ -98,7 +120,8 @@ involved.
 When the Bicep itself changes (new module, new RBAC grant, settings
 adjustment), redeploy from a developer machine. **Capture the current
 running image first** so Bicep does not clobber it back to the
-quickstart image (see slice-1a plan section 2g):
+quickstart image (the `containerImage` parameter in `main.bicep` has
+no default specifically so a forgotten override fails loudly):
 
 ```bash
 CURRENT_IMAGE=$(az containerapp show \
@@ -124,6 +147,6 @@ there is operational experience with the infra-change cadence.
 
 ## Deferred from `azure-deployment.md`
 
-Slice 1a explicitly does NOT ship: Storage Account, prod RG, custom
-domain, Key Vault, three-RG split. Each grows back as later slices
-need it.
+The current trimmed deployment explicitly does NOT include: Storage
+Account, prod RG, custom domain, Key Vault, three-RG split. Each
+grows back as later features need it.
