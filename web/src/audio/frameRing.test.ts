@@ -6,6 +6,7 @@ import {
     HZ_RAW_OFFSET,
     RING_SAB_BYTES,
     RMS_DB_OFFSET,
+    type UiFrame,
     createFrameRing,
 } from './frameRing';
 
@@ -31,34 +32,64 @@ describe('createFrameRing', () => {
 });
 
 describe('FrameRingReader.readLatest', () => {
-    it('returns null before any frame is published', () => {
+    it('returns false before any frame is published', () => {
+        // Arrange
         const sab = createFrameRing();
         const r = reader(sab);
-        expect(r.readLatest()).toBeNull();
+        const out: UiFrame = {fundamentalHz: 0, confidence: 0};
+
+        // Act / Assert
+        expect(r.readLatest(out)).toBe(false);
     });
 
-    it('returns the most recently published frame', () => {
+    it('writes the most recently published frame into out and returns true', () => {
+        // Arrange
         const sab = createFrameRing();
         const w = writer(sab);
         const r = reader(sab);
         w.publish(100, 220, 0.9, -30, 220);
         w.publish(101, 330, 0.85, -30, 330);
         w.publish(102, 440, 0.95, -30, 440);
-        const latest = r.readLatest();
-        expect(latest).toEqual({fundamentalHz: 440, confidence: expect.closeTo(0.95, 5)});
+        const out: UiFrame = {fundamentalHz: 0, confidence: 0};
+
+        // Act
+        const result = r.readLatest(out);
+
+        // Assert
+        expect(result).toBe(true);
+        expect(out.fundamentalHz).toBe(440);
+        expect(out.confidence).toBeCloseTo(0.95, 5);
     });
 
     it('does not include contextMs or offset — UI shape is narrow', () => {
+        // Arrange
         const sab = createFrameRing();
         const w = writer(sab);
         const r = reader(sab, 999);
         w.publish(50, 220, 0.9, -30, 220);
-        const latest = r.readLatest()!;
-        // No tsMs field; offset does not leak through readLatest.
+        const out: UiFrame = {fundamentalHz: 0, confidence: 0};
+
+        // Act
+        r.readLatest(out);
+
+        // Assert — no tsMs field; offset does not leak through readLatest.
         // rmsDb and fundamentalHzRaw are written into the SAB but
         // intentionally not exposed by the reader yet — they grow
         // on-demand when the first consumer lands.
-        expect(Object.keys(latest).sort()).toEqual(['confidence', 'fundamentalHz']);
+        expect(Object.keys(out).sort()).toEqual(['confidence', 'fundamentalHz']);
+    });
+
+    it('leaves out unmodified when no frame is published', () => {
+        // Arrange
+        const sab = createFrameRing();
+        const r = reader(sab);
+        const out: UiFrame = {fundamentalHz: 99, confidence: 0.42};
+
+        // Act / Assert — sentinels preserved exactly; pins the contract
+        // so a future implementation that nulls fields on miss fails here.
+        expect(r.readLatest(out)).toBe(false);
+        expect(out.fundamentalHz).toBe(99);
+        expect(out.confidence).toBe(0.42);
     });
 });
 
