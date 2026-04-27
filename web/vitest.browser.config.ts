@@ -10,11 +10,15 @@ import react from '@vitejs/plugin-react';
 // BrowserType.launch().
 //
 // The Vitest browser runner hosts the tests on its own Vite server;
-// SharedArrayBuffer requires cross-origin isolation there too, so
-// we mirror vite.config.ts's COOP/COEP headers onto this server
-// block. Without them, any alloc test that touches frameRing.ts
-// (which needs SAB) fails with ReferenceError: SharedArrayBuffer
-// is not defined.
+// SharedArrayBuffer requires cross-origin isolation there too, so we
+// mirror the COOP/COEP headers onto this server block. Without them,
+// any alloc test that touches frameRing.ts (which needs SAB) fails
+// with ReferenceError: SharedArrayBuffer is not defined.
+//
+// Lockstep set (change all together):
+//   web/vite.config.ts                (server + preview blocks)
+//   web/vitest.browser.config.ts      (this file)
+//   src/RingOMeter.Server/Program.cs  (slice 1a deployed server)
 export default defineConfig({
     plugins: [react()],
     server: {

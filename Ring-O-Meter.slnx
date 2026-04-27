@@ -2,5 +2,8 @@
   <Folder Name="/src/">
     <Project Path="src/RingOMeter.Domain.Tests/RingOMeter.Domain.Tests.csproj" />
     <Project Path="src/RingOMeter.Domain/RingOMeter.Domain.csproj" />
+    <Project Path="src/RingOMeter.Server.Tests/RingOMeter.Server.Tests.csproj" />
+    <Project Path="src/RingOMeter.Server/RingOMeter.Server.csproj" />
   </Folder>
 </Solution>
+
