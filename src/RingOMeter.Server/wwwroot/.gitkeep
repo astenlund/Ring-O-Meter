@@ -1,0 +1,2 @@
+# Empty in source. Populated at Docker build time with the contents of
+# `web/dist/` (the built slice-0 web bundle). See Dockerfile stage 2.
