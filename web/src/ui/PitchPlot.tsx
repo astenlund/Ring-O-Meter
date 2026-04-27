@@ -1,6 +1,7 @@
 import {type CSSProperties, type RefObject, useEffect, useRef} from 'react';
 import {PlotController} from '../plot/plotController';
 import type {VoiceEntry} from '../plot/plotMessages';
+import {useCanvasBacking} from './useCanvasBacking';
 
 export type {VoiceEntry};
 
@@ -26,8 +27,8 @@ const canvasStyle: CSSProperties = {
 };
 
 // Thin React shell over PlotController. On first mount, transfers the
-// canvas to the worker and spawns it; forwards ResizeObserver + DPR
-// changes via setBacking; forwards voices changes via setRoster.
+// canvas to the worker and spawns it; forwards size + DPR changes from
+// useCanvasBacking via setBacking; forwards voices changes via setRoster.
 //
 // Strict-mode safety. transferControlToOffscreen() is one-shot per
 // <canvas> element and throws InvalidStateError on a second call.
@@ -51,6 +52,7 @@ export function PitchPlot({
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const controllerRef = useRef<PlotController | null>(null);
     const pendingUnmountRef = useRef(false);
+    const backing = useCanvasBacking(canvasRef);
 
     useEffect(() => {
         pendingUnmountRef.current = false;
@@ -60,43 +62,12 @@ export function PitchPlot({
         }
         if (!controllerRef.current) {
             const fresh = new PlotController();
-            const dpr = window.devicePixelRatio || 1;
-            fresh.attach(canvas, {
-                voices,
-                backing: {cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight, dpr},
-                windowMs,
-                minHz,
-                maxHz,
-            });
+            fresh.attach(canvas, {voices, backing, windowMs, minHz, maxHz});
             controllerRef.current = fresh;
         }
-        const controller = controllerRef.current;
-        handleRef.current = controller;
-
-        const observer = new ResizeObserver((entries) => {
-            const entry = entries[0];
-            if (!entry) {
-                return;
-            }
-            const box = entry.contentBoxSize?.[0];
-            const w = box ? box.inlineSize : entry.contentRect.width;
-            const h = box ? box.blockSize : entry.contentRect.height;
-            controller.setBacking(w, h, window.devicePixelRatio || 1);
-        });
-        observer.observe(canvas);
-
-        let mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
-        const onDprChange = () => {
-            controller.setBacking(canvas.clientWidth, canvas.clientHeight, window.devicePixelRatio || 1);
-            mql.removeEventListener('change', onDprChange);
-            mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
-            mql.addEventListener('change', onDprChange);
-        };
-        mql.addEventListener('change', onDprChange);
+        handleRef.current = controllerRef.current;
 
         return () => {
-            observer.disconnect();
-            mql.removeEventListener('change', onDprChange);
             handleRef.current = null;
             pendingUnmountRef.current = true;
             queueMicrotask(() => {
@@ -106,11 +77,20 @@ export function PitchPlot({
                 }
             });
         };
-        // Attach runs once per controller lifetime. Voices changes flow
-        // via the roster effect below; windowMs / minHz / maxHz are
-        // structurally fixed per mounted canvas.
+        // Attach runs once per controller lifetime. Backing changes flow
+        // via the setBacking effect below; voices via the roster effect;
+        // windowMs / minHz / maxHz are structurally fixed per mounted
+        // canvas.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // First fire on initial mount is redundant with the `attach({backing})`
+    // call above (same values, fresh worker), but the cost is a single
+    // postMessage and the unconditional shape keeps the resize-driven
+    // updates from carrying a "skip the first one" guard ref.
+    useEffect(() => {
+        controllerRef.current?.setBacking(backing.cssWidth, backing.cssHeight, backing.dpr);
+    }, [backing]);
 
     useEffect(() => {
         controllerRef.current?.setRoster(voices);
