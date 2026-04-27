@@ -1,0 +1,107 @@
+name: deploy-test
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Slice 1a: image-roll workflow only. Builds the multi-stage Docker
+# image, pushes to ACR, and rolls the Container App via az
+# containerapp update. Bicep redeploys (infra-only changes under
+# infra/**) are run manually from a developer machine per
+# infra/README.md; a separate deploy-infra.yml workflow is the
+# natural next step but deferred until there is operational
+# experience with the infra-change cadence.
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  REGISTRY_NAME: ''  # Resolved from Azure on first step; recorded as repo var if a stable value is preferred.
+  CONTAINER_APP_NAME: ca-ringometer-test
+  RESOURCE_GROUP: rg-ringometer-test
+  IMAGE_REPOSITORY: ringometer-server
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Node 22 + pnpm via Corepack
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Activate pnpm from package.json
+        run: |
+          corepack enable
+          corepack prepare $(node -p "require('./web/package.json').packageManager") --activate
+
+      - name: Restore + build + test (.NET)
+        run: |
+          dotnet build Ring-O-Meter.slnx --no-incremental --configuration Release
+          dotnet test Ring-O-Meter.slnx --configuration Release --no-build --filter "Category!=Integration"
+
+      - name: Web lint + jsdom test
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm test
+
+      - name: Azure login (federated OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve registry login server
+        id: registry
+        run: |
+          LOGIN_SERVER=$(az acr list \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "[?starts_with(name, 'crringometer')].loginServer | [0]" -o tsv)
+          if [ -z "$LOGIN_SERVER" ]; then
+            echo "No ACR found in $RESOURCE_GROUP. Has the bootstrap deploy run?" >&2
+            exit 1
+          fi
+          echo "login_server=$LOGIN_SERVER" >> "$GITHUB_OUTPUT"
+          echo "registry_name=${LOGIN_SERVER%%.*}" >> "$GITHUB_OUTPUT"
+
+      - name: ACR login
+        run: az acr login --name "${{ steps.registry.outputs.registry_name }}"
+
+      - name: Build and push image
+        env:
+          IMAGE_TAG: ${{ steps.registry.outputs.login_server }}/${{ env.IMAGE_REPOSITORY }}:${{ github.sha }}
+        run: |
+          docker build -t "$IMAGE_TAG" .
+          docker push "$IMAGE_TAG"
+
+      - name: Roll Container App
+        env:
+          IMAGE_TAG: ${{ steps.registry.outputs.login_server }}/${{ env.IMAGE_REPOSITORY }}:${{ github.sha }}
+        run: |
+          az containerapp update \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$CONTAINER_APP_NAME" \
+            --image "$IMAGE_TAG"
+
+      - name: Smoke check deployed endpoints
+        run: |
+          FQDN=$(az containerapp show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$CONTAINER_APP_NAME" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Deployed at https://$FQDN"
+          curl -fsS -o /dev/null -w "%{http_code}\n" "https://$FQDN/health"
+          curl -fsS "https://$FQDN/config.json"
