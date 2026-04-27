@@ -2,7 +2,7 @@ import {describe, test, expect} from 'vitest';
 import {createRoot, type Root} from 'react-dom/client';
 import {act} from 'react';
 import {useFrameState, type FrameStateControl} from '../audio/useFrameState';
-import {createFrameRing, FrameRingReader, FrameRingWriter} from '../audio/frameRing';
+import {createFrameRing, FrameRingReader, FrameRingWriter, type PublishFrame} from '../audio/frameRing';
 
 declare global {
     var gc: (() => void) | undefined;
@@ -56,11 +56,23 @@ describe('frame-state allocation budget', () => {
             setTimeout(resolve, 300);
         });
 
+        // One scratch per writer; mutated in place each advance() so
+        // the publish path stays zero-alloc against this hook's heap
+        // budget rather than burning two object literals per tick.
+        const scratchA: PublishFrame = {captureContextMs: 0, fundamentalHz: 0, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 0};
+        const scratchB: PublishFrame = {captureContextMs: 0, fundamentalHz: 0, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 0};
         const advance = (idx: number) => {
             const hzA = 220 + (idx & 0xff) * 0.01;
             const hzB = 440 + (idx & 0xff) * 0.01;
-            writerA.publish(idx * 21, hzA, 0.9, -30, hzA);
-            writerB.publish(idx * 21, hzB, 0.9, -30, hzB);
+            const ts = idx * 21;
+            scratchA.captureContextMs = ts;
+            scratchA.fundamentalHz = hzA;
+            scratchA.fundamentalHzRaw = hzA;
+            writerA.publish(scratchA);
+            scratchB.captureContextMs = ts;
+            scratchB.fundamentalHz = hzB;
+            scratchB.fundamentalHzRaw = hzB;
+            writerB.publish(scratchB);
         };
 
         for (let i = 0; i < WARMUP_ITERATIONS; i += 1) {
