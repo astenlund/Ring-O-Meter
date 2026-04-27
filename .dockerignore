@@ -1,0 +1,38 @@
+# Keep the build context lean and deterministic. Excluded paths are
+# either build artefacts (regenerated inside the image) or developer
+# state that has no business in a container image.
+
+# .NET build artefacts
+**/bin/
+**/obj/
+
+# Node / pnpm
+**/node_modules/
+web/dist/
+
+# Repository and developer state
+.git/
+.github/
+.tmp/
+.vs/
+.vscode/
+.idea/
+.claude/
+hooks/
+playwright-report/
+test-results/
+
+# IDE / OS noise
+**/.DS_Store
+**/Thumbs.db
+
+# Tests and infra are not needed in the runtime image
+src/*.Tests/
+infra/
+
+# Sensitive or local-only
+**/*.user
+**/*.suo
+.env
+.env.*
+!.env.example
