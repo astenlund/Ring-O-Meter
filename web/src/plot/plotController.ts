@@ -1,4 +1,5 @@
 import workerUrl from './plotWorker.ts?worker&url';
+import type {FrameSource} from '../audio/frameRing';
 import {PlotMessageType, type PlotMessage, type VoiceEntry} from './plotMessages';
 
 export interface PlotControllerOptions {
@@ -47,21 +48,21 @@ export class PlotController {
     }
 
     /**
-     * Tell the worker to start reading from this SAB for the given
-     * channel. SAB is passed by reference (SharedArrayBuffer is
-     * shared, not transferred); do NOT include it in the transfer
+     * Tell the worker to start reading the given channel's frame ring.
+     * The SAB inside `source` is passed by reference (SharedArrayBuffer
+     * is shared, not transferred); do NOT include it in the transfer
      * list - doing so throws DataCloneError.
      */
-    public attachChannel(channelId: string, sab: SharedArrayBuffer, perfNowAtContextTimeZero: number): void {
-        this.post({type: PlotMessageType.AttachChannel, channelId, sab, perfNowAtContextTimeZero});
+    public attachChannel(channelId: string, source: FrameSource): void {
+        this.post({type: PlotMessageType.AttachChannel, channelId, source});
     }
 
     public detachChannel(channelId: string): void {
         this.post({type: PlotMessageType.DetachChannel, channelId});
     }
 
-    public rebaseChannel(channelId: string, perfNowAtContextTimeZero: number): void {
-        this.post({type: PlotMessageType.RebaseChannel, channelId, perfNowAtContextTimeZero});
+    public rebaseChannel(channelId: string, epochOffsetMs: number): void {
+        this.post({type: PlotMessageType.RebaseChannel, channelId, epochOffsetMs});
     }
 
     public dispose(): void {
