@@ -93,17 +93,18 @@ export class VoiceChannel {
         this.source.connect(this.node);
         // No audible output; don't connect to destination.
 
-        // Arm the statechange listener after the worklet is wired so
-        // the listener-arming order matches the pre-extraction
-        // baseline. The reader has already been seeded with the
-        // placeholder offset above; the first 'running' transition
-        // will rebase via handleRebase as soon as the user-gesture
-        // resume fires.
-        this.epoch.arm();
-
-        // Emit the ready event after the worklet is wired so consumers
-        // can register the reader + attach the plot worker as soon as
-        // frames may start flowing.
+        // Notify consumers + publish the test bridge entry BEFORE
+        // arming the statechange listener. arm() is the only call
+        // here that can produce future onFrameSourceRebased
+        // callbacks, so doing it last guarantees every consumer
+        // (useFrameState, PlotController) and the bridge entry exist
+        // by the time any rebase can fire for this channelId.
+        // Without this ordering a statechange queued between arm()
+        // and onFrameSourceReady would dispatch a rebase for a
+        // channelId consumers don't yet know about; today the two
+        // calls are on the same JS turn so no DOM event can
+        // interleave, but the type system cannot enforce that, so
+        // we encode the contract through the ordering itself.
         this.opts.onFrameSourceReady(this.opts.channelId, this.reader, initialOffset);
 
         publishChannel(
@@ -112,6 +113,8 @@ export class VoiceChannel {
             this.reader,
             () => this.epoch.rebaseCount,
         );
+
+        this.epoch.arm();
     }
 
     public stop(): void {
