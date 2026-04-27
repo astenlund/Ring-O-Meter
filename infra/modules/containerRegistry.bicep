@@ -4,7 +4,7 @@ param location string
 @description('Registry name. 5-50 alphanumerics, globally unique.')
 param name string
 
-resource registry 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = {
+resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   name: name
   location: location
   sku: {

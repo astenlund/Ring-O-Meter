@@ -16,7 +16,7 @@ param appInsightsName string
 var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var monitoringMetricsPublisherRoleId = '3913510d-42f4-4e42-8a64-420c390055eb'
 
-resource registry 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' existing = {
+resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: registryName
 }
 
