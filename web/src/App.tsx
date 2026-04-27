@@ -5,7 +5,7 @@ import {PitchPlot, type PitchPlotHandle} from './ui/PitchPlot';
 import {slotsToVoices} from './ui/rosterToVoices';
 import {useFrameState} from './audio/useFrameState';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
-import type {FrameRingReader} from './audio/frameRing';
+import type {FrameRingReader, FrameSource} from './audio/frameRing';
 
 const PLOT_WINDOW_MS = 10_000;
 
@@ -62,12 +62,12 @@ export function App() {
     }, []);
 
     const handleFrameSourceReady = useCallback(
-        (channelId: string, reader: FrameRingReader, perfNowAtContextTimeZero: number) => {
+        (channelId: string, source: FrameSource, reader: FrameRingReader) => {
             registerReader(channelId, reader);
-            // Forward the same SAB that VoiceChannel created for the
-            // worklet to the plot worker - both sides must read/write
+            // Forward the same source descriptor (SAB + initial epoch
+            // offset) to the plot worker - both sides must read/write
             // the same ring or the plot paints nothing.
-            plotHandleRef.current?.attachChannel(channelId, reader.sab, perfNowAtContextTimeZero);
+            plotHandleRef.current?.attachChannel(channelId, source);
         },
         [registerReader],
     );
@@ -78,7 +78,7 @@ export function App() {
     }, [unregisterReader]);
 
     const handleFrameSourceRebased = useCallback(
-        (channelId: string, perfNowAtContextTimeZero: number) => {
+        (channelId: string, epochOffsetMs: number) => {
             // The reader we registered with useFrameState is the same
             // FrameRingReader instance VoiceChannel owns (identity, not
             // a copy), and VoiceChannel.handleStateChange already
@@ -86,7 +86,7 @@ export function App() {
             // worker's reader is a DIFFERENT instance over the same SAB
             // (class instances cannot cross the worker boundary) and
             // must be synced independently, which is what this does.
-            plotHandleRef.current?.rebaseChannel(channelId, perfNowAtContextTimeZero);
+            plotHandleRef.current?.rebaseChannel(channelId, epochOffsetMs);
         },
         [],
     );

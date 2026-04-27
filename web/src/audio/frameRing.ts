@@ -50,6 +50,22 @@ export interface UiFrame {
 }
 
 /**
+ * Cross-thread descriptor for a per-channel frame ring. Bundles the
+ * SAB (the data source) with the epoch offset (the perf-vs-context
+ * clock alignment) so the two ride together across the boundary hops
+ * between VoiceChannel, App, PlotController, the plot-worker message,
+ * and the worker-side FrameRingReader. epochOffsetMs is main's
+ * performance.now() at the moment audioContext.currentTime was 0
+ * (equivalently, the constant difference between the two clocks while
+ * the context is running); add it to a slot's contextMs to get a tsMs
+ * in main's paint epoch.
+ */
+export interface FrameSource {
+    sab: SharedArrayBuffer;
+    epochOffsetMs: number;
+}
+
+/**
  * Allocate a fresh SharedArrayBuffer sized for one ring. Called on
  * the main thread at channel creation; the same SAB reference flows
  * to the worklet (via processorOptions) and to the plot worker (via
@@ -139,23 +155,23 @@ export class FrameRingWriter {
  * worker (for paint iteration). Stateless apart from the
  * reconciliation offset, which can be updated in place via
  * setOffset to handle AudioContext suspend/resume.
+ *
+ * Reader is intentionally opaque: it does NOT expose the backing SAB.
+ * Callers that need to forward the ring across a thread boundary
+ * (today: PlotController -> plot worker) thread the FrameSource
+ * descriptor alongside the reader, not through it. This keeps the
+ * reader interface implementable by future non-SAB-backed readers
+ * (e.g., slice 1's SignalR DisplayClient).
  */
 export class FrameRingReader {
-    public readonly sab: SharedArrayBuffer;
-    public readonly capacity = CAPACITY;
     private readonly header: Int32Array;
     private readonly contextMs: Float64Array;
     private readonly hz: Float32Array;
     private readonly conf: Float32Array;
-    // Main's performance.now() at the moment audioContext.currentTime
-    // was 0 (or equivalently, the constant difference between the two
-    // clocks while the context is running). Readers add this to
-    // slot.contextMs to produce a tsMs in main's paint epoch.
-    private offsetMs: number;
+    private epochOffsetMs: number;
 
-    public constructor(sab: SharedArrayBuffer, perfNowAtContextTimeZero: number) {
-        this.sab = sab;
-        this.offsetMs = perfNowAtContextTimeZero;
+    public constructor(sab: SharedArrayBuffer, epochOffsetMs: number) {
+        this.epochOffsetMs = epochOffsetMs;
         const views = viewsOver(sab);
         this.header = views.header;
         this.contextMs = views.contextMs;
@@ -171,8 +187,8 @@ export class FrameRingReader {
     }
 
     /** Update the epoch offset after an AudioContext suspend/resume. */
-    public setOffset(perfNowAtContextTimeZero: number): void {
-        this.offsetMs = perfNowAtContextTimeZero;
+    public setOffset(epochOffsetMs: number): void {
+        this.epochOffsetMs = epochOffsetMs;
     }
 
     /**
@@ -220,7 +236,7 @@ export class FrameRingReader {
         let first = absoluteOldest;
         for (let i = pub - 1; i >= absoluteOldest; i -= 1) {
             const slot = i & CAP_MASK;
-            const tsMs = this.contextMs[slot] + this.offsetMs;
+            const tsMs = this.contextMs[slot] + this.epochOffsetMs;
             if (tsMs < startMs) {
                 first = i;
                 break;
@@ -229,7 +245,7 @@ export class FrameRingReader {
 
         for (let i = first; i < pub; i += 1) {
             const slot = i & CAP_MASK;
-            cb(this.contextMs[slot] + this.offsetMs, this.hz[slot], this.conf[slot]);
+            cb(this.contextMs[slot] + this.epochOffsetMs, this.hz[slot], this.conf[slot]);
         }
     }
 }

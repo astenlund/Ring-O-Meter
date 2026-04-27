@@ -44,12 +44,12 @@ export function useVoiceChannels(
         // capture them once at construction without pinning a stale render's
         // callback closure.
         const channelEvents: VoiceChannelEvents = {
-            onFrameSourceReady: (channelId, reader, perfNow) =>
-                eventsRef.current.onFrameSourceReady(channelId, reader, perfNow),
+            onFrameSourceReady: (channelId, source, reader) =>
+                eventsRef.current.onFrameSourceReady(channelId, source, reader),
             onFrameSourceGone: (channelId) =>
                 eventsRef.current.onFrameSourceGone(channelId),
-            onFrameSourceRebased: (channelId, perfNow) =>
-                eventsRef.current.onFrameSourceRebased(channelId, perfNow),
+            onFrameSourceRebased: (channelId, epochOffsetMs) =>
+                eventsRef.current.onFrameSourceRebased(channelId, epochOffsetMs),
         };
 
         const channels = slots.map((slot) => new VoiceChannel({
