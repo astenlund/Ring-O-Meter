@@ -1,11 +1,11 @@
-import {type CSSProperties, useCallback, useMemo, useRef, useState} from 'react';
+import {type CSSProperties, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
 import {PitchPlot, type PitchPlotHandle} from './ui/PitchPlot';
 import {slotsToVoices} from './ui/rosterToVoices';
 import {useFrameState} from './audio/useFrameState';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
-import type {FrameRingReader, FrameSource} from './audio/frameRing';
+import {FrameSourceRegistry} from './audio/frameSourceRegistry';
 
 const PLOT_WINDOW_MS = 10_000;
 
@@ -32,6 +32,10 @@ interface Slot extends VoiceChannelSlot {
 export function App() {
     const {latest, registerReader, unregisterReader} = useFrameState();
     const plotHandleRef = useRef<PitchPlotHandle | null>(null);
+    // One registry instance per App lifetime, fed by useVoiceChannels and
+    // multicasting to two subscribers (frame state + plot worker) today.
+    // Slice 1's SignalR publish sink subscribes through the same surface.
+    const [registry] = useState(() => new FrameSourceRegistry());
 
     // channelId is a client-minted GUID per slot so slice 1's aggregator
     // (which keys LatestPerChannel by channelId) cannot collide across
@@ -61,41 +65,29 @@ export function App() {
         ]);
     }, []);
 
-    const handleFrameSourceReady = useCallback(
-        (channelId: string, source: FrameSource, reader: FrameRingReader) => {
-            registerReader(channelId, reader);
-            // Forward the same source descriptor (SAB + initial epoch
-            // offset) to the plot worker - both sides must read/write
-            // the same ring or the plot paints nothing.
-            plotHandleRef.current?.attachChannel(channelId, source);
-        },
-        [registerReader],
-    );
+    useVoiceChannels(slots, registry);
 
-    const handleFrameSourceGone = useCallback((channelId: string) => {
-        unregisterReader(channelId);
-        plotHandleRef.current?.detachChannel(channelId);
-    }, [unregisterReader]);
+    useEffect(() => {
+        return registry.subscribe({
+            onReady: (channelId, _source, reader) => registerReader(channelId, reader),
+            onRebased: () => undefined,
+            onGone: (channelId) => unregisterReader(channelId),
+        });
+    }, [registry, registerReader, unregisterReader]);
 
-    const handleFrameSourceRebased = useCallback(
-        (channelId: string, epochOffsetMs: number) => {
-            // The reader we registered with useFrameState is the same
-            // FrameRingReader instance VoiceChannel owns (identity, not
-            // a copy), and VoiceChannel.handleStateChange already
-            // mutated its offset before firing this callback. The plot
-            // worker's reader is a DIFFERENT instance over the same SAB
-            // (class instances cannot cross the worker boundary) and
-            // must be synced independently, which is what this does.
-            plotHandleRef.current?.rebaseChannel(channelId, epochOffsetMs);
-        },
-        [],
-    );
-
-    useVoiceChannels(slots, {
-        onFrameSourceReady: handleFrameSourceReady,
-        onFrameSourceGone: handleFrameSourceGone,
-        onFrameSourceRebased: handleFrameSourceRebased,
-    });
+    useEffect(() => {
+        // plotHandleRef.current is read at event time, not effect time, so
+        // subscribe ordering vs PitchPlot's effect (which populates the ref)
+        // is irrelevant — late-arriving events still see the live handle, and
+        // any event that arrives before the ref is populated no-ops gracefully.
+        return registry.subscribe({
+            onReady: (channelId, source, _reader) =>
+                plotHandleRef.current?.attachChannel(channelId, source),
+            onRebased: (channelId, epochOffsetMs) =>
+                plotHandleRef.current?.rebaseChannel(channelId, epochOffsetMs),
+            onGone: (channelId) => plotHandleRef.current?.detachChannel(channelId),
+        });
+    }, [registry]);
 
     const voices = useMemo(() => slotsToVoices(slots ?? []), [slots]);
 
