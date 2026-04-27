@@ -161,7 +161,9 @@ export class FrameRingWriter {
  * (today: PlotController -> plot worker) thread the FrameSource
  * descriptor alongside the reader, not through it. This keeps the
  * reader interface implementable by future non-SAB-backed readers
- * (e.g., slice 1's SignalR DisplayClient).
+ * (e.g., slice 1's SignalR DisplayClient). Public surface:
+ * `published()`, `readLatest(out)`, `forEach(startMs, cb)`,
+ * `setOffset(offsetMs)`.
  */
 export class FrameRingReader {
     private readonly header: Int32Array;
@@ -192,19 +194,23 @@ export class FrameRingReader {
     }
 
     /**
-     * Main-side pull. Returns the newest published frame's UI shape,
-     * or null if no frames have been published yet. Allocates one
-     * UiFrame per call — called at ~15 Hz max from useFrameState's
-     * rAF flush, so ~60 allocations/s across 4 channels.
+     * Main-side pull. Writes the newest published frame's UI shape
+     * into the caller-supplied `out` and returns true; returns false
+     * (leaving `out` untouched) when no frame has been published yet.
+     * Out-param shape is what makes steady-state zero-alloc — the
+     * caller owns one UiFrame per registered reader, lifetime-bound
+     * to the reader entry.
      */
-    public readLatest(): UiFrame | null {
+    public readLatest(out: UiFrame): boolean {
         const pub = Atomics.load(this.header, 0);
         if (pub === 0) {
-            return null;
+            return false;
         }
         const slot = (pub - 1) & CAP_MASK;
+        out.fundamentalHz = this.hz[slot];
+        out.confidence = this.conf[slot];
 
-        return {fundamentalHz: this.hz[slot], confidence: this.conf[slot]};
+        return true;
     }
 
     /**
