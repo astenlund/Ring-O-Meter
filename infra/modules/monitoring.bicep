@@ -48,4 +48,3 @@ output workspaceCustomerId string = workspace.properties.customerId
 output workspaceSharedKey string = workspace.listKeys().primarySharedKey
 output appInsightsId string = appInsights.id
 output appInsightsName string = appInsights.name
-output appInsightsConnectionString string = appInsights.properties.ConnectionString
