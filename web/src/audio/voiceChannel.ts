@@ -5,29 +5,32 @@
 // worker constructor form, so addModule() loads it like any ESM module.
 import workletUrl from './worklets/pitchWorklet.ts?worker&url';
 import {PITCH_PROCESSOR_NAME} from './constants';
-import {FrameRingReader, createFrameRing} from './frameRing';
+import {FrameRingReader, createFrameRing, type FrameSource} from './frameRing';
 import {AudioContextEpoch} from './audioContextEpoch';
 import {publishChannel, revokeChannel} from '../__testing/channelBridge';
 
 export interface VoiceChannelEvents {
-    // A fresh ring is available. The reader is bound to the channel's
-    // SAB and already configured with the initial perf-to-context
-    // offset; consumers (useFrameState, PitchPlot via App) should
+    // A fresh ring is available. `source` is the cross-thread descriptor
+    // (SAB + initial epoch offset) consumers forward to anything that
+    // builds its own FrameRingReader on the far side of a worker
+    // boundary (today: the plot worker via PlotController.attachChannel).
+    // `reader` is the main-thread instance, already seeded with the same
+    // initial offset; consumers that read on main (today: useFrameState)
     // register it straight through.
-    onFrameSourceReady(channelId: string, reader: FrameRingReader, perfNowAtContextTimeZero: number): void;
+    onFrameSourceReady(channelId: string, source: FrameSource, reader: FrameRingReader): void;
     // Channel was torn down (slot change, unmount, stop()). Consumers
     // should unregister any cached reader references.
     onFrameSourceGone(channelId: string): void;
     // AudioContext reached 'running' after a suspend, or for the first
-    // time. The offset is the new perf-now-at-context-time-zero value.
-    // The reader passed through onFrameSourceReady has ALREADY had its
-    // offset updated by VoiceChannel before this fires, so consumers
-    // holding that same instance (e.g., useFrameState) must not call
-    // setOffset on it a second time. Consumers holding a DIFFERENT
-    // reader over the same SAB (e.g., the plot worker, which owns its
-    // own FrameRingReader across the thread boundary) must update
-    // their own reader's offset from this callback.
-    onFrameSourceRebased(channelId: string, perfNowAtContextTimeZero: number): void;
+    // time. epochOffsetMs is the new perf-vs-context offset. The reader
+    // passed through onFrameSourceReady has ALREADY had its offset
+    // updated by VoiceChannel before this fires, so consumers holding
+    // that same instance (e.g., useFrameState) must not call setOffset
+    // on it a second time. Consumers holding a DIFFERENT reader over
+    // the same SAB (e.g., the plot worker, which owns its own
+    // FrameRingReader across the thread boundary) must update their
+    // own reader's offset from this callback.
+    onFrameSourceRebased(channelId: string, epochOffsetMs: number): void;
 }
 
 export interface VoiceChannelOptions extends VoiceChannelEvents {
@@ -78,6 +81,7 @@ export class VoiceChannel {
         const sab = createFrameRing();
         const initialOffset = this.epoch.captureInitialOffset();
         this.reader = new FrameRingReader(sab, initialOffset);
+        const source: FrameSource = {sab, epochOffsetMs: initialOffset};
 
         this.source = this.opts.audioContext.createMediaStreamSource(stream);
         this.node = new AudioWorkletNode(this.opts.audioContext, PITCH_PROCESSOR_NAME, {
@@ -105,7 +109,7 @@ export class VoiceChannel {
         // calls are on the same JS turn so no DOM event can
         // interleave, but the type system cannot enforce that, so
         // we encode the contract through the ordering itself.
-        this.opts.onFrameSourceReady(this.opts.channelId, this.reader, initialOffset);
+        this.opts.onFrameSourceReady(this.opts.channelId, source, this.reader);
 
         publishChannel(
             this.opts.channelId,
