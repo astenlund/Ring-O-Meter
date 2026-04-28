@@ -47,7 +47,7 @@ export function App() {
     const [slots, setSlots] = useState<Slot[] | null>(null);
 
     const handleDeviceConfirm = useCallback((selection: DeviceSelection) => {
-        setSlots([
+        const next: Slot[] = [
             {
                 channelId: crypto.randomUUID(),
                 voiceLabel: 'Voice 1',
@@ -55,14 +55,17 @@ export function App() {
                 deviceLabel: selection.voice1.label,
                 color: SLOT_COLORS[0],
             },
-            {
+        ];
+        if (selection.voice2) {
+            next.push({
                 channelId: crypto.randomUUID(),
                 voiceLabel: 'Voice 2',
                 deviceId: selection.voice2.deviceId,
                 deviceLabel: selection.voice2.label,
                 color: SLOT_COLORS[1],
-            },
-        ]);
+            });
+        }
+        setSlots(next);
     }, []);
 
     useVoiceChannels(slots, registry);
