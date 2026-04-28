@@ -59,13 +59,14 @@ const POST_RESUME_GUARD_MS = 200;
 
 // Arm the test bridge and mock the media-device surface for every test
 // in this file. Chromium's --use-fake-device-for-media-stream exposes
-// one fake audio input; the app gates Start on devices.length >= 2, so
-// we shim enumerateDevices to return two synthetic audioinputs and
-// strip deviceId constraints from getUserMedia so the fake-device
-// pipeline still resolves regardless of which synthetic id the app
-// picks. The bridge map is consumed by the suspend/resume test; the
-// first test ignores it, but arming once in beforeEach keeps the two
-// tests' setup paths identical.
+// one fake audio input; the app now also runs in single-mic mode, but
+// these tests exercise the two-slot rendering path so we shim
+// enumerateDevices to return two synthetic audioinputs and strip
+// deviceId constraints from getUserMedia so the fake-device pipeline
+// still resolves regardless of which synthetic id the app picks. The
+// bridge map is consumed by the suspend/resume test; the first test
+// ignores it, but arming once in beforeEach keeps the two tests' setup
+// paths identical.
 test.beforeEach(async ({context}) => {
     await context.addInitScript((bridgeKey: string) => {
         (globalThis as Record<string, unknown>)[bridgeKey] = new Map();
