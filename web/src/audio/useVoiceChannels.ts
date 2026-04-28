@@ -2,11 +2,34 @@ import {useEffect, useRef} from 'react';
 import {TARGET_SAMPLE_RATE_HZ} from './constants';
 import {openInputStream} from './deviceManager';
 import {VoiceChannel, type VoiceChannelEvents} from './voiceChannel';
+// Cleanup: remove this import + FanoutGroup interface + fanoutGroup field on
+// VoiceChannelSlot + the realSlots filter + the FanoutVoiceChannel ternary
+// branch when the fanout test mode is retired (also remove parseFanoutFlag
+// import + fanoutConfig state + fanout branch in handleDeviceConfirm +
+// SLOT_COLORS trim in App.tsx; also rm __testing/fanoutFlag.ts,
+// fanoutVoiceChannel.ts, fanoutWorklet.ts, fanoutConstants.ts).
+import {FanoutVoiceChannel} from '../__testing/fanoutVoiceChannel';
+
+// Test-only: when ?fanout=N is enabled, App.tsx tags the FIRST of N
+// render slots with `primary: true` and the rest as ghosts. The primary
+// slot's deviceId is used to open ONE getUserMedia stream; a single
+// FanoutVoiceChannel emits N onFrameSourceReady events with the
+// derivedChannelIds, matching each render slot's channelId. Ghost slots
+// are filtered out before mic acquisition so iOS Safari (one
+// concurrent stream per origin) is not asked to open the same mic
+// multiple times. Cleanup: remove this interface and the fanoutGroup
+// field below when the fanout test mode is retired.
+export interface FanoutGroup {
+    primary: boolean;
+    derivedChannelIds: readonly string[];
+    pitchOffsetsCents: readonly number[];
+}
 
 export interface VoiceChannelSlot {
     channelId: string;
     voiceLabel: string;
     deviceId: string;
+    fanoutGroup?: FanoutGroup;
 }
 
 // Owns the AudioContext + VoiceChannel[] lifecycle for a given set of slots.
@@ -52,12 +75,32 @@ export function useVoiceChannels(
                 eventsRef.current.onFrameSourceRebased(channelId, epochOffsetMs),
         };
 
-        const channels = slots.map((slot) => new VoiceChannel({
-            channelId: slot.channelId,
-            voiceLabel: slot.voiceLabel,
-            audioContext,
-            ...channelEvents,
-        }));
+        // Filter ghost fanout slots: only primary slots (or non-fanout
+        // slots) own an audio capture. Ghost slots exist solely as
+        // render anchors so App.tsx can map slot.channelId to a
+        // NoteReadout per derived channel.
+        const realSlots = slots.filter(
+            (slot) => !slot.fanoutGroup || slot.fanoutGroup.primary,
+        );
+        const channels = realSlots.map((slot): VoiceChannel | FanoutVoiceChannel => {
+            if (slot.fanoutGroup?.primary) {
+                return new FanoutVoiceChannel({
+                    channelId: slot.channelId,
+                    voiceLabel: slot.voiceLabel,
+                    audioContext,
+                    derivedChannelIds: slot.fanoutGroup.derivedChannelIds,
+                    pitchOffsetsCents: slot.fanoutGroup.pitchOffsetsCents,
+                    ...channelEvents,
+                });
+            }
+
+            return new VoiceChannel({
+                channelId: slot.channelId,
+                voiceLabel: slot.voiceLabel,
+                audioContext,
+                ...channelEvents,
+            });
+        });
 
         // Shared teardown path for both the effect-cleanup and the setup-failure
         // branch: stop every channel, close the AudioContext. Any future step
@@ -74,7 +117,7 @@ export function useVoiceChannels(
         // mic failing (permission denied, device vanished) does not leave
         // the other branch running without a cleanup hook.
         Promise.allSettled(channels.map(async (channel, i) => {
-            const stream = await openInputStream(slots[i].deviceId);
+            const stream = await openInputStream(realSlots[i].deviceId);
             if (cancelled) {
                 stream.getTracks().forEach((t) => t.stop());
 
