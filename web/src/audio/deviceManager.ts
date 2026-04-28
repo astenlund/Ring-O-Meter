@@ -3,12 +3,20 @@ export interface AudioInputDevice {
     label: string;
 }
 
-export async function listInputDevices(): Promise<AudioInputDevice[]> {
-    // Browsers withhold device labels until the user has granted at least one
-    // mic permission. Request a temporary permission so labels are populated.
+// Browsers withhold device labels (and on some platforms, the deviceId
+// list itself) until the page has been granted at least one mic
+// permission. A throwaway getUserMedia({audio:true}) call grants it for
+// the lifetime of the document; subsequent enumerateInputDevices() calls
+// then return populated labels without re-prompting and without opening
+// fresh streams. Split from enumerateInputDevices so 'devicechange'
+// re-enumerations skip the probe (extra getUserMedia round-trips can
+// briefly flash the mic indicator on iOS Safari).
+export async function probeInputDevicesPermission(): Promise<void> {
     const probeStream = await navigator.mediaDevices.getUserMedia({audio: true});
     probeStream.getTracks().forEach((t) => t.stop());
+}
 
+export async function enumerateInputDevices(): Promise<AudioInputDevice[]> {
     const all = await navigator.mediaDevices.enumerateDevices();
 
     return all
