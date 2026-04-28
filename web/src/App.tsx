@@ -6,10 +6,21 @@ import {slotsToVoices} from './ui/rosterToVoices';
 import {useFrameState} from './audio/useFrameState';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
 import {FrameSourceRegistry} from './audio/frameSourceRegistry';
+// Cleanup: remove this import + fanoutConfig state + fanout branch in
+// handleDeviceConfirm + trim SLOT_COLORS back to ['#5cf', '#fc5'] when
+// the fanout test mode is retired (also remove FanoutGroup + fanoutGroup
+// field from useVoiceChannels.ts + its FanoutVoiceChannel import; also
+// rm __testing/fanoutFlag.ts, fanoutVoiceChannel.ts, fanoutWorklet.ts,
+// fanoutConstants.ts).
+import {parseFanoutFlag} from './__testing/fanoutFlag';
 
 const PLOT_WINDOW_MS = 10_000;
 
-const SLOT_COLORS = ['#5cf', '#fc5'] as const;
+// Four entries to support ?fanout=4 test mode. Production today only
+// uses the first two (Voice 1 / Voice 2); the 3rd and 4th are consumed
+// only when fanoutConfig is non-null. SLOT_COLORS[i % length] cycles if
+// fanout count exceeds 4.
+const SLOT_COLORS = ['#5cf', '#fc5', '#5f9', '#f5c'] as const;
 
 const mainStyle: CSSProperties = {
     padding: 24,
@@ -45,8 +56,45 @@ export function App() {
     // in the worker's rings from the still-arriving frames. One-shot
     // event handler is the correct place for non-idempotent work.
     const [slots, setSlots] = useState<Slot[] | null>(null);
+    // Test-only: parsed once at mount so a query-string change requires a
+    // reload to take effect (no live re-evaluation of the flag while a
+    // session is in flight). Returns null in production. Cleanup: remove
+    // this state + the parseFanoutFlag import + the fanout branch in
+    // handleDeviceConfirm + the SLOT_COLORS extension.
+    const [fanoutConfig] = useState(() => parseFanoutFlag(window.location.search));
 
     const handleDeviceConfirm = useCallback((selection: DeviceSelection) => {
+        if (fanoutConfig) {
+            // One physical mic + N render slots. The primary slot owns
+            // the audio capture (deviceId from voice1, fanoutGroup
+            // primary=true); the remaining N-1 are render-only ghosts.
+            // FanoutVoiceChannel internally fires N onFrameSourceReady
+            // events with these channelIds, populating the registry +
+            // useFrameState + plot worker just as N real channels would.
+            const channelIds = Array.from(
+                {length: fanoutConfig.count},
+                () => crypto.randomUUID(),
+            );
+            const next: Slot[] = channelIds.map((channelId, i) => ({
+                channelId,
+                voiceLabel: `Test ${i + 1}`,
+                deviceId: selection.voice1.deviceId,
+                // deviceLabel is shown in the NoteReadout + plot legend;
+                // the source mic is identical for all N, so distinguish
+                // by index rather than repeating the mic name N times.
+                deviceLabel: `Test ${i + 1}`,
+                color: SLOT_COLORS[i % SLOT_COLORS.length],
+                fanoutGroup: {
+                    primary: i === 0,
+                    derivedChannelIds: channelIds,
+                    pitchOffsetsCents: fanoutConfig.offsetsCents,
+                },
+            }));
+            setSlots(next);
+
+            return;
+        }
+
         const next: Slot[] = [
             {
                 channelId: crypto.randomUUID(),
@@ -66,7 +114,7 @@ export function App() {
             });
         }
         setSlots(next);
-    }, []);
+    }, [fanoutConfig]);
 
     useVoiceChannels(slots, registry);
 
