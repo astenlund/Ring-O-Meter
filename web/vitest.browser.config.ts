@@ -41,7 +41,16 @@ export default defineConfig({
                     //   ~100 KB resolution as an anti-fingerprinting
                     //   mitigation). Without this flag, budgets below
                     //   the bucket size read as 0 or 100 KB at random.
-                    args: ['--js-flags=--expose-gc', '--enable-precise-memory-info'],
+                    // --enable-unsafe-webgpu: enables WebGPU on Chromium
+                    //   so the WebGPU plot paint alloc test
+                    //   (plotWorkerWebgpu.alloc.browser.ts) can construct
+                    //   a real GPUDevice. Default Chromium on Windows
+                    //   defaults to Dawn -> D3D12; do NOT pair with
+                    //   --enable-features=Vulkan, which would shift the
+                    //   prototype off the Dawn -> D3D12 backend that
+                    //   matches the #skia-graphite reference architecture
+                    //   (.claude/specs/2026-04-30-webgpu-plot-prototype.md).
+                    args: ['--js-flags=--expose-gc', '--enable-precise-memory-info', '--enable-unsafe-webgpu'],
                 },
             }),
             headless: true,
