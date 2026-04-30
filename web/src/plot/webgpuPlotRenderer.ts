@@ -4,7 +4,14 @@ import type {VoiceEntry} from './plotMessages';
 import {FRAGMENT_WGSL, VERTEX_WGSL} from './webgpuShaders';
 
 const VERTEX_BYTES = 8;
-const VERTEX_BUFFER_BYTES = CAPACITY * VERTEX_BYTES;
+// line-list topology: each segment is encoded as 2 explicit vertices
+// (no strip connectivity), so the worst-case vertex count is
+// 2 * (CAPACITY - 1) for CAPACITY consecutive valid samples. Bound at
+// 2 * CAPACITY for clean alignment; the extra 2 vertices are unused
+// padding.
+const MAX_VERTEX_COUNT = CAPACITY * 2;
+const VERTEX_BUFFER_BYTES = MAX_VERTEX_COUNT * VERTEX_BYTES;
+const STAGING_FLOAT_COUNT = MAX_VERTEX_COUNT * 2;
 const VIEWPORT_UNIFORM_BYTES = 16;
 const VOICE_UNIFORM_BYTES = 16;
 
@@ -13,9 +20,12 @@ interface ChannelState {
     vertexBuffer: GPUBuffer;
     voiceUniform: GPUBuffer;
     bindGroup: GPUBindGroup;
+    // Hoisted CPU staging: filled per paint by walking the ring's
+    // in-window samples and emitting a (prev, curr) segment whenever
+    // two consecutive samples both pass the display gate. Sized for
+    // the worst case (every ring slot in window, all pass gate).
     staging: Float32Array;
-    runs: Int32Array;
-    runCount: number;
+    vertexCount: number;
     color: Float32Array;
 }
 
@@ -107,7 +117,12 @@ export class WebgpuPlotRenderer {
                 entryPoint: 'fs_main',
                 targets: [{format}],
             },
-            primitive: {topology: 'line-strip'},
+            // line-list: each pair of vertices in the buffer forms one
+            // independent segment. Avoids the multi-draw fan-out that
+            // line-strip topology would force when the trace contains
+            // gaps (silence between notes). Single draw call per
+            // channel regardless of how staccato the input is.
+            primitive: {topology: 'line-list'},
         });
 
         const viewportUniform = device.createBuffer({
@@ -167,9 +182,8 @@ export class WebgpuPlotRenderer {
             vertexBuffer,
             voiceUniform,
             bindGroup,
-            staging: new Float32Array(CAPACITY * 2),
-            runs: new Int32Array(32),
-            runCount: 0,
+            staging: new Float32Array(STAGING_FLOAT_COUNT),
+            vertexCount: 0,
             color: new Float32Array(4),
         };
         // Initialise the voice uniform with the channel's color from
@@ -270,43 +284,29 @@ export class WebgpuPlotRenderer {
         this.viewportData[3] = 0;
         this.device.queue.writeBuffer(this.viewportUniform, 0, this.viewportData);
 
-        // Channel-by-channel: fill staging, track runs, upload.
+        // Channel-by-channel: fill staging with line-list segments,
+        // upload. A segment is emitted whenever two consecutive
+        // samples both pass the display gate AND both fall in-window;
+        // gaps (silence, gate-failures, pre-window) cleanly skip
+        // segment emission without any run-tracking bookkeeping.
         for (const voice of this.voices) {
             const state = this.channels.get(voice.channelId);
             if (!state) {
                 continue;
             }
             const staging = state.staging;
-            const runs = state.runs;
             let vertexIdx = 0;
-            let runStart = -1;
-            state.runCount = 0;
+            let prevValid = false;
+            let prevOffsetMs = 0;
+            let prevHz = 0;
 
             state.reader.forEach(startMs, (tsMs, fundamentalHz, confidence) => {
-                if (!shouldDisplayPitch(fundamentalHz, confidence)) {
-                    if (runStart >= 0) {
-                        // Close the open run. Single-vertex runs become
-                        // degenerate (line-strip with one vertex draws
-                        // nothing); two-or-more vertex runs draw. Cap
-                        // at runs.length / 2 entries (each run is one
-                        // [start,end) pair = 2 Int32 slots).
-                        if (vertexIdx - runStart >= 2 && state.runCount < runs.length / 2) {
-                            runs[state.runCount * 2] = runStart;
-                            runs[state.runCount * 2 + 1] = vertexIdx;
-                            state.runCount += 1;
-                        }
-                        runStart = -1;
-                    }
+                // Pre-window samples and gate-failures both invalidate
+                // any pending pair; the next valid sample becomes a
+                // fresh "prev" with no segment emitted from the prior.
+                if (tsMs < startMs || !shouldDisplayPitch(fundamentalHz, confidence)) {
+                    prevValid = false;
 
-                    return;
-                }
-                // Pre-window samples: skipped here because the WebGPU
-                // viewport math already clips them off the left edge,
-                // unlike the 2D path which interpolates a moveTo at
-                // x=0. The prototype's spec ("Visual-feature parity ...
-                // not a goal at this stage") tolerates the resulting
-                // half-second gap at session start.
-                if (tsMs < startMs) {
                     return;
                 }
                 // Store the per-paint offset (tsMs - startMs), not the
@@ -314,19 +314,20 @@ export class WebgpuPlotRenderer {
                 // assignment lands in [0, windowMs] rather than at
                 // 10^6+ ms where f32 spacing is visible. See
                 // webgpuShaders.ts for the rationale.
-                staging[vertexIdx * 2] = tsMs - startMs;
-                staging[vertexIdx * 2 + 1] = fundamentalHz;
-                if (runStart < 0) {
-                    runStart = vertexIdx;
+                const offsetMs = tsMs - startMs;
+                if (prevValid) {
+                    staging[vertexIdx * 2] = prevOffsetMs;
+                    staging[vertexIdx * 2 + 1] = prevHz;
+                    vertexIdx += 1;
+                    staging[vertexIdx * 2] = offsetMs;
+                    staging[vertexIdx * 2 + 1] = fundamentalHz;
+                    vertexIdx += 1;
                 }
-                vertexIdx += 1;
+                prevValid = true;
+                prevOffsetMs = offsetMs;
+                prevHz = fundamentalHz;
             });
-            // Close a trailing open run.
-            if (runStart >= 0 && vertexIdx - runStart >= 2 && state.runCount < runs.length / 2) {
-                runs[state.runCount * 2] = runStart;
-                runs[state.runCount * 2 + 1] = vertexIdx;
-                state.runCount += 1;
-            }
+            state.vertexCount = vertexIdx;
 
             if (vertexIdx > 0) {
                 // writeBuffer with a typed-array view: no JS allocation;
@@ -357,16 +358,15 @@ export class WebgpuPlotRenderer {
         pass.setPipeline(this.pipeline);
         for (const voice of this.voices) {
             const state = this.channels.get(voice.channelId);
-            if (!state || state.runCount === 0) {
+            if (!state || state.vertexCount === 0) {
                 continue;
             }
             pass.setBindGroup(0, state.bindGroup);
             pass.setVertexBuffer(0, state.vertexBuffer);
-            for (let r = 0; r < state.runCount; r += 1) {
-                const start = state.runs[r * 2];
-                const end = state.runs[r * 2 + 1];
-                pass.draw(end - start, 1, start, 0);
-            }
+            // Single draw per channel regardless of staccato pattern;
+            // line-list topology pairs vertices into independent
+            // segments inside the buffer.
+            pass.draw(state.vertexCount, 1, 0, 0);
         }
         pass.end();
         this.device.queue.submit([encoder.finish()]);
