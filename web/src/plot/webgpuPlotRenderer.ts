@@ -1,4 +1,5 @@
 import {CAPACITY, FrameRingReader, type FrameSource} from '../audio/frameRing';
+import {shouldDisplayPitch} from '../ui/displayGate';
 import type {VoiceEntry} from './plotMessages';
 import {FRAGMENT_WGSL, VERTEX_WGSL} from './webgpuShaders';
 
@@ -227,6 +228,126 @@ export class WebgpuPlotRenderer {
                 alphaMode: 'opaque',
             });
         }
+    }
+
+    public paint(): void {
+        if (!this.device || !this.context || !this.pipeline || !this.viewportUniform) {
+            return;
+        }
+        if (this.cssHeight === 0) {
+            return;
+        }
+        const nowMs = performance.now() + this.mainEpochOffsetMs;
+        const startMs = nowMs - this.windowMs;
+
+        // Viewport struct is (windowMs, logMinHz, logSpanHz, _pad);
+        // see webgpuShaders.ts for the shader-side definition and the
+        // f32-precision rationale. Per-vertex offsetMs is computed on
+        // the CPU below as `tsMs - startMs` so values stay in
+        // [0, windowMs] before the f32 narrowing.
+        this.viewportData[0] = this.windowMs;
+        this.viewportData[1] = this.logMinHz;
+        this.viewportData[2] = this.logSpanHz;
+        this.viewportData[3] = 0;
+        this.device.queue.writeBuffer(this.viewportUniform, 0, this.viewportData);
+
+        // Channel-by-channel: fill staging, track runs, upload.
+        for (const voice of this.voices) {
+            const state = this.channels.get(voice.channelId);
+            if (!state) {
+                continue;
+            }
+            const staging = state.staging;
+            const runs = state.runs;
+            let vertexIdx = 0;
+            let runStart = -1;
+            state.runCount = 0;
+
+            state.reader.forEach(startMs, (tsMs, fundamentalHz, confidence) => {
+                if (!shouldDisplayPitch(fundamentalHz, confidence)) {
+                    if (runStart >= 0) {
+                        // Close the open run. Single-vertex runs become
+                        // degenerate (line-strip with one vertex draws
+                        // nothing); two-or-more vertex runs draw. Cap
+                        // at runs.length / 2 entries (each run is one
+                        // [start,end) pair = 2 Int32 slots).
+                        if (vertexIdx - runStart >= 2 && state.runCount < runs.length / 2) {
+                            runs[state.runCount * 2] = runStart;
+                            runs[state.runCount * 2 + 1] = vertexIdx;
+                            state.runCount += 1;
+                        }
+                        runStart = -1;
+                    }
+
+                    return;
+                }
+                // Pre-window samples: skipped here because the WebGPU
+                // viewport math already clips them off the left edge,
+                // unlike the 2D path which interpolates a moveTo at
+                // x=0. The prototype's spec ("Visual-feature parity ...
+                // not a goal at this stage") tolerates the resulting
+                // half-second gap at session start.
+                if (tsMs < startMs) {
+                    return;
+                }
+                // Store the per-paint offset (tsMs - startMs), not the
+                // absolute tsMs, so the f32 narrowing at typed-array
+                // assignment lands in [0, windowMs] rather than at
+                // 10^6+ ms where f32 spacing is visible. See
+                // webgpuShaders.ts for the rationale.
+                staging[vertexIdx * 2] = tsMs - startMs;
+                staging[vertexIdx * 2 + 1] = fundamentalHz;
+                if (runStart < 0) {
+                    runStart = vertexIdx;
+                }
+                vertexIdx += 1;
+            });
+            // Close a trailing open run.
+            if (runStart >= 0 && vertexIdx - runStart >= 2 && state.runCount < runs.length / 2) {
+                runs[state.runCount * 2] = runStart;
+                runs[state.runCount * 2 + 1] = vertexIdx;
+                state.runCount += 1;
+            }
+
+            if (vertexIdx > 0) {
+                // writeBuffer with a typed-array view: no JS allocation;
+                // bytes copied directly. The 4th/5th args constrain to
+                // the populated prefix of staging.
+                this.device.queue.writeBuffer(
+                    state.vertexBuffer,
+                    0,
+                    staging.buffer,
+                    staging.byteOffset,
+                    vertexIdx * VERTEX_BYTES,
+                );
+            }
+        }
+
+        const encoder = this.device.createCommandEncoder();
+        const pass = encoder.beginRenderPass({
+            colorAttachments: [{
+                view: this.context.getCurrentTexture().createView(),
+                clearValue: {r: 0x11 / 255, g: 0x11 / 255, b: 0x11 / 255, a: 1},
+                loadOp: 'clear',
+                storeOp: 'store',
+            }],
+        });
+        pass.setPipeline(this.pipeline);
+        for (const voice of this.voices) {
+            const state = this.channels.get(voice.channelId);
+            if (!state || state.runCount === 0) {
+                continue;
+            }
+            pass.setBindGroup(0, state.bindGroup);
+            pass.setVertexBuffer(0, state.vertexBuffer);
+            for (let r = 0; r < state.runCount; r += 1) {
+                const start = state.runs[r * 2];
+                const end = state.runs[r * 2 + 1];
+                pass.draw(end - start, 1, start, 0);
+            }
+        }
+        pass.end();
+        this.device.queue.submit([encoder.finish()]);
     }
 
     public dispose(): void {
