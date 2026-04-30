@@ -1,4 +1,4 @@
-import workerUrl from './plotWorker.ts?worker&url';
+import defaultWorkerUrl from './plotWorker.ts?worker&url';
 import type {FrameSource} from '../audio/frameRing';
 import {PlotMessageType, type PlotMessage, type VoiceEntry} from './plotMessages';
 
@@ -15,9 +15,20 @@ export interface PlotControllerOptions {
 // worker. Does NOT create SABs itself - the caller provides them,
 // because SAB ownership lives with the frame producer
 // (VoiceChannel in slice 0, the SignalR DisplayClient in slice 1+).
+//
+// The worker URL is parameterised so a caller (App.tsx) can opt
+// into the WebGPU prototype worker via a URL flag without forking
+// the controller's lifecycle logic. Default keeps backwards
+// compatibility: callers that do not pass workerUrl get the 2D
+// canvas worker exactly as before.
 export class PlotController {
     private worker: Worker | null = null;
     private attached = false;
+    private readonly workerUrl: string | URL;
+
+    public constructor(workerUrl: string | URL = defaultWorkerUrl) {
+        this.workerUrl = workerUrl;
+    }
 
     public attach(canvas: HTMLCanvasElement, opts: PlotControllerOptions): void {
         if (this.attached) {
@@ -25,7 +36,7 @@ export class PlotController {
         }
         this.attached = true;
         const offscreen = canvas.transferControlToOffscreen();
-        this.worker = new Worker(workerUrl, {type: 'module'});
+        this.worker = new Worker(this.workerUrl, {type: 'module'});
         const init: PlotMessage = {
             type: PlotMessageType.Init,
             canvas: offscreen,
