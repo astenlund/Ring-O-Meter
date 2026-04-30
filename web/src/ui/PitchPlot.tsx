@@ -18,6 +18,7 @@ export interface PitchPlotProps {
     maxHz?: number;
     handleRef: RefObject<PitchPlotHandle | null>;
     useUnderlay?: boolean;
+    rendererWorkerUrl?: string;
 }
 
 const canvasStyle: CSSProperties = {
@@ -50,6 +51,7 @@ export function PitchPlot({
     maxHz = 600,
     handleRef,
     useUnderlay = false,
+    rendererWorkerUrl,
 }: PitchPlotProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const underlayRef = useRef<HTMLCanvasElement>(null);
@@ -64,7 +66,7 @@ export function PitchPlot({
             return;
         }
         if (!controllerRef.current) {
-            const fresh = new PlotController();
+            const fresh = new PlotController(rendererWorkerUrl);
             fresh.attach(canvas, {voices, backing, windowMs, minHz, maxHz});
             controllerRef.current = fresh;
         }
