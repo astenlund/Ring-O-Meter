@@ -106,83 +106,128 @@ test.beforeEach(async ({context}) => {
     }, CHANNEL_BRIDGE_KEY);
 });
 
-test('pitch plot is smooth for 60 seconds', async ({page}) => {
-    await page.goto('/');
+// Renderer arms for the parameterized smoothness test below. The 2D
+// arm is the production path; the WebGPU arm exercises the prototype
+// worker (web/src/plot/plotWorkerWebgpu.ts) under
+// .claude/specs/2026-04-30-webgpu-plot-prototype.md and produces the
+// p99 / max / longtask / heap-delta numbers the spec's decision tree
+// consumes. The WebGPU arm hard-asserts a usable adapter before
+// measuring; a missing flag (or otherwise-broken WebGPU) fails the
+// test rather than silently rubber-stamping the comparison against a
+// worker whose init() threw.
+const RENDERER_ARMS = [
+    {label: '2D canvas', querystring: ''},
+    {label: 'WebGPU', querystring: '?renderer=webgpu'},
+] as const;
 
-    // DeviceSetup renders a single "Start" button once two audio
-    // inputs are visible. Wait for it with a generous timeout because
-    // the probe getUserMedia() call plus enumerateDevices() takes a
-    // moment on first page load.
-    const startButton = page.getByRole('button', {name: /^start$/i});
-    await expect(startButton).toBeVisible({timeout: 15_000});
-    await startButton.click();
-    await expect(page.locator('canvas')).toBeVisible();
-    await page.waitForTimeout(1500);
+for (const arm of RENDERER_ARMS) {
+    test(`pitch plot is smooth for 60 seconds (${arm.label})`, async ({page}) => {
+        await page.goto(`/${arm.querystring}`);
 
-    const result = await page.evaluate(async (observationMs: number) => {
-        interface PerfWithMemory extends Performance {
-            memory?: {usedJSHeapSize: number};
-        }
-        const perfMem = performance as PerfWithMemory;
-        const supportsMemory = Boolean(perfMem.memory);
-        const supportsGc = typeof (globalThis as {gc?: () => void}).gc === 'function';
-
-        if (supportsGc) {
-            (globalThis as {gc?: () => void}).gc!();
-        }
-        const heapBaseline = supportsMemory ? perfMem.memory!.usedJSHeapSize : 0;
-
-        const gaps: number[] = [];
-        const longtasks: number[] = [];
-        const observer = new PerformanceObserver((list) => {
-            for (const entry of list.getEntries()) {
-                longtasks.push(entry.duration);
-            }
-        });
-        observer.observe({entryTypes: ['longtask']});
-
-        let lastTs = performance.now();
-        const startTs = lastTs;
-        await new Promise<void>((resolve) => {
-            const tick = (ts: number) => {
-                gaps.push(ts - lastTs);
-                lastTs = ts;
-                if (ts - startTs < observationMs) {
-                    requestAnimationFrame(tick);
-
-                    return;
+        if (arm.label === 'WebGPU') {
+            // navigator.gpu is non-null on stock Chromium regardless
+            // of --enable-unsafe-webgpu; the flag affects what
+            // requestAdapter() returns on Windows. Probe the adapter
+            // directly so a missing flag (or otherwise-broken WebGPU)
+            // hard-fails the test instead of silently rubber-stamping
+            // the comparison against a worker whose init() threw.
+            const hasAdapter = await page.evaluate(async () => {
+                if (!navigator.gpu) {
+                    return false;
                 }
-                resolve();
-            };
-            requestAnimationFrame(tick);
-        });
-        observer.disconnect();
+                const adapter = await navigator.gpu.requestAdapter();
 
-        if (supportsGc) {
-            (globalThis as {gc?: () => void}).gc!();
+                return adapter !== null;
+            });
+            expect(
+                hasAdapter,
+                'WebGPU arm requires a usable adapter; check Playwright Chromium launch args (--enable-unsafe-webgpu) and host WebGPU support',
+            ).toBe(true);
         }
-        const heapAfter = supportsMemory ? perfMem.memory!.usedJSHeapSize : 0;
 
-        gaps.sort((a, b) => a - b);
-        const p99 = gaps[Math.floor(gaps.length * 0.99)] ?? 0;
-        const max = gaps[gaps.length - 1] ?? 0;
+        // DeviceSetup renders a single "Start" button once two audio
+        // inputs are visible. Wait for it with a generous timeout because
+        // the probe getUserMedia() call plus enumerateDevices() takes a
+        // moment on first page load.
+        const startButton = page.getByRole('button', {name: /^start$/i});
+        await expect(startButton).toBeVisible({timeout: 15_000});
+        await startButton.click();
+        // Two canvases (underlay + main) when useUnderlay is true on
+        // the WebGPU arm; .first() matches either shape.
+        await expect(page.locator('canvas').first()).toBeVisible();
+        await page.waitForTimeout(1500);
 
-        return {
-            p99,
-            max,
-            longtaskCount: longtasks.length,
-            heapDelta: supportsMemory ? heapAfter - heapBaseline : -1,
-            heapMeasured: supportsMemory,
-        };
-    }, OBSERVATION_MS);
+        const result = await page.evaluate(async (observationMs: number) => {
+            interface PerfWithMemory extends Performance {
+                memory?: {usedJSHeapSize: number};
+            }
+            const perfMem = performance as PerfWithMemory;
+            const supportsMemory = Boolean(perfMem.memory);
+            const supportsGc = typeof (globalThis as {gc?: () => void}).gc === 'function';
 
-    expect(result.p99).toBeLessThan(P99_FRAME_GAP_BUDGET_MS);
-    expect(result.max).toBeLessThan(MAX_FRAME_GAP_BUDGET_MS);
-    expect(result.longtaskCount).toBe(LONGTASK_BUDGET);
-    if (result.heapMeasured) {
-        expect(result.heapDelta).toBeLessThan(HEAP_DELTA_BUDGET_BYTES);
-    }
-});
+            if (supportsGc) {
+                (globalThis as {gc?: () => void}).gc!();
+            }
+            const heapBaseline = supportsMemory ? perfMem.memory!.usedJSHeapSize : 0;
+
+            const gaps: number[] = [];
+            const longtasks: number[] = [];
+            const observer = new PerformanceObserver((list) => {
+                for (const entry of list.getEntries()) {
+                    longtasks.push(entry.duration);
+                }
+            });
+            observer.observe({entryTypes: ['longtask']});
+
+            let lastTs = performance.now();
+            const startTs = lastTs;
+            await new Promise<void>((resolve) => {
+                const tick = (ts: number) => {
+                    gaps.push(ts - lastTs);
+                    lastTs = ts;
+                    if (ts - startTs < observationMs) {
+                        requestAnimationFrame(tick);
+
+                        return;
+                    }
+                    resolve();
+                };
+                requestAnimationFrame(tick);
+            });
+            observer.disconnect();
+
+            if (supportsGc) {
+                (globalThis as {gc?: () => void}).gc!();
+            }
+            const heapAfter = supportsMemory ? perfMem.memory!.usedJSHeapSize : 0;
+
+            gaps.sort((a, b) => a - b);
+            const p99 = gaps[Math.floor(gaps.length * 0.99)] ?? 0;
+            const max = gaps[gaps.length - 1] ?? 0;
+
+            return {
+                p99,
+                max,
+                longtaskCount: longtasks.length,
+                heapDelta: supportsMemory ? heapAfter - heapBaseline : -1,
+                heapMeasured: supportsMemory,
+            };
+        }, OBSERVATION_MS);
+
+        // Per-arm reporter line: the prototype's primary numeric
+        // output; consumed by the spec's "Prototype results" section
+        // and the BUGS.md decision tree (Option C / D / inconclusive).
+         
+        console.log(`[smoothness:${arm.label}] p99=${result.p99}ms max=${result.max}ms longtasks=${result.longtaskCount} heapDelta=${result.heapDelta}B`);
+
+        expect(result.p99).toBeLessThan(P99_FRAME_GAP_BUDGET_MS);
+        expect(result.max).toBeLessThan(MAX_FRAME_GAP_BUDGET_MS);
+        expect(result.longtaskCount).toBe(LONGTASK_BUDGET);
+        if (result.heapMeasured) {
+            expect(result.heapDelta).toBeLessThan(HEAP_DELTA_BUDGET_BYTES);
+        }
+    });
+}
 
 test('pitch plot stays in sync across suspend/resume rebase', async ({page}) => {
     await page.goto('/');
@@ -190,7 +235,7 @@ test('pitch plot stays in sync across suspend/resume rebase', async ({page}) => 
     const startButton = page.getByRole('button', {name: /^start$/i});
     await expect(startButton).toBeVisible({timeout: 15_000});
     await startButton.click();
-    await expect(page.locator('canvas')).toBeVisible();
+    await expect(page.locator('canvas').first()).toBeVisible();
 
     const result = await page.evaluate(
         async ({longGapMs, postResumeGuardMs, bridgeKey}) => {
