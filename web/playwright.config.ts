@@ -27,6 +27,19 @@ export default defineConfig({
                 '--use-fake-ui-for-media-stream',
                 '--use-fake-device-for-media-stream',
                 `--use-file-for-fake-audio-capture=${audioFile}`,
+                // WebGPU prototype (web/src/plot/plotWorkerWebgpu.ts):
+                // Chromium on Windows requires --enable-unsafe-webgpu
+                // for navigator.gpu to be non-null. The default WebGPU
+                // backend on Windows is Dawn -> D3D12, which is the
+                // same submission architecture the spec compares
+                // against #skia-graphite's GraphiteDawnD3D11; do NOT
+                // add --enable-features=Vulkan, which would shift the
+                // prototype onto a different backend and defeat the
+                // comparison. Without --enable-unsafe-webgpu the
+                // smoothness e2e's WebGPU arm hard-fails its
+                // navigator.gpu precondition assertion (intentional:
+                // silent fallback would rubber-stamp the comparison).
+                '--enable-unsafe-webgpu',
             ],
         },
     },
