@@ -1,11 +1,28 @@
 import defaultWorkerUrl from './plotWorker.ts?worker&url';
 import type {FrameSource} from '../audio/frameRing';
+import {
+    applyCanvasBacking,
+    drawBackground,
+    drawGrid,
+    drawLegend,
+    makeHzToY,
+    type CanvasBacking,
+    type CanvasSize,
+    type HzRange,
+    type PaintFrame,
+} from './paint';
 import {PlotMessageType, type PlotMessage, type VoiceEntry} from './plotMessages';
 
 export interface PlotControllerOptions {
     voices: ReadonlyArray<VoiceEntry>;
     backing: {cssWidth: number; cssHeight: number; dpr: number};
     windowMs: number;
+    minHz: number;
+    maxHz: number;
+}
+
+export interface PlotUnderlayOptions {
+    voices: ReadonlyArray<VoiceEntry>;
     minHz: number;
     maxHz: number;
 }
@@ -25,6 +42,11 @@ export class PlotController {
     private worker: Worker | null = null;
     private attached = false;
     private readonly workerUrl: string | URL;
+
+    private underlayCtx: CanvasRenderingContext2D | null = null;
+    private underlayOpts: PlotUnderlayOptions | null = null;
+    private underlayBacking: CanvasBacking = {cssWidth: 0, cssHeight: 0, dpr: 1};
+    private underlaySize: CanvasSize = {width: 0, height: 0};
 
     public constructor(workerUrl: string | URL = defaultWorkerUrl) {
         this.workerUrl = workerUrl;
@@ -52,10 +74,59 @@ export class PlotController {
 
     public setRoster(voices: ReadonlyArray<VoiceEntry>): void {
         this.post({type: PlotMessageType.SetRoster, voices});
+        if (this.underlayOpts) {
+            this.underlayOpts = {...this.underlayOpts, voices};
+            this.repaintUnderlay();
+        }
     }
 
     public setBacking(cssWidth: number, cssHeight: number, dpr: number): void {
         this.post({type: PlotMessageType.SetBacking, cssWidth, cssHeight, dpr});
+    }
+
+    /**
+     * Paint static elements (background, grid, legend) onto a
+     * caller-supplied 2D context. Used by the WebGPU prototype, where
+     * the WebGPU canvas only renders dynamic traces; the underlay
+     * canvas behind it carries the static chrome. Called only from
+     * PitchPlot's WebGPU arm (the 2D arm's underlay effect early-exits
+     * on `!useUnderlay` and never registers a context here, so this
+     * method is a no-op in the production code path until the
+     * renderer flag opts a session into WebGPU).
+     */
+    public setUnderlay(ctx: CanvasRenderingContext2D, opts: PlotUnderlayOptions): void {
+        this.underlayCtx = ctx;
+        this.underlayOpts = opts;
+        this.repaintUnderlay();
+    }
+
+    public setUnderlayBacking(cssWidth: number, cssHeight: number, dpr: number): void {
+        this.underlayBacking.cssWidth = cssWidth;
+        this.underlayBacking.cssHeight = cssHeight;
+        this.underlayBacking.dpr = dpr;
+        this.repaintUnderlay();
+    }
+
+    private repaintUnderlay(): void {
+        const ctx = this.underlayCtx;
+        const opts = this.underlayOpts;
+        if (!ctx || !opts || this.underlayBacking.cssHeight === 0) {
+            return;
+        }
+        const canvas = ctx.canvas;
+        applyCanvasBacking(canvas, ctx, this.underlayBacking, this.underlaySize);
+        const range: HzRange = {minHz: opts.minHz, maxHz: opts.maxHz};
+        const hzToY = makeHzToY(range, this.underlaySize.height);
+        const frame: PaintFrame = {
+            ctx,
+            size: this.underlaySize,
+            hzToY,
+            nowMs: 0,
+            windowMs: 0,
+        };
+        drawBackground(frame);
+        drawGrid(frame, range);
+        drawLegend(frame, opts.voices);
     }
 
     /**
@@ -80,6 +151,8 @@ export class PlotController {
         this.worker?.terminate();
         this.worker = null;
         this.attached = false;
+        this.underlayCtx = null;
+        this.underlayOpts = null;
     }
 
     private post(msg: PlotMessage): void {

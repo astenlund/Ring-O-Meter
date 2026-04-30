@@ -17,6 +17,7 @@ export interface PitchPlotProps {
     minHz?: number;
     maxHz?: number;
     handleRef: RefObject<PitchPlotHandle | null>;
+    useUnderlay?: boolean;
 }
 
 const canvasStyle: CSSProperties = {
@@ -48,8 +49,10 @@ export function PitchPlot({
     minHz = 80,
     maxHz = 600,
     handleRef,
+    useUnderlay = false,
 }: PitchPlotProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const underlayRef = useRef<HTMLCanvasElement>(null);
     const controllerRef = useRef<PlotController | null>(null);
     const pendingUnmountRef = useRef(false);
     const backing = useCanvasBacking(canvasRef);
@@ -96,5 +99,32 @@ export function PitchPlot({
         controllerRef.current?.setRoster(voices);
     }, [voices]);
 
-    return <canvas ref={canvasRef} style={canvasStyle} />;
+    // Underlay paint: when the WebGPU renderer is active, the WebGPU
+    // canvas only renders dynamic traces. Static elements (background,
+    // grid, legend) live on the underlay <canvas> sitting absolutely
+    // behind it; the controller paints them via setUnderlay /
+    // setUnderlayBacking on roster + size changes. Skipped entirely on
+    // the 2D arm (useUnderlay=false), where the top 2D worker paints
+    // its own grid + legend each frame.
+    useEffect(() => {
+        if (!useUnderlay) {
+            return;
+        }
+        const c = underlayRef.current;
+        const ctx = c?.getContext('2d');
+        if (!c || !ctx || !controllerRef.current) {
+            return;
+        }
+        controllerRef.current.setUnderlay(ctx, {voices, minHz, maxHz});
+        controllerRef.current.setUnderlayBacking(backing.cssWidth, backing.cssHeight, backing.dpr);
+    }, [useUnderlay, voices, minHz, maxHz, backing]);
+
+    return (
+        <div style={{position: 'relative', width: '100%', height: 360}}>
+            {useUnderlay && (
+                <canvas ref={underlayRef} style={{...canvasStyle, position: 'absolute', inset: 0}} />
+            )}
+            <canvas ref={canvasRef} style={{...canvasStyle, position: 'absolute', inset: 0}} />
+        </div>
+    );
 }
