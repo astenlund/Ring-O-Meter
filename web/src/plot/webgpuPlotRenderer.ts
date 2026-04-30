@@ -39,6 +39,17 @@ export class WebgpuPlotRenderer {
     // backing-store sizing in setBacking writes the canvas dimensions
     // directly.
     private cssHeight = 0;
+    // GPU back-pressure: at most one frame in flight at a time. Without
+    // this, the worker rAF loop submits at 60 Hz unconditionally and
+    // the swap chain on Windows + Dawn -> D3D12 queues frames
+    // unboundedly when the compositor briefly lags - the displayed
+    // frame can fall seconds behind paint(). Diagnostic data
+    // (2026-04-30) confirmed this: paint() always reads fresh SAB
+    // samples (stale ~30-55 ms) but visual lag accumulated to
+    // multiple seconds. Setting `inFlight = true` after submit and
+    // clearing it on onSubmittedWorkDone() gates the next paint until
+    // the GPU has drained.
+    private inFlight = false;
 
     public async init(canvas: OffscreenCanvas): Promise<void> {
         if (!navigator.gpu) {
@@ -61,7 +72,15 @@ export class WebgpuPlotRenderer {
             throw new Error('WebgpuPlotRenderer: webgpu context unavailable');
         }
         const format = navigator.gpu.getPreferredCanvasFormat();
-        context.configure({device, format, alphaMode: 'opaque'});
+        // Deliberately do NOT configure the context here. The
+        // OffscreenCanvas dimensions at this point reflect the
+        // pre-layout state of the source canvas (often 0x0 or 300x150
+        // default), and configure() against those produces a
+        // "texture size empty" validation warning when the first
+        // getCurrentTexture() runs. setBacking() owns the configure
+        // call, gated on real CSS dimensions arriving from the main
+        // thread. paint() guards against pre-configure invocation by
+        // checking cssHeight === 0 below.
 
         const bindGroupLayout = device.createBindGroupLayout({
             entries: [
@@ -238,6 +257,16 @@ export class WebgpuPlotRenderer {
         if (this.cssHeight === 0) {
             return;
         }
+        // GPU back-pressure: skip this paint if the previous submit
+        // hasn't completed. rAF will fire again ~16 ms later and
+        // re-attempt; in steady state with the GPU keeping up at
+        // 60 Hz, inFlight clears before the next rAF tick and paint
+        // proceeds normally. When the compositor briefly lags, paints
+        // skip rather than pile commands into the swap-chain queue,
+        // bounding visual latency at ~one frame.
+        if (this.inFlight) {
+            return;
+        }
         const nowMs = performance.now() + this.mainEpochOffsetMs;
         const startMs = nowMs - this.windowMs;
 
@@ -349,6 +378,10 @@ export class WebgpuPlotRenderer {
         }
         pass.end();
         this.device.queue.submit([encoder.finish()]);
+        this.inFlight = true;
+        this.device.queue.onSubmittedWorkDone().then(() => {
+            this.inFlight = false;
+        });
     }
 
     public dispose(): void {
