@@ -1,38 +1,35 @@
 import {test, expect} from '@playwright/test';
 import {CHANNEL_BRIDGE_KEY} from '../src/__testing/channelBridge';
+import {
+    RENDERER_ARMS,
+    registerFakeAudioBeforeEach,
+    run60sSmoothnessProbe,
+} from './support/smoothness';
 
-// End-to-end regression net covering two distinct invariants, both
+// End-to-end regression net covering three distinct invariants, all
 // driven through the same fake-audio harness:
 //
-//   1. "pitch plot is smooth for 60 seconds" - main-thread frame pacing.
-//      rAF is expected to be very clean because the paint loop runs in
-//      the plot worker; this test catches regressions in the frame
-//      handler, React state, or any other main-thread-resident hot path.
+//   1. "pitch plot is smooth for 60 seconds (sustained, ...)" -
+//      main-thread frame pacing on the steady-state singing workload.
+//      Both renderers (WebGPU default, 2D opt-out) tested. The probe
+//      body lives in support/smoothness.ts and is shared with the
+//      staccato fixture spec file.
 //   2. "pitch plot stays in sync across suspend/resume rebase" -
 //      AudioContext suspend/resume rebase correctness. Catches the
 //      offset miscomputation failure mode (cause (a) of the
 //      residual-snap-backs bug) that the smoothness assertion cannot
 //      see: a wrong offset produces a spatially-warped trace without
 //      any paint-rate or long-task symptom.
+//   3. "pitch plot is smooth for 30 minutes (...)" - long-window
+//      diagnostic gated by PROTOTYPE_LONG=1, captures the rare freeze
+//      class at a statistically meaningful scale.
 //
-// heuristic: smoothness-budget
+// The staccato 60-second arm lives in staccato-smoothness.spec.ts
+// (separate file because Playwright restricts test.use({launchOptions})
+// to file scope, and we don't want to override the audio file for the
+// suspend/resume and 30-min tests in this file).
 
-const OBSERVATION_MS = 60_000;
-const P99_FRAME_GAP_BUDGET_MS = 20;
-const MAX_FRAME_GAP_BUDGET_MS = 50;
-const LONGTASK_BUDGET = 0;
-// 600 KB = measured_clean_run * ~1.6 (two local runs at ~370 KB,
-// ~1% variance). This e2e delta measures the whole app's 60 s
-// churn - React reconciles from useFrameState flushes, rAF closures,
-// V8 heap-ratchet slack, FrameRingReader.readLatest's UiFrame
-// literal - NOT just the per-frame pipeline that the per-module
-// alloc tests cover in isolation. Do not calibrate this by summing
-// the per-module budgets; those answer a narrower question. Target
-// per the hot-path-allocation-discipline pattern:
-// `measured_clean_run * 1.5` after three green CI runs. Ratchet
-// down only when a churn-reduction change has landed AND three CI
-// runs confirm the new baseline.
-const HEAP_DELTA_BUDGET_BYTES = 600 * 1024;
+// heuristic: smoothness-budget
 
 // Engineering budget: latency = perf.now() - (captureContextMs +
 // offsetMs) on a fresh sample. When the rebase offset is correct, this
@@ -57,175 +54,18 @@ const LONG_GAP_MS = 100;
 // so gaps in that window are classified as expected, not as regressions.
 const POST_RESUME_GUARD_MS = 200;
 
-// Arm the test bridge and mock the media-device surface for every test
-// in this file. Chromium's --use-fake-device-for-media-stream exposes
-// one fake audio input; the app now also runs in single-mic mode, but
-// these tests exercise the two-slot rendering path so we shim
-// enumerateDevices to return two synthetic audioinputs and strip
-// deviceId constraints from getUserMedia so the fake-device pipeline
-// still resolves regardless of which synthetic id the app picks. The
-// bridge map is consumed by the suspend/resume test; the first test
-// ignores it, but arming once in beforeEach keeps the two tests' setup
-// paths identical.
-test.beforeEach(async ({context}) => {
-    await context.addInitScript((bridgeKey: string) => {
-        (globalThis as Record<string, unknown>)[bridgeKey] = new Map();
+registerFakeAudioBeforeEach();
 
-        const md = navigator.mediaDevices;
-        const originalEnumerate = md.enumerateDevices.bind(md);
-        md.enumerateDevices = async function () {
-            const real = await originalEnumerate();
-            const audioInputCount = real.filter((d) => d.kind === 'audioinput').length;
-            if (audioInputCount >= 2) {
-                return real;
-            }
-            const makeFake = (deviceId: string, label: string): MediaDeviceInfo => ({
-                deviceId,
-                groupId: 'fake-group',
-                kind: 'audioinput',
-                label,
-                toJSON() {
-                    return this;
-                },
-            }) as MediaDeviceInfo;
-            const others = real.filter((d) => d.kind !== 'audioinput');
-
-            return [...others, makeFake('fake-audio-1', 'Fake Mic 1'), makeFake('fake-audio-2', 'Fake Mic 2')];
-        };
-        const originalGetUserMedia = md.getUserMedia.bind(md);
-        md.getUserMedia = function (constraints?: MediaStreamConstraints) {
-            if (constraints && typeof constraints.audio === 'object') {
-                const audio = {...(constraints.audio as MediaTrackConstraints)};
-                delete (audio as Record<string, unknown>).deviceId;
-
-                return originalGetUserMedia({...constraints, audio});
-            }
-
-            return originalGetUserMedia(constraints);
-        };
-    }, CHANNEL_BRIDGE_KEY);
-});
-
-// Renderer arms for the parameterized smoothness test below. As of
-// 2026-04-30 WebGPU is the production default; the 2D arm is the
-// opt-out fallback selected via ?renderer=2d. Both arms are real
-// production paths now and the smoothness budgets apply to both.
-// The WebGPU arm hard-asserts a usable adapter before measuring; a
-// missing adapter fails the test rather than silently rubber-stamping
-// the comparison against a worker whose init() threw. (The host
-// Chromium for this test must therefore supply WebGPU; see
-// playwright.config.ts launchOptions.)
-const RENDERER_ARMS = [
-    {label: 'WebGPU (default)', querystring: ''},
-    {label: '2D canvas (opt-out)', querystring: '?renderer=2d'},
-] as const;
-
+// Sustained-tone fixture: the smoothness regression net's primary
+// arm. Uses the global launchOptions audio file
+// (sustained-vowel.wav) configured in playwright.config.ts. Both
+// renderers should pass with comparable numbers - they are
+// equivalent on steady-state singing workloads (per the prototype's
+// 2026-04-30 measurements). The staccato fixture's discriminator
+// lives in staccato-smoothness.spec.ts.
 for (const arm of RENDERER_ARMS) {
-    test(`pitch plot is smooth for 60 seconds (${arm.label})`, async ({page}) => {
-        await page.goto(`/${arm.querystring}`);
-
-        if (arm.label === 'WebGPU (default)') {
-            // navigator.gpu is non-null on stock Chromium regardless
-            // of --enable-unsafe-webgpu; the flag affects what
-            // requestAdapter() returns on Windows. Probe the adapter
-            // directly so a missing flag (or otherwise-broken WebGPU)
-            // hard-fails the test instead of silently rubber-stamping
-            // the comparison against a worker whose init() threw.
-            const hasAdapter = await page.evaluate(async () => {
-                if (!navigator.gpu) {
-                    return false;
-                }
-                const adapter = await navigator.gpu.requestAdapter();
-
-                return adapter !== null;
-            });
-            expect(
-                hasAdapter,
-                'WebGPU arm requires a usable adapter; check Playwright Chromium launch args (--enable-unsafe-webgpu) and host WebGPU support',
-            ).toBe(true);
-        }
-
-        // DeviceSetup renders a single "Start" button once two audio
-        // inputs are visible. Wait for it with a generous timeout because
-        // the probe getUserMedia() call plus enumerateDevices() takes a
-        // moment on first page load.
-        const startButton = page.getByRole('button', {name: /^start$/i});
-        await expect(startButton).toBeVisible({timeout: 15_000});
-        await startButton.click();
-        // Two canvases (underlay + main) when useUnderlay is true on
-        // the WebGPU arm; .first() matches either shape.
-        await expect(page.locator('canvas').first()).toBeVisible();
-        await page.waitForTimeout(1500);
-
-        const result = await page.evaluate(async (observationMs: number) => {
-            interface PerfWithMemory extends Performance {
-                memory?: {usedJSHeapSize: number};
-            }
-            const perfMem = performance as PerfWithMemory;
-            const supportsMemory = Boolean(perfMem.memory);
-            const supportsGc = typeof (globalThis as {gc?: () => void}).gc === 'function';
-
-            if (supportsGc) {
-                (globalThis as {gc?: () => void}).gc!();
-            }
-            const heapBaseline = supportsMemory ? perfMem.memory!.usedJSHeapSize : 0;
-
-            const gaps: number[] = [];
-            const longtasks: number[] = [];
-            const observer = new PerformanceObserver((list) => {
-                for (const entry of list.getEntries()) {
-                    longtasks.push(entry.duration);
-                }
-            });
-            observer.observe({entryTypes: ['longtask']});
-
-            let lastTs = performance.now();
-            const startTs = lastTs;
-            await new Promise<void>((resolve) => {
-                const tick = (ts: number) => {
-                    gaps.push(ts - lastTs);
-                    lastTs = ts;
-                    if (ts - startTs < observationMs) {
-                        requestAnimationFrame(tick);
-
-                        return;
-                    }
-                    resolve();
-                };
-                requestAnimationFrame(tick);
-            });
-            observer.disconnect();
-
-            if (supportsGc) {
-                (globalThis as {gc?: () => void}).gc!();
-            }
-            const heapAfter = supportsMemory ? perfMem.memory!.usedJSHeapSize : 0;
-
-            gaps.sort((a, b) => a - b);
-            const p99 = gaps[Math.floor(gaps.length * 0.99)] ?? 0;
-            const max = gaps[gaps.length - 1] ?? 0;
-
-            return {
-                p99,
-                max,
-                longtaskCount: longtasks.length,
-                heapDelta: supportsMemory ? heapAfter - heapBaseline : -1,
-                heapMeasured: supportsMemory,
-            };
-        }, OBSERVATION_MS);
-
-        // Per-arm reporter line: the prototype's primary numeric
-        // output; consumed by the spec's "Prototype results" section
-        // and the BUGS.md decision tree (Option C / D / inconclusive).
-         
-        console.log(`[smoothness:${arm.label}] p99=${result.p99}ms max=${result.max}ms longtasks=${result.longtaskCount} heapDelta=${result.heapDelta}B`);
-
-        expect(result.p99).toBeLessThan(P99_FRAME_GAP_BUDGET_MS);
-        expect(result.max).toBeLessThan(MAX_FRAME_GAP_BUDGET_MS);
-        expect(result.longtaskCount).toBe(LONGTASK_BUDGET);
-        if (result.heapMeasured) {
-            expect(result.heapDelta).toBeLessThan(HEAP_DELTA_BUDGET_BYTES);
-        }
+    test(`pitch plot is smooth for 60 seconds (sustained, ${arm.label})`, async ({page}) => {
+        await run60sSmoothnessProbe(page, 'sustained', arm.label, arm.querystring);
     });
 }
 
@@ -541,4 +381,3 @@ if (process.env.PROTOTYPE_LONG === '1') {
         });
     }
 }
-
