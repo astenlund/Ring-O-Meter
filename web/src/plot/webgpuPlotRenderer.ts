@@ -231,6 +231,17 @@ export class WebgpuPlotRenderer {
         if (!this.context || !this.device || !this.format) {
             return;
         }
+        // Skip canvas resize + configure when CSS dimensions are 0;
+        // useCanvasBacking's first measurement on mount can fire with
+        // {cssWidth: 0, cssHeight: 0} before layout settles, and Dawn
+        // logs a "texture size empty" validation warning if we
+        // configure the swap chain against 0x0. paint() also short-
+        // circuits on cssHeight === 0 so we won't render against an
+        // unconfigured context; the next setBacking with real dims
+        // configures normally.
+        if (cssWidth === 0 || cssHeight === 0) {
+            return;
+        }
         const canvas = this.context.canvas as OffscreenCanvas;
         const w = Math.round(cssWidth * dpr);
         const h = Math.round(cssHeight * dpr);
