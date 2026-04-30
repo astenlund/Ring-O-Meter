@@ -53,7 +53,13 @@ fn vs_main(input: VsIn) -> VsOut {
     let xNorm = input.offsetMs / viewport.windowMs;
     let xNdc = -1.0 + 2.0 * xNorm;
     let yNorm = (log(input.hz) - viewport.logMinHz) / viewport.logSpanHz;
-    let yNdc = 1.0 - 2.0 * yNorm;
+    // WebGPU NDC has +Y up (like OpenGL), so high hz (yNorm near 1)
+    // maps directly to y_ndc = +1 (top of screen). The 2D canvas
+    // path in paint.ts inverts because canvas y grows downward; the
+    // GPU path doesn't need that inversion. Initial implementation
+    // mirrored the 2D math (1.0 - 2.0 * yNorm) and produced an
+    // upside-down trace (high pitch at bottom).
+    let yNdc = 2.0 * yNorm - 1.0;
     var out: VsOut;
     out.position = vec4<f32>(xNdc, yNdc, 0.0, 1.0);
     out.color = voice.color;
