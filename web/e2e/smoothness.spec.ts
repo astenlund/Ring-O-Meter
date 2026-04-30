@@ -69,6 +69,40 @@ for (const arm of RENDERER_ARMS) {
     });
 }
 
+// 4-voice "barbershop seven" chord arm. Exercises the rendering
+// path with four simultaneous traces - the eventual quartet
+// configuration the app is being built for. Uses the existing
+// fanout test mode (web/src/__testing/fanoutFlag.ts): one physical
+// mic feeds four VoiceChannels, each with a per-channel pitch
+// multiplier applied at the worklet's publish step (YIN runs once
+// on the shared input; the multipliers transform only the
+// published Hz value, not the audio stream itself).
+//
+// JI cent offsets from the root (A3, 220 Hz):
+//   Root      (1/1):   0 cents -> 220 Hz (A3)
+//   Maj 3rd   (5/4): 386 cents -> 275 Hz (C#4)
+//   Perfect 5 (3/2): 702 cents -> 330 Hz (E4)
+//   Harmonic 7(7/4): 969 cents -> 385 Hz (G4)
+//
+// Harmonic 7 (969 cents) rather than equal-tempered minor 7
+// (1000 cents) because that is the barbershop tuning convention
+// and what makes the chord lock. All four pitches fit inside the
+// plot's [80, 600] Hz window.
+const CHORD_FANOUT_QUERY = 'fanout=4&offsets=0,386,702,969';
+
+for (const arm of RENDERER_ARMS) {
+    // arm.querystring is either '' (WebGPU default) or
+    // '?renderer=2d' (2D opt-out). Compose with the fanout query
+    // so '?' appears exactly once and parameters are
+    // ampersand-joined.
+    const querystring = arm.querystring === ''
+        ? `?${CHORD_FANOUT_QUERY}`
+        : `${arm.querystring}&${CHORD_FANOUT_QUERY}`;
+    test(`pitch plot is smooth for 60 seconds (dom7 chord, ${arm.label})`, async ({page}) => {
+        await run60sSmoothnessProbe(page, 'dom7', arm.label, querystring);
+    });
+}
+
 test('pitch plot stays in sync across suspend/resume rebase', async ({page}) => {
     await page.goto('/');
 
