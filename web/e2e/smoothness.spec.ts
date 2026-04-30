@@ -447,3 +447,98 @@ test('pitch plot stays in sync across suspend/resume rebase', async ({page}) => 
     expect(result.preGaps).toBe(0);
     expect(result.postGaps).toBe(0);
 });
+
+// Long-window diagnostic arm for the WebGPU plot prototype
+// (.claude/specs/2026-04-30-webgpu-plot-prototype.md). The 60 s
+// regression net above catches steady-state pacing drift but cannot
+// reach the rare freeze class (~3 per 15 min) that originally
+// motivated the prototype. This 30-min loop reproduces that class at
+// a window where the count is statistically meaningful, emits
+// per-arm freeze counts and timestamps to the reporter, and DOES
+// NOT assert against a budget - the prototype is a diagnostic, not
+// a regression net at this scale. Numbers feed the spec's
+// "Prototype results" section and decision tree (Option C / D /
+// inconclusive). Gated by PROTOTYPE_LONG=1 so it does not run on
+// normal `pnpm test:e2e`; standard suite stays at ~2 min total.
+//
+// Run: PROTOTYPE_LONG=1 pnpm --dir web exec playwright test e2e/smoothness.spec.ts -g "30 minutes"
+const LONG_OBSERVATION_MS = 30 * 60 * 1000;
+const FREEZE_THRESHOLD_MS = 200;
+
+if (process.env.PROTOTYPE_LONG === '1') {
+    for (const arm of RENDERER_ARMS) {
+        test(`pitch plot is smooth for 30 minutes (${arm.label})`, async ({page}) => {
+            // Playwright's default per-test timeout (180_000 in
+            // playwright.config.ts) would fail this run at 0.6%
+            // completion. Extend just this test by the observation
+            // window plus 60 s headroom for setup, teardown, and
+            // post-loop reporter writes.
+            test.setTimeout(LONG_OBSERVATION_MS + 60_000);
+            await page.goto(`/${arm.querystring}`);
+
+            if (arm.label === 'WebGPU') {
+                const hasAdapter = await page.evaluate(async () => {
+                    if (!navigator.gpu) {
+                        return false;
+                    }
+                    const adapter = await navigator.gpu.requestAdapter();
+
+                    return adapter !== null;
+                });
+                expect(
+                    hasAdapter,
+                    'WebGPU arm requires a usable adapter; check Playwright Chromium launch args (--enable-unsafe-webgpu) and host WebGPU support',
+                ).toBe(true);
+            }
+
+            const startButton = page.getByRole('button', {name: /^start$/i});
+            await expect(startButton).toBeVisible({timeout: 15_000});
+            await startButton.click();
+            await expect(page.locator('canvas').first()).toBeVisible();
+            await page.waitForTimeout(1500);
+
+            const result = await page.evaluate(
+                async ({observationMs, freezeThresholdMs}) => {
+                    const longGaps: {ts: number; gap: number}[] = [];
+                    let lastTs = performance.now();
+                    const startTs = lastTs;
+                    await new Promise<void>((resolve) => {
+                        const tick = (ts: number) => {
+                            const gap = ts - lastTs;
+                            if (gap > freezeThresholdMs) {
+                                longGaps.push({ts: ts - startTs, gap});
+                            }
+                            lastTs = ts;
+                            if (ts - startTs < observationMs) {
+                                requestAnimationFrame(tick);
+
+                                return;
+                            }
+                            resolve();
+                        };
+                        requestAnimationFrame(tick);
+                    });
+
+                    return {longGaps, durationMs: performance.now() - startTs};
+                },
+                {observationMs: LONG_OBSERVATION_MS, freezeThresholdMs: FREEZE_THRESHOLD_MS},
+            );
+
+            // Reporter output: header line plus one line per freeze.
+            // Numbers get pasted into
+            // .claude/specs/2026-04-30-webgpu-plot-prototype.md
+            // "Prototype results" -> "Long-window freeze count" column.
+
+            console.log(`[long-smoothness:${arm.label}] freezes=${result.longGaps.length} over ${(result.durationMs / 1000).toFixed(0)}s`);
+            for (const f of result.longGaps) {
+
+                console.log(`  ${f.ts.toFixed(0)}ms: ${f.gap.toFixed(0)}ms gap`);
+            }
+            // No expect() against freeze count. The prototype is a
+            // diagnostic at this scale; a budget would either rubber-
+            // stamp noise or false-fail on legitimate Iris Xe
+            // residual. Spec's decision tree consumes the raw counts.
+        });
+    }
+}
+
