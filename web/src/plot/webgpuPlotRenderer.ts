@@ -113,6 +113,81 @@ export class WebgpuPlotRenderer {
 
     public setRoster(voices: ReadonlyArray<VoiceEntry>): void {
         this.voices = voices;
+        if (!this.device) {
+            return;
+        }
+        for (const voice of voices) {
+            const state = this.channels.get(voice.channelId);
+            if (!state) {
+                continue;
+            }
+            hexToRgba(voice.color, state.color);
+            this.device.queue.writeBuffer(state.voiceUniform, 0, state.color);
+        }
+    }
+
+    public attachChannel(channelId: string, source: FrameSource): void {
+        if (!this.device || !this.bindGroupLayout || !this.viewportUniform) {
+            throw new Error('attachChannel: renderer not initialised');
+        }
+        if (this.channels.has(channelId)) {
+            return;
+        }
+        const reader = new FrameRingReader(source.sab, source.epochOffsetMs);
+        const vertexBuffer = this.device.createBuffer({
+            size: VERTEX_BUFFER_BYTES,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        });
+        const voiceUniform = this.device.createBuffer({
+            size: VOICE_UNIFORM_BYTES,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        const bindGroup = this.device.createBindGroup({
+            layout: this.bindGroupLayout,
+            entries: [
+                {binding: 0, resource: {buffer: this.viewportUniform}},
+                {binding: 1, resource: {buffer: voiceUniform}},
+            ],
+        });
+
+        const state: ChannelState = {
+            reader,
+            vertexBuffer,
+            voiceUniform,
+            bindGroup,
+            staging: new Float32Array(CAPACITY * 2),
+            runs: new Int32Array(32),
+            runCount: 0,
+            color: new Float32Array(4),
+        };
+        // Initialise the voice uniform with the channel's color from
+        // the current roster. If the channel is not yet in the roster
+        // (attach can race ahead of setRoster on first init), default
+        // to white so traces are at least visible; the next setRoster
+        // call refreshes uniforms.
+        const voice = this.voices.find((v) => v.channelId === channelId);
+        if (voice) {
+            hexToRgba(voice.color, state.color);
+        } else {
+            state.color[0] = 1; state.color[1] = 1; state.color[2] = 1; state.color[3] = 1;
+        }
+        this.device.queue.writeBuffer(voiceUniform, 0, state.color);
+
+        this.channels.set(channelId, state);
+    }
+
+    public detachChannel(channelId: string): void {
+        const state = this.channels.get(channelId);
+        if (!state) {
+            return;
+        }
+        state.vertexBuffer.destroy();
+        state.voiceUniform.destroy();
+        this.channels.delete(channelId);
+    }
+
+    public rebaseChannel(channelId: string, epochOffsetMs: number): void {
+        this.channels.get(channelId)?.reader.setOffset(epochOffsetMs);
     }
 
     public setWindow(windowMs: number, minHz: number, maxHz: number): void {
