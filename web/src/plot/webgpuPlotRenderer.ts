@@ -39,17 +39,6 @@ export class WebgpuPlotRenderer {
     // backing-store sizing in setBacking writes the canvas dimensions
     // directly.
     private cssHeight = 0;
-    // GPU back-pressure: at most one frame in flight at a time. Without
-    // this, the worker rAF loop submits at 60 Hz unconditionally and
-    // the swap chain on Windows + Dawn -> D3D12 queues frames
-    // unboundedly when the compositor briefly lags - the displayed
-    // frame can fall seconds behind paint(). Diagnostic data
-    // (2026-04-30) confirmed this: paint() always reads fresh SAB
-    // samples (stale ~30-55 ms) but visual lag accumulated to
-    // multiple seconds. Setting `inFlight = true` after submit and
-    // clearing it on onSubmittedWorkDone() gates the next paint until
-    // the GPU has drained.
-    private inFlight = false;
 
     public async init(canvas: OffscreenCanvas): Promise<void> {
         if (!navigator.gpu) {
@@ -242,10 +231,20 @@ export class WebgpuPlotRenderer {
             // reconfigure unconditionally on every actual resize. Cost
             // is negligible (resize is a cold path), and the call is
             // a no-op on backends that don't need it.
+            // alphaMode: 'premultiplied' lets the WebGPU canvas pass
+            // its alpha channel through to HTML composition. The clear
+            // below uses (0,0,0,0) so non-trace pixels are fully
+            // transparent and the static-element underlay (grid,
+            // legend) renders behind. With alphaMode: 'opaque' the
+            // GPU output is composited as solid (clearColor wins
+            // everywhere), occluding the underlay entirely. The trace
+            // fragment shader returns voice.color which is already
+            // (R, G, B, 1) - that's correctly premultiplied for an
+            // opaque trace pixel, so traces still render solid.
             this.context.configure({
                 device: this.device,
                 format: this.format,
-                alphaMode: 'opaque',
+                alphaMode: 'premultiplied',
             });
         }
     }
@@ -255,16 +254,6 @@ export class WebgpuPlotRenderer {
             return;
         }
         if (this.cssHeight === 0) {
-            return;
-        }
-        // GPU back-pressure: skip this paint if the previous submit
-        // hasn't completed. rAF will fire again ~16 ms later and
-        // re-attempt; in steady state with the GPU keeping up at
-        // 60 Hz, inFlight clears before the next rAF tick and paint
-        // proceeds normally. When the compositor briefly lags, paints
-        // skip rather than pile commands into the swap-chain queue,
-        // bounding visual latency at ~one frame.
-        if (this.inFlight) {
             return;
         }
         const nowMs = performance.now() + this.mainEpochOffsetMs;
@@ -357,7 +346,10 @@ export class WebgpuPlotRenderer {
         const pass = encoder.beginRenderPass({
             colorAttachments: [{
                 view: this.context.getCurrentTexture().createView(),
-                clearValue: {r: 0x11 / 255, g: 0x11 / 255, b: 0x11 / 255, a: 1},
+                // Transparent clear so the underlay (grid + legend)
+                // shows through. Trace pixels are written by the
+                // fragment shader with alpha = 1.
+                clearValue: {r: 0, g: 0, b: 0, a: 0},
                 loadOp: 'clear',
                 storeOp: 'store',
             }],
@@ -378,10 +370,6 @@ export class WebgpuPlotRenderer {
         }
         pass.end();
         this.device.queue.submit([encoder.finish()]);
-        this.inFlight = true;
-        this.device.queue.onSubmittedWorkDone().then(() => {
-            this.inFlight = false;
-        });
     }
 
     public dispose(): void {
