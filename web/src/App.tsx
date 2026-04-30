@@ -14,15 +14,13 @@ import {FrameSourceRegistry} from './audio/frameSourceRegistry';
 // fanoutConstants.ts).
 import {parseFanoutFlag} from './__testing/fanoutFlag';
 import {parseRendererFlag} from './__testing/rendererFlag';
-// The static `?worker&url` import bundles the WebGPU worker chunk
-// into every production build, even for users who never opt into
-// ?renderer=webgpu - the URL is just a string at this layer; the
-// worker is only instantiated when PlotController chooses it. The
-// chunk's deadweight cost is acceptable for the prototype window;
-// if Option D wins (per spec's decision tree) and the prototype is
-// retired, this import is removed alongside plotWorkerWebgpu.ts.
-// If the prototype graduates to production via Option C, switch to
-// a dynamic `import()` guarded on the renderer flag at that point.
+// As of 2026-04-30 WebGPU is the production default renderer; the 2D
+// canvas worker remains available via ?renderer=2d. The static
+// `?worker&url` imports bundle both worker chunks at build time so
+// switching between them is a same-origin URL pick, not a dynamic
+// import. The 2D chunk is small (~4 KB gzipped) and pays for itself
+// the first time someone hits an iPad / device / driver where WebGPU
+// is unavailable or undesirable.
 import webgpuWorkerUrl from './plot/plotWorkerWebgpu.ts?worker&url';
 
 const PLOT_WINDOW_MS = 10_000;
@@ -184,8 +182,8 @@ export function App() {
                 voices={voices}
                 windowMs={PLOT_WINDOW_MS}
                 handleRef={plotHandleRef}
-                rendererWorkerUrl={rendererFlag === 'webgpu' ? webgpuWorkerUrl : undefined}
-                useUnderlay={rendererFlag === 'webgpu'}
+                rendererWorkerUrl={rendererFlag === '2d' ? undefined : webgpuWorkerUrl}
+                useUnderlay={rendererFlag !== '2d'}
             />
         </main>
     );

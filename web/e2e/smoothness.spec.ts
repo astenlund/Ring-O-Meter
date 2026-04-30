@@ -106,25 +106,25 @@ test.beforeEach(async ({context}) => {
     }, CHANNEL_BRIDGE_KEY);
 });
 
-// Renderer arms for the parameterized smoothness test below. The 2D
-// arm is the production path; the WebGPU arm exercises the prototype
-// worker (web/src/plot/plotWorkerWebgpu.ts) under
-// .claude/specs/2026-04-30-webgpu-plot-prototype.md and produces the
-// p99 / max / longtask / heap-delta numbers the spec's decision tree
-// consumes. The WebGPU arm hard-asserts a usable adapter before
-// measuring; a missing flag (or otherwise-broken WebGPU) fails the
-// test rather than silently rubber-stamping the comparison against a
-// worker whose init() threw.
+// Renderer arms for the parameterized smoothness test below. As of
+// 2026-04-30 WebGPU is the production default; the 2D arm is the
+// opt-out fallback selected via ?renderer=2d. Both arms are real
+// production paths now and the smoothness budgets apply to both.
+// The WebGPU arm hard-asserts a usable adapter before measuring; a
+// missing adapter fails the test rather than silently rubber-stamping
+// the comparison against a worker whose init() threw. (The host
+// Chromium for this test must therefore supply WebGPU; see
+// playwright.config.ts launchOptions.)
 const RENDERER_ARMS = [
-    {label: '2D canvas', querystring: ''},
-    {label: 'WebGPU', querystring: '?renderer=webgpu'},
+    {label: 'WebGPU (default)', querystring: ''},
+    {label: '2D canvas (opt-out)', querystring: '?renderer=2d'},
 ] as const;
 
 for (const arm of RENDERER_ARMS) {
     test(`pitch plot is smooth for 60 seconds (${arm.label})`, async ({page}) => {
         await page.goto(`/${arm.querystring}`);
 
-        if (arm.label === 'WebGPU') {
+        if (arm.label === 'WebGPU (default)') {
             // navigator.gpu is non-null on stock Chromium regardless
             // of --enable-unsafe-webgpu; the flag affects what
             // requestAdapter() returns on Windows. Probe the adapter
@@ -476,7 +476,7 @@ if (process.env.PROTOTYPE_LONG === '1') {
             test.setTimeout(LONG_OBSERVATION_MS + 60_000);
             await page.goto(`/${arm.querystring}`);
 
-            if (arm.label === 'WebGPU') {
+            if (arm.label === 'WebGPU (default)') {
                 const hasAdapter = await page.evaluate(async () => {
                     if (!navigator.gpu) {
                         return false;

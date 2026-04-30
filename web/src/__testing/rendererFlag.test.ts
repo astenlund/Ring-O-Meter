@@ -14,6 +14,10 @@ describe('parseRendererFlag', () => {
         expect(parseRendererFlag('?renderer=webgpu')).toBe('webgpu');
     });
 
+    test('returns "2d" for ?renderer=2d', () => {
+        expect(parseRendererFlag('?renderer=2d')).toBe('2d');
+    });
+
     test('returns null and warns for unrecognised renderer values', () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
         expect(parseRendererFlag('?renderer=metal')).toBeNull();
