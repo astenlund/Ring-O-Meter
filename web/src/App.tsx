@@ -13,6 +13,17 @@ import {FrameSourceRegistry} from './audio/frameSourceRegistry';
 // rm __testing/fanoutFlag.ts, fanoutVoiceChannel.ts, fanoutWorklet.ts,
 // fanoutConstants.ts).
 import {parseFanoutFlag} from './__testing/fanoutFlag';
+import {parseRendererFlag} from './__testing/rendererFlag';
+// The static `?worker&url` import bundles the WebGPU worker chunk
+// into every production build, even for users who never opt into
+// ?renderer=webgpu - the URL is just a string at this layer; the
+// worker is only instantiated when PlotController chooses it. The
+// chunk's deadweight cost is acceptable for the prototype window;
+// if Option D wins (per spec's decision tree) and the prototype is
+// retired, this import is removed alongside plotWorkerWebgpu.ts.
+// If the prototype graduates to production via Option C, switch to
+// a dynamic `import()` guarded on the renderer flag at that point.
+import webgpuWorkerUrl from './plot/plotWorkerWebgpu.ts?worker&url';
 
 const PLOT_WINDOW_MS = 10_000;
 
@@ -62,6 +73,7 @@ export function App() {
     // this state + the parseFanoutFlag import + the fanout branch in
     // handleDeviceConfirm + the SLOT_COLORS extension.
     const [fanoutConfig] = useState(() => parseFanoutFlag(window.location.search));
+    const [rendererFlag] = useState(() => parseRendererFlag(window.location.search));
 
     const handleDeviceConfirm = useCallback((selection: DeviceSelection) => {
         if (fanoutConfig) {
@@ -172,6 +184,8 @@ export function App() {
                 voices={voices}
                 windowMs={PLOT_WINDOW_MS}
                 handleRef={plotHandleRef}
+                rendererWorkerUrl={rendererFlag === 'webgpu' ? webgpuWorkerUrl : undefined}
+                useUnderlay={rendererFlag === 'webgpu'}
             />
         </main>
     );
