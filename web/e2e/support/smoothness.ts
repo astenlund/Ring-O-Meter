@@ -1,5 +1,101 @@
-import {test, expect, type Page} from '@playwright/test';
+import {test, expect, type CDPSession, type Page} from '@playwright/test';
+import {createWriteStream, mkdirSync} from 'node:fs';
+import {dirname, join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {CHANNEL_BRIDGE_KEY} from '../../src/__testing/channelBridge';
+
+// Chrome DevTools Protocol categories for the optional in-test
+// performance trace (CAPTURE_TRACE=1). Matches what DevTools'
+// Performance panel records by default plus the
+// disabled-by-default frame and v8 cpu profiler categories that
+// surface compositor frame events and JS samples - the data we
+// need to chase WebGPU max-frame-gap spikes back to their cause.
+const TRACE_CATEGORIES = [
+    'devtools.timeline',
+    'blink',
+    'cc',
+    'gpu',
+    'v8.execute',
+    'disabled-by-default-devtools.timeline',
+    'disabled-by-default-devtools.timeline.frame',
+    'disabled-by-default-v8.cpu_profiler',
+].join(',');
+
+// Project-root .tmp/ directory (per CLAUDE.md's "use .tmp/ for
+// scratch, not /tmp"). Resolves relative to this support file:
+// support/smoothness.ts -> e2e/ -> web/ -> repo root.
+const TRACE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '.tmp');
+
+function armSlug(armLabel: string): string {
+    return armLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+// Start a Chrome performance trace if CAPTURE_TRACE=1; returns a
+// stop function that drains the trace stream to .tmp/trace-*.json
+// once the measurement window completes. Returns null when tracing
+// is not requested so the probe can early-return on the stop call
+// without a special-case branch.
+async function maybeStartTrace(
+    page: Page,
+    fixtureLabel: string,
+    armLabel: string,
+): Promise<(() => Promise<void>) | null> {
+    if (process.env.CAPTURE_TRACE !== '1') {
+        return null;
+    }
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Tracing.start', {
+        transferMode: 'ReturnAsStream',
+        categories: TRACE_CATEGORIES,
+    });
+
+    return async () => stopTrace(cdp, fixtureLabel, armLabel);
+}
+
+async function stopTrace(
+    cdp: CDPSession,
+    fixtureLabel: string,
+    armLabel: string,
+): Promise<void> {
+    // Tracing.tracingComplete fires after Chrome has finalised the
+    // buffer; it carries the stream handle. Tracing.end does NOT
+    // return the handle directly - subscribing to the event before
+    // calling end is what catches it.
+    const streamPromise = new Promise<string>((resolve) => {
+        cdp.once('Tracing.tracingComplete', (event: {stream?: string}) => {
+            resolve(event.stream ?? '');
+        });
+    });
+    await cdp.send('Tracing.end');
+    const handle = await streamPromise;
+    if (!handle) {
+        return;
+    }
+    mkdirSync(TRACE_DIR, {recursive: true});
+    const path = join(TRACE_DIR, `trace-${fixtureLabel}-${armSlug(armLabel)}.json`);
+    const out = createWriteStream(path);
+    for (;;) {
+        const {data, eof, base64Encoded} = await cdp.send('IO.read', {handle}) as {
+            data: string;
+            eof: boolean;
+            base64Encoded?: boolean;
+        };
+        // For Tracing streams Chrome currently returns plain JSON
+        // text (base64Encoded undefined / false), but the CDP spec
+        // permits base64 - decode defensively so a future Chrome
+        // change doesn't silently produce un-loadable trace files.
+        out.write(base64Encoded ? Buffer.from(data, 'base64') : data);
+        if (eof) {
+            break;
+        }
+    }
+    await cdp.send('IO.close', {handle});
+    await new Promise<void>((resolve, reject) => {
+        out.end((err?: Error | null) => (err ? reject(err) : resolve()));
+    });
+
+    console.log(`[trace] wrote ${path}`);
+}
 
 // Shared bits for the 60-second smoothness regression net. Hosts the
 // budgets, the renderer-arm parameterisation, the fake-audio
@@ -161,6 +257,12 @@ export async function run60sSmoothnessProbe(
     await expect(page.locator('canvas').first()).toBeVisible();
     await page.waitForTimeout(1500);
 
+    // Optional Chrome performance trace covering the measurement
+    // window. Gated behind CAPTURE_TRACE=1 because traces are large
+    // (~50-200 MB per arm). Loose .tmp/trace-*.json files for
+    // loading directly into Chrome DevTools' Performance panel.
+    const stopTrace = await maybeStartTrace(page, fixtureLabel, armLabel);
+
     const result = await page.evaluate(async (observationMs: number) => {
         interface PerfWithMemory extends Performance {
             memory?: {usedJSHeapSize: number};
@@ -217,6 +319,16 @@ export async function run60sSmoothnessProbe(
             heapMeasured: supportsMemory,
         };
     }, OBSERVATION_MS);
+
+    // Stop the trace (if started) before the assertions so the
+    // file is on disk regardless of whether a budget assertion
+    // fails. A failed assertion that aborts the test would
+    // otherwise leave the CDP session leaking and the trace
+    // unwritten - which is exactly the case where we'd most want
+    // the trace.
+    if (stopTrace !== null) {
+        await stopTrace();
+    }
 
     // Per-fixture-per-arm reporter line: feeds the spec's
     // "Prototype results" section.
