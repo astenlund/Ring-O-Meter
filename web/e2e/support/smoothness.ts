@@ -36,6 +36,38 @@ export const RENDERER_ARMS = [
     {label: '2D canvas (opt-out)', querystring: '?renderer=2d'},
 ] as const;
 
+// 4-voice "barbershop seven" chord query. Uses the existing fanout
+// test mode (web/src/__testing/fanoutFlag.ts): one physical mic
+// feeds four VoiceChannels, each with a per-channel pitch
+// multiplier applied at the worklet's publish step. YIN runs once
+// on the shared input; the multipliers transform only the
+// published Hz value, not the audio stream itself - so the test
+// exercises the four-voice rendering load (4x SAB readers, vertex
+// buffers, bind groups, draw setup) without paying for four
+// independent audio analyses.
+//
+// JI cent offsets from the root (A3, 220 Hz):
+//   Root       (1/1):   0 cents -> 220 Hz (A3)
+//   Maj 3rd    (5/4): 386 cents -> 275 Hz (C#4)
+//   Perfect 5  (3/2): 702 cents -> 330 Hz (E4)
+//   Harmonic 7 (7/4): 969 cents -> 385 Hz (G4)
+//
+// Harmonic 7 (969 cents) rather than equal-tempered minor 7
+// (1000 cents) because that is the barbershop tuning convention
+// and what makes the chord lock. All four pitches fit inside the
+// plot's [80, 600] Hz window.
+const CHORD_FANOUT_QUERY = 'fanout=4&offsets=0,386,702,969';
+
+// Compose the fanout query with a renderer arm's querystring.
+// arm.querystring is either '' (WebGPU default) or '?renderer=2d'
+// (2D opt-out); the returned string starts with '?' and combines
+// both via '&'.
+export function withChordFanout(armQuerystring: string): string {
+    return armQuerystring === ''
+        ? `?${CHORD_FANOUT_QUERY}`
+        : `${armQuerystring}&${CHORD_FANOUT_QUERY}`;
+}
+
 // beforeEach shim that arms the channel test bridge and mocks the
 // media-device surface so single-fake-audio-input Chromium presents
 // as two synthetic audioinputs (the test exercises the two-slot

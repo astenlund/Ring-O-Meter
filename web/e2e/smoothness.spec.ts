@@ -4,6 +4,7 @@ import {
     RENDERER_ARMS,
     registerFakeAudioBeforeEach,
     run60sSmoothnessProbe,
+    withChordFanout,
 } from './support/smoothness';
 
 // End-to-end regression net covering three distinct invariants, all
@@ -56,50 +57,20 @@ const POST_RESUME_GUARD_MS = 200;
 
 registerFakeAudioBeforeEach();
 
-// Sustained-tone fixture: the smoothness regression net's primary
-// arm. Uses the global launchOptions audio file
-// (sustained-vowel.wav) configured in playwright.config.ts. Both
-// renderers should pass with comparable numbers - they are
-// equivalent on steady-state singing workloads (per the prototype's
-// 2026-04-30 measurements). The staccato fixture's discriminator
-// lives in staccato-smoothness.spec.ts.
+// Sustained 4-voice "barbershop seven" chord arm: the smoothness
+// regression net's primary smoothness fixture. Both renderers
+// (WebGPU default, 2D opt-out) tested. Single-voice variants were
+// dropped 2026-04-30 in favour of the 4-voice chord since (a) the
+// prototype's eventual production configuration is a four-singer
+// quartet, (b) the chord is the canonical "ring" moment in
+// barbershop, and (c) under fanout the rendering load is 4x but
+// the audio analysis cost is unchanged - so the test specifically
+// stresses the rendering layer, which is what we care about
+// regression-locking. Staccato variant lives in
+// staccato-smoothness.spec.ts.
 for (const arm of RENDERER_ARMS) {
-    test(`pitch plot is smooth for 60 seconds (sustained, ${arm.label})`, async ({page}) => {
-        await run60sSmoothnessProbe(page, 'sustained', arm.label, arm.querystring);
-    });
-}
-
-// 4-voice "barbershop seven" chord arm. Exercises the rendering
-// path with four simultaneous traces - the eventual quartet
-// configuration the app is being built for. Uses the existing
-// fanout test mode (web/src/__testing/fanoutFlag.ts): one physical
-// mic feeds four VoiceChannels, each with a per-channel pitch
-// multiplier applied at the worklet's publish step (YIN runs once
-// on the shared input; the multipliers transform only the
-// published Hz value, not the audio stream itself).
-//
-// JI cent offsets from the root (A3, 220 Hz):
-//   Root      (1/1):   0 cents -> 220 Hz (A3)
-//   Maj 3rd   (5/4): 386 cents -> 275 Hz (C#4)
-//   Perfect 5 (3/2): 702 cents -> 330 Hz (E4)
-//   Harmonic 7(7/4): 969 cents -> 385 Hz (G4)
-//
-// Harmonic 7 (969 cents) rather than equal-tempered minor 7
-// (1000 cents) because that is the barbershop tuning convention
-// and what makes the chord lock. All four pitches fit inside the
-// plot's [80, 600] Hz window.
-const CHORD_FANOUT_QUERY = 'fanout=4&offsets=0,386,702,969';
-
-for (const arm of RENDERER_ARMS) {
-    // arm.querystring is either '' (WebGPU default) or
-    // '?renderer=2d' (2D opt-out). Compose with the fanout query
-    // so '?' appears exactly once and parameters are
-    // ampersand-joined.
-    const querystring = arm.querystring === ''
-        ? `?${CHORD_FANOUT_QUERY}`
-        : `${arm.querystring}&${CHORD_FANOUT_QUERY}`;
-    test(`pitch plot is smooth for 60 seconds (dom7 chord, ${arm.label})`, async ({page}) => {
-        await run60sSmoothnessProbe(page, 'dom7', arm.label, querystring);
+    test(`pitch plot is smooth for 60 seconds (dom7 sustained, ${arm.label})`, async ({page}) => {
+        await run60sSmoothnessProbe(page, 'dom7-sustained', arm.label, withChordFanout(arm.querystring));
     });
 }
 
@@ -341,14 +312,14 @@ const FREEZE_THRESHOLD_MS = 200;
 
 if (process.env.PROTOTYPE_LONG === '1') {
     for (const arm of RENDERER_ARMS) {
-        test(`pitch plot is smooth for 30 minutes (${arm.label})`, async ({page}) => {
+        test(`pitch plot is smooth for 30 minutes (dom7 sustained, ${arm.label})`, async ({page}) => {
             // Playwright's default per-test timeout (180_000 in
             // playwright.config.ts) would fail this run at 0.6%
             // completion. Extend just this test by the observation
             // window plus 60 s headroom for setup, teardown, and
             // post-loop reporter writes.
             test.setTimeout(LONG_OBSERVATION_MS + 60_000);
-            await page.goto(`/${arm.querystring}`);
+            await page.goto(`/${withChordFanout(arm.querystring)}`);
 
             if (arm.label === 'WebGPU (default)') {
                 const hasAdapter = await page.evaluate(async () => {
@@ -403,7 +374,7 @@ if (process.env.PROTOTYPE_LONG === '1') {
             // .claude/specs/2026-04-30-webgpu-plot-prototype.md
             // "Prototype results" -> "Long-window freeze count" column.
 
-            console.log(`[long-smoothness:${arm.label}] freezes=${result.longGaps.length} over ${(result.durationMs / 1000).toFixed(0)}s`);
+            console.log(`[long-smoothness:dom7-sustained:${arm.label}] freezes=${result.longGaps.length} over ${(result.durationMs / 1000).toFixed(0)}s`);
             for (const f of result.longGaps) {
 
                 console.log(`  ${f.ts.toFixed(0)}ms: ${f.gap.toFixed(0)}ms gap`);
