@@ -60,6 +60,6 @@ registerFakeAudioBeforeEach();
 
 for (const arm of RENDERER_ARMS) {
     test(`pitch plot is smooth for 60 seconds (dom7 staccato, ${arm.label})`, async ({page}) => {
-        await run60sSmoothnessProbe(page, 'dom7-staccato', arm.label, withChordFanout(arm.querystring));
+        await run60sSmoothnessProbe(page, 'dom7-staccato', arm, withChordFanout(arm.querystring));
     });
 }

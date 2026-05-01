@@ -11,7 +11,10 @@ import {FrameSourceRegistry} from './audio/frameSourceRegistry';
 // the fanout test mode is retired (also remove FanoutGroup + fanoutGroup
 // field from useVoiceChannels.ts + its FanoutVoiceChannel import; also
 // rm __testing/fanoutFlag.ts, fanoutVoiceChannel.ts, fanoutWorklet.ts,
-// fanoutConstants.ts).
+// fanoutConstants.ts). Do NOT also delete __testing/rendererFlag.ts -
+// it is a production renderer toggle (?renderer=2d), not part of the
+// fanout test mode despite living in the same directory; see the
+// comment at the top of that file.
 import {parseFanoutFlag} from './__testing/fanoutFlag';
 import {parseRendererFlag} from './__testing/rendererFlag';
 // As of 2026-04-30 WebGPU is the production default renderer; the 2D
@@ -72,6 +75,11 @@ export function App() {
     // handleDeviceConfirm + the SLOT_COLORS extension.
     const [fanoutConfig] = useState(() => parseFanoutFlag(window.location.search));
     const [rendererFlag] = useState(() => parseRendererFlag(window.location.search));
+    // WebGPU is the production default; ?renderer=2d is the only
+    // opt-out. `null` (no flag) and explicit `'webgpu'` both go
+    // through the WebGPU path. Hoisted so the two PitchPlot props
+    // (rendererWorkerUrl + useUnderlay) cannot diverge.
+    const useWebGpu = rendererFlag !== '2d';
 
     const handleDeviceConfirm = useCallback((selection: DeviceSelection) => {
         if (fanoutConfig) {
@@ -182,8 +190,8 @@ export function App() {
                 voices={voices}
                 windowMs={PLOT_WINDOW_MS}
                 handleRef={plotHandleRef}
-                rendererWorkerUrl={rendererFlag === '2d' ? undefined : webgpuWorkerUrl}
-                useUnderlay={rendererFlag !== '2d'}
+                rendererWorkerUrl={useWebGpu ? webgpuWorkerUrl : undefined}
+                useUnderlay={useWebGpu}
             />
         </main>
     );

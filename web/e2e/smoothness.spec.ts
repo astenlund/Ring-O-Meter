@@ -4,6 +4,7 @@ import {
     RENDERER_ARMS,
     registerFakeAudioBeforeEach,
     run60sSmoothnessProbe,
+    setupSmoothnessPage,
     withChordFanout,
 } from './support/smoothness';
 
@@ -68,9 +69,17 @@ registerFakeAudioBeforeEach();
 // stresses the rendering layer, which is what we care about
 // regression-locking. Staccato variant lives in
 // staccato-smoothness.spec.ts.
+//
+// FIXTURE_LABEL is the reporter token shared between the 60-second
+// and 30-minute arms below; emitting the same string from both is
+// what lets the spec's "Prototype results" section pair the
+// numbers across observation windows. Single source of truth so
+// the two arms can't drift on rename.
+const FIXTURE_LABEL = 'dom7-sustained';
+
 for (const arm of RENDERER_ARMS) {
     test(`pitch plot is smooth for 60 seconds (dom7 sustained, ${arm.label})`, async ({page}) => {
-        await run60sSmoothnessProbe(page, 'dom7-sustained', arm.label, withChordFanout(arm.querystring));
+        await run60sSmoothnessProbe(page, FIXTURE_LABEL, arm, withChordFanout(arm.querystring));
     });
 }
 
@@ -319,28 +328,7 @@ if (process.env.PROTOTYPE_LONG === '1') {
             // window plus 60 s headroom for setup, teardown, and
             // post-loop reporter writes.
             test.setTimeout(LONG_OBSERVATION_MS + 60_000);
-            await page.goto(`/${withChordFanout(arm.querystring)}`);
-
-            if (arm.label === 'WebGPU (default)') {
-                const hasAdapter = await page.evaluate(async () => {
-                    if (!navigator.gpu) {
-                        return false;
-                    }
-                    const adapter = await navigator.gpu.requestAdapter();
-
-                    return adapter !== null;
-                });
-                expect(
-                    hasAdapter,
-                    'WebGPU arm requires a usable adapter; check Playwright Chromium launch args (--enable-unsafe-webgpu) and host WebGPU support',
-                ).toBe(true);
-            }
-
-            const startButton = page.getByRole('button', {name: /^start$/i});
-            await expect(startButton).toBeVisible({timeout: 15_000});
-            await startButton.click();
-            await expect(page.locator('canvas').first()).toBeVisible();
-            await page.waitForTimeout(1500);
+            await setupSmoothnessPage(page, arm, withChordFanout(arm.querystring));
 
             const result = await page.evaluate(
                 async ({observationMs, freezeThresholdMs}) => {
@@ -374,7 +362,7 @@ if (process.env.PROTOTYPE_LONG === '1') {
             // .claude/specs/2026-04-30-webgpu-plot-prototype.md
             // "Prototype results" -> "Long-window freeze count" column.
 
-            console.log(`[long-smoothness:dom7-sustained:${arm.label}] freezes=${result.longGaps.length} over ${(result.durationMs / 1000).toFixed(0)}s`);
+            console.log(`[long-smoothness:${FIXTURE_LABEL}:${arm.label}] freezes=${result.longGaps.length} over ${(result.durationMs / 1000).toFixed(0)}s`);
             for (const f of result.longGaps) {
 
                 console.log(`  ${f.ts.toFixed(0)}ms: ${f.gap.toFixed(0)}ms gap`);

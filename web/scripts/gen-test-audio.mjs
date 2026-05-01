@@ -2,9 +2,7 @@
 // mono PCM. Fundamental 220 Hz plus harmonics; light vibrato so YIN
 // has something to bite on and the plot has visible trace movement.
 // Used by Playwright's --use-file-for-fake-audio-capture.
-import {mkdirSync, writeFileSync} from 'node:fs';
-import {dirname, join} from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {WAV_HEADER_BYTES, writeWavFile, writeWavHeader} from './wav-utils.mjs';
 
 const SAMPLE_RATE = 48_000;
 const DURATION_S = 90;
@@ -32,25 +30,8 @@ for (let i = 0; i < totalSamples; i += 1) {
     pcm[i] = Math.round(clipped * 32767);
 }
 
-const header = Buffer.alloc(44);
 const dataBytes = pcm.byteLength;
-header.write('RIFF', 0);
-header.writeUInt32LE(36 + dataBytes, 4);
-header.write('WAVE', 8);
-header.write('fmt ', 12);
-header.writeUInt32LE(16, 16);
-header.writeUInt16LE(1, 20);
-header.writeUInt16LE(1, 22);
-header.writeUInt32LE(SAMPLE_RATE, 24);
-header.writeUInt32LE(SAMPLE_RATE * 2, 28);
-header.writeUInt16LE(2, 32);
-header.writeUInt16LE(16, 34);
-header.write('data', 36);
-header.writeUInt32LE(dataBytes, 40);
-
-const scriptDir = dirname(fileURLToPath(import.meta.url));
-const outDir = join(scriptDir, '..', 'test-fixtures');
-mkdirSync(outDir, {recursive: true});
-const outPath = join(outDir, 'sustained-vowel.wav');
-writeFileSync(outPath, Buffer.concat([header, Buffer.from(pcm.buffer)]));
-console.log(`Wrote ${outPath} (${(dataBytes / 1024 / 1024).toFixed(1)} MB)`);
+const buffer = Buffer.alloc(WAV_HEADER_BYTES + dataBytes);
+writeWavHeader(buffer, dataBytes, SAMPLE_RATE, 1, 16);
+Buffer.from(pcm.buffer).copy(buffer, WAV_HEADER_BYTES);
+writeWavFile('sustained-vowel.wav', buffer);

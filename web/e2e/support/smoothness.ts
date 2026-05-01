@@ -26,6 +26,14 @@ const TRACE_CATEGORIES = [
 // support/smoothness.ts -> e2e/ -> web/ -> repo root.
 const TRACE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '.tmp');
 
+// Per-CDP-IO.read chunk size in bytes (4 MiB). The default
+// (32 KiB at the time of writing) makes a 200 MB trace drain
+// require ~6,400 sequential CDP round-trips; 4 MiB drops that
+// to ~50. Capped at 4 MiB rather than larger because the CDP
+// transport buffers each response in memory before parsing,
+// and ~4 MiB sits comfortably below typical V8 string limits.
+const TRACE_READ_CHUNK_BYTES = 4 * 1024 * 1024;
+
 function armSlug(armLabel: string): string {
     return armLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
@@ -69,30 +77,52 @@ async function stopTrace(
     await cdp.send('Tracing.end');
     const handle = await streamPromise;
     if (!handle) {
+        await cdp.detach();
         return;
     }
     mkdirSync(TRACE_DIR, {recursive: true});
     const path = join(TRACE_DIR, `trace-${fixtureLabel}-${armSlug(armLabel)}.json`);
     const out = createWriteStream(path);
-    for (;;) {
-        const {data, eof, base64Encoded} = await cdp.send('IO.read', {handle}) as {
-            data: string;
-            eof: boolean;
-            base64Encoded?: boolean;
-        };
-        // For Tracing streams Chrome currently returns plain JSON
-        // text (base64Encoded undefined / false), but the CDP spec
-        // permits base64 - decode defensively so a future Chrome
-        // change doesn't silently produce un-loadable trace files.
-        out.write(base64Encoded ? Buffer.from(data, 'base64') : data);
-        if (eof) {
-            break;
-        }
-    }
-    await cdp.send('IO.close', {handle});
-    await new Promise<void>((resolve, reject) => {
-        out.end((err?: Error | null) => (err ? reject(err) : resolve()));
+    // Surface mid-drain disk errors (e.g. disk full) instead of
+    // silently swallowing them. Without this, out.write returns
+    // false, the loop continues, and the only signal of failure
+    // is a possibly-truncated file with no diagnostic.
+    const writeErrors: Error[] = [];
+    out.on('error', (err) => {
+        writeErrors.push(err);
     });
+    try {
+        for (;;) {
+            const {data, eof, base64Encoded} = await cdp.send('IO.read', {
+                handle,
+                size: TRACE_READ_CHUNK_BYTES,
+            }) as {
+                data: string;
+                eof: boolean;
+                base64Encoded?: boolean;
+            };
+            // For Tracing streams Chrome currently returns plain JSON
+            // text (base64Encoded undefined / false), but the CDP spec
+            // permits base64 - decode defensively so a future Chrome
+            // change doesn't silently produce un-loadable trace files.
+            out.write(base64Encoded ? Buffer.from(data, 'base64') : data);
+            if (eof) {
+                break;
+            }
+        }
+        await cdp.send('IO.close', {handle});
+        await new Promise<void>((resolve, reject) => {
+            out.end((err?: Error | null) => (err ? reject(err) : resolve()));
+        });
+        if (writeErrors.length > 0) {
+            throw writeErrors[0];
+        }
+    } finally {
+        // Detach the CDP session even if drain failed mid-stream;
+        // Playwright would close it on page teardown, but explicit
+        // detach is cheap and removes the leak window.
+        await cdp.detach();
+    }
 
     console.log(`[trace] wrote ${path}`);
 }
@@ -127,20 +157,21 @@ export const HEAP_DELTA_BUDGET_BYTES = 600 * 1024;
 // 2026-04-30 WebGPU is the production default; the 2D arm is the
 // opt-out fallback selected via ?renderer=2d. Both arms are real
 // production paths now and the smoothness budgets apply to both.
+// `requiresAdapter` gates the navigator.gpu.requestAdapter()
+// precondition in setupSmoothnessPage so the WebGPU arm fails
+// fast on hosts that lack a usable adapter.
 export const RENDERER_ARMS = [
-    {label: 'WebGPU (default)', querystring: ''},
-    {label: '2D canvas (opt-out)', querystring: '?renderer=2d'},
+    {label: 'WebGPU (default)', querystring: '', requiresAdapter: true},
+    {label: '2D canvas (opt-out)', querystring: '?renderer=2d', requiresAdapter: false},
 ] as const;
 
-// 4-voice "barbershop seven" chord query. Uses the existing fanout
-// test mode (web/src/__testing/fanoutFlag.ts): one physical mic
-// feeds four VoiceChannels, each with a per-channel pitch
-// multiplier applied at the worklet's publish step. YIN runs once
-// on the shared input; the multipliers transform only the
-// published Hz value, not the audio stream itself - so the test
-// exercises the four-voice rendering load (4x SAB readers, vertex
-// buffers, bind groups, draw setup) without paying for four
-// independent audio analyses.
+export type RendererArm = typeof RENDERER_ARMS[number];
+
+// 4-voice "barbershop seven" chord, expressed as typed constants
+// rather than a single opaque query string. The CHORD_OFFSETS
+// tuple's length is enforced at compile time via `as const`, and
+// CHORD_FANOUT_QUERY is composed from the typed shapes below so
+// `fanout=N` and the offsets list cannot drift independently.
 //
 // JI cent offsets from the root (A3, 220 Hz):
 //   Root       (1/1):   0 cents -> 220 Hz (A3)
@@ -151,8 +182,14 @@ export const RENDERER_ARMS = [
 // Harmonic 7 (969 cents) rather than equal-tempered minor 7
 // (1000 cents) because that is the barbershop tuning convention
 // and what makes the chord lock. All four pitches fit inside the
-// plot's [80, 600] Hz window.
-const CHORD_FANOUT_QUERY = 'fanout=4&offsets=0,386,702,969';
+// plot's [80, 600] Hz window. Uses the existing fanout test mode
+// (web/src/__testing/fanoutFlag.ts): one physical mic feeds N
+// VoiceChannels, each with a per-channel pitch multiplier applied
+// at the worklet's publish step. YIN runs once on the shared
+// input; the multipliers transform only the published Hz value.
+const CHORD_OFFSETS = [0, 386, 702, 969] as const;
+const CHORD_FANOUT_COUNT = CHORD_OFFSETS.length;
+const CHORD_FANOUT_QUERY = `fanout=${CHORD_FANOUT_COUNT}&offsets=${CHORD_OFFSETS.join(',')}`;
 
 // Compose the fanout query with a renderer arm's querystring.
 // arm.querystring is either '' (WebGPU default) or '?renderer=2d'
@@ -211,20 +248,25 @@ export function registerFakeAudioBeforeEach(): void {
     });
 }
 
-// 60-second smoothness probe shared between the sustained and
-// staccato fixture spec files. Same precondition (WebGPU adapter
-// check on the WebGPU arm), same measurement, same budgets; only
-// the audio-capture file (and therefore the singing waveform
-// reaching the YIN detector) differs across callers.
-export async function run60sSmoothnessProbe(
+// Page-level setup shared between the 60-second smoothness probe
+// and the opt-in 30-minute long-window arm: navigates to the
+// renderer-arm-specific URL, hard-asserts WebGPU adapter
+// availability for arms that require it, clicks Start, waits for
+// the canvas to mount, and gives the worklet 1500 ms to settle
+// before the caller's measurement window begins.
+//
+// Extracted from run60sSmoothnessProbe so the long-window arm
+// (smoothness.spec.ts under PROTOTYPE_LONG=1) does not duplicate
+// the precondition / setup code it shares with the 60-second
+// arms. The two arms differ only in the measurement loop body.
+export async function setupSmoothnessPage(
     page: Page,
-    fixtureLabel: string,
-    armLabel: string,
+    arm: RendererArm,
     querystring: string,
 ): Promise<void> {
     await page.goto(`/${querystring}`);
 
-    if (armLabel === 'WebGPU (default)') {
+    if (arm.requiresAdapter) {
         // navigator.gpu is non-null on stock Chromium regardless
         // of --enable-unsafe-webgpu; the flag affects what
         // requestAdapter() returns on Windows. Probe the adapter
@@ -256,12 +298,26 @@ export async function run60sSmoothnessProbe(
     // the WebGPU arm; .first() matches either shape.
     await expect(page.locator('canvas').first()).toBeVisible();
     await page.waitForTimeout(1500);
+}
+
+// 60-second smoothness probe shared between the sustained and
+// staccato fixture spec files. Same precondition (WebGPU adapter
+// check on the WebGPU arm), same measurement, same budgets; only
+// the audio-capture file (and therefore the singing waveform
+// reaching the YIN detector) differs across callers.
+export async function run60sSmoothnessProbe(
+    page: Page,
+    fixtureLabel: string,
+    arm: RendererArm,
+    querystring: string,
+): Promise<void> {
+    await setupSmoothnessPage(page, arm, querystring);
 
     // Optional Chrome performance trace covering the measurement
     // window. Gated behind CAPTURE_TRACE=1 because traces are large
     // (~50-200 MB per arm). Loose .tmp/trace-*.json files for
     // loading directly into Chrome DevTools' Performance panel.
-    const stopTrace = await maybeStartTrace(page, fixtureLabel, armLabel);
+    const stopTrace = await maybeStartTrace(page, fixtureLabel, arm.label);
 
     const result = await page.evaluate(async (observationMs: number) => {
         interface PerfWithMemory extends Performance {
@@ -314,6 +370,7 @@ export async function run60sSmoothnessProbe(
         return {
             p99,
             max,
+            gapCount: gaps.length,
             longtaskCount: longtasks.length,
             heapDelta: supportsMemory ? heapAfter - heapBaseline : -1,
             heapMeasured: supportsMemory,
@@ -333,7 +390,18 @@ export async function run60sSmoothnessProbe(
     // Per-fixture-per-arm reporter line: feeds the spec's
     // "Prototype results" section.
 
-    console.log(`[smoothness:${fixtureLabel}:${armLabel}] p99=${result.p99}ms max=${result.max}ms longtasks=${result.longtaskCount} heapDelta=${result.heapDelta}B`);
+    console.log(`[smoothness:${fixtureLabel}:${arm.label}] p99=${result.p99}ms max=${result.max}ms longtasks=${result.longtaskCount} heapDelta=${result.heapDelta}B`);
+
+    // Hard-fail on an empty rAF stream: result.p99 / result.max
+    // both fall back to 0 when no gaps were collected, which would
+    // otherwise pass the < 20 / < 50 ms budgets silently. A 60 s
+    // observation window with zero rAF callbacks means the page
+    // never rendered (fatal init error, navigation timeout, etc.)
+    // and the test should not green-stamp that.
+    expect(
+        result.gapCount,
+        '60 s observation window produced zero rAF callbacks - the page never rendered',
+    ).toBeGreaterThan(0);
 
     expect(result.p99).toBeLessThan(P99_FRAME_GAP_BUDGET_MS);
     expect(result.max).toBeLessThan(MAX_FRAME_GAP_BUDGET_MS);

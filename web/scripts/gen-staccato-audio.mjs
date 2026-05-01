@@ -13,9 +13,7 @@
 // when playback reaches its end, which is fine for a test that
 // observes 60 s and the fixture happens to be exactly 60 s — no
 // loop-boundary artefact within the observation window.
-import {mkdirSync, writeFileSync} from 'node:fs';
-import {dirname, join} from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {WAV_HEADER_BYTES, writeWavFile, writeWavHeader} from './wav-utils.mjs';
 
 const SAMPLE_RATE = 48_000;
 const CHANNELS = 1;
@@ -31,27 +29,9 @@ const CYCLE_SAMPLES = TONE_SAMPLES + SILENCE_SAMPLES;
 const TOTAL_SAMPLES = (SAMPLE_RATE * TOTAL_MS) / 1000;
 
 const dataSize = TOTAL_SAMPLES * (BITS_PER_SAMPLE / 8) * CHANNELS;
-const fileSize = 44 + dataSize;
+const fileSize = WAV_HEADER_BYTES + dataSize;
 const buffer = Buffer.alloc(fileSize);
-
-// RIFF header.
-buffer.write('RIFF', 0, 'ascii');
-buffer.writeUInt32LE(fileSize - 8, 4);
-buffer.write('WAVE', 8, 'ascii');
-
-// fmt chunk.
-buffer.write('fmt ', 12, 'ascii');
-buffer.writeUInt32LE(16, 16);
-buffer.writeUInt16LE(1, 20);
-buffer.writeUInt16LE(CHANNELS, 22);
-buffer.writeUInt32LE(SAMPLE_RATE, 24);
-buffer.writeUInt32LE((SAMPLE_RATE * CHANNELS * BITS_PER_SAMPLE) / 8, 28);
-buffer.writeUInt16LE((CHANNELS * BITS_PER_SAMPLE) / 8, 32);
-buffer.writeUInt16LE(BITS_PER_SAMPLE, 34);
-
-// data chunk.
-buffer.write('data', 36, 'ascii');
-buffer.writeUInt32LE(dataSize, 40);
+writeWavHeader(buffer, dataSize, SAMPLE_RATE, CHANNELS, BITS_PER_SAMPLE);
 
 // Tone amplitude: 70% of int16 range. Loud enough to pass YIN
 // confidence reliably, quiet enough that any future test code
@@ -69,13 +49,7 @@ for (let i = 0; i < TOTAL_SAMPLES; i += 1) {
         // autocorrelation window inside each burst.
         sample = Math.round(amplitude * Math.sin(positionInCycle * angularStepPerSample));
     }
-    buffer.writeInt16LE(sample, 44 + i * 2);
+    buffer.writeInt16LE(sample, WAV_HEADER_BYTES + i * 2);
 }
 
-const scriptDir = dirname(fileURLToPath(import.meta.url));
-const outDir = join(scriptDir, '..', 'test-fixtures');
-mkdirSync(outDir, {recursive: true});
-const outPath = join(outDir, 'staccato-vowel.wav');
-writeFileSync(outPath, buffer);
-
-console.log(`Wrote ${outPath} (${(dataSize / 1024 / 1024).toFixed(1)} MB, ${TOTAL_MS / 1000} s)`);
+writeWavFile('staccato-vowel.wav', buffer, TOTAL_MS / 1000);
