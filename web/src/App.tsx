@@ -26,7 +26,18 @@ import {parseRendererFlag} from './__testing/rendererFlag';
 // is unavailable or undesirable.
 import webgpuWorkerUrl from './plot/plotWorkerWebgpu.ts?worker&url';
 
-const PLOT_WINDOW_MS = 10_000;
+// 5 s of pitch history fits in window. The previous 10 s was chosen
+// for roominess but doubled the per-frame vertex count vs what the
+// renderer actually needs to scroll smoothly: each rendered sample
+// occupies twice the horizontal pixels at 5 s, halving the
+// vertex-buffer upload size and per-frame rasterization work
+// (measured ~2× reduction on the staccato moderate-frame profile).
+// 5 s is still long enough to see a phrase's pitch trajectory in
+// barbershop coaching contexts; the SAB ring keeps ~22 s of history
+// at the worklet's ~47 Hz publish rate, so widening the window
+// later is a one-constant change with no data loss.
+// heuristic: plot-window-ms
+const PLOT_WINDOW_MS = 5_000;
 
 // Four entries to support ?fanout=4 test mode. Production today only
 // uses the first two (Voice 1 / Voice 2); the 3rd and 4th are consumed
