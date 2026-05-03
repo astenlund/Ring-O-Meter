@@ -15,6 +15,21 @@ const STAGING_FLOAT_COUNT = MAX_VERTEX_COUNT * 2;
 const VIEWPORT_UNIFORM_BYTES = 16;
 const VOICE_UNIFORM_BYTES = 16;
 
+// Per-channel rendering state. Each channel owns its own vertex
+// buffer, voice-color uniform, and bind group; paint() issues one
+// setBindGroup + setVertexBuffer + draw per channel inside a single
+// render pass. A coalesced "single instanced draw across all
+// channels" architecture was investigated 2026-05-03 against the
+// staccato moderate-frame profiling data and rejected on this
+// hardware (Iris Xe + ANGLE/D3D11): both a per-vertex u32 channelIdx
+// attribute (12-byte stride, +50% upload size) and a shader-side
+// scan via @builtin(vertex_index) (8-byte stride preserved, but
+// SIMT divergence in the loop) regressed WebGPU sustained outlier
+// rate. See the QUICK_WINS Implemented entry from that date for the
+// full data; if a future hardware change or measurement campaign
+// suggests retrying, re-profile first - the CommandBuffer-cost
+// premise was directionally correct, but the marginal savings get
+// eclipsed by other costs in this specific render path.
 interface ChannelState {
     reader: FrameRingReader;
     vertexBuffer: GPUBuffer;
