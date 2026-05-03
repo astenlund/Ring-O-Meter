@@ -324,7 +324,17 @@ export async function setupSmoothnessPage(
     // Two canvases (underlay + main) when useUnderlay is true on
     // the WebGPU arm; .first() matches either shape.
     await expect(page.locator('canvas').first()).toBeVisible();
-    await page.waitForTimeout(1500);
+    // 5000 ms warmup absorbs the Dawn/Skia first-time pipeline
+    // warmup that the cold-start-judder bug entry (Fixed in BUGS.md
+    // 2026-04-29) noted as "brief sub-second cold-start judder may
+    // persist." Empirically the previous 1500 ms warmup left the
+    // first ~3 s of measurement noisy, producing intermittent
+    // 100 ms+ freezes in multi-arm runs (sustained-WebGPU as the
+    // first arm). Cleaner-than-1500 ms data: solo runs and
+    // CAPTURE_TRACE-enabled multi-arm runs (the latter adds CDP
+    // setup time per arm, effectively extending warmup). 5000 ms
+    // brings multi-arm-no-trace runs into the same clean envelope.
+    await page.waitForTimeout(5000);
 }
 
 // 60-second smoothness probe shared between the sustained and
