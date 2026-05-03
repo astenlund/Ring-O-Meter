@@ -49,6 +49,13 @@ export class WebgpuPlotRenderer {
     // backing-store sizing in setBacking writes the canvas dimensions
     // directly.
     private cssHeight = 0;
+    // Whether configure() has run against the swap-chain context yet.
+    // First non-zero setBacking call must configure even if the
+    // canvas dimensions happen to already match the requested size
+    // (e.g., the alloc test pre-sizes its canvas before transfer);
+    // dimensions-only comparison would silently skip the configure
+    // and the next paint would fail with "context is not configured".
+    private configured = false;
 
     public async init(canvas: OffscreenCanvas): Promise<void> {
         if (!navigator.gpu) {
@@ -245,7 +252,8 @@ export class WebgpuPlotRenderer {
         const canvas = this.context.canvas as OffscreenCanvas;
         const w = Math.round(cssWidth * dpr);
         const h = Math.round(cssHeight * dpr);
-        if (canvas.width !== w || canvas.height !== h) {
+        const dimsChanged = canvas.width !== w || canvas.height !== h;
+        if (dimsChanged || !this.configured) {
             canvas.width = w;
             canvas.height = h;
             // After a canvas size change the swap-chain texture from
@@ -271,6 +279,7 @@ export class WebgpuPlotRenderer {
                 format: this.format,
                 alphaMode: 'premultiplied',
             });
+            this.configured = true;
         }
     }
 
