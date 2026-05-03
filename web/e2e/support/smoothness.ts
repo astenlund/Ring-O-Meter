@@ -137,9 +137,13 @@ async function stopTrace(
 
 // heuristic: smoothness-budget
 export const OBSERVATION_MS = 60_000;
+// heuristic: smoothness-budget
 export const P99_FRAME_GAP_BUDGET_MS = 20;
+// heuristic: smoothness-budget
 export const MAX_FRAME_GAP_BUDGET_MS = 50;
+// heuristic: smoothness-budget
 export const LONGTASK_BUDGET = 0;
+// heuristic: smoothness-budget
 // 600 KB = measured_clean_run * ~1.6 (two local runs at ~370 KB,
 // ~1% variance). This e2e delta measures the whole app's 60 s
 // churn - React reconciles from useFrameState flushes, rAF closures,
@@ -152,6 +156,29 @@ export const LONGTASK_BUDGET = 0;
 // down only when a churn-reduction change has landed AND three CI
 // runs confirm the new baseline.
 export const HEAP_DELTA_BUDGET_BYTES = 600 * 1024;
+// heuristic: smoothness-budget
+// Threshold for "missed at least one vsync" at 60 Hz (16.667 ms +
+// small noise margin). Drives GAP_OVER_VSYNC_BUDGET below.
+export const GAP_OVER_VSYNC_THRESHOLD_MS = 17;
+// heuristic: smoothness-budget
+// Counts gaps in the test's own rAF chain (one tick per vsync) that
+// exceed the threshold; this is the "did MY chain miss its slot"
+// metric. NOT the same as trace-based outlier counts which include
+// every rAF chain on main and run at ~2x the test rate.
+// Measured baselines (two multi-arm runs @ 60 s, post-NoteReadout
+// fix): WebGPU sustained 36-51, 2D sustained 20-48, WebGPU staccato
+// 22-41, 2D staccato 27-40. Per-arm run-to-run spread is up to 2x
+// (the GPU pipeline state varies between cold runs in ways the test
+// can't control). 100 = worst observed * 2; conservative initial
+// setting chosen for variance tolerance over tightness, ratchet
+// down per the hot-path-allocation-discipline convention (target:
+// 60 = measured * 1.2 once variance settles or a churn-reduction
+// change lands). Locks in the NoteReadout cached-last-valid-pitch
+// fix and the frame-rate-dom-mutation-discipline pattern derived
+// from the staccato GPU-outlier investigation: a future regression
+// that rolls back the text-cache discipline (or breaks discipline 1
+// in a new component) would push the worst arm past 100.
+export const GAP_OVER_VSYNC_BUDGET = 100;
 
 // Renderer arms for the parameterised smoothness test. As of
 // 2026-04-30 WebGPU is the production default; the 2D arm is the
@@ -319,7 +346,10 @@ export async function run60sSmoothnessProbe(
     // loading directly into Chrome DevTools' Performance panel.
     const stopTrace = await maybeStartTrace(page, fixtureLabel, arm.label);
 
-    const result = await page.evaluate(async (observationMs: number) => {
+    const result = await page.evaluate(async (config: {
+        observationMs: number;
+        gapOverVsyncThresholdMs: number;
+    }) => {
         interface PerfWithMemory extends Performance {
             memory?: {usedJSHeapSize: number};
         }
@@ -347,7 +377,7 @@ export async function run60sSmoothnessProbe(
             const tick = (ts: number) => {
                 gaps.push(ts - lastTs);
                 lastTs = ts;
-                if (ts - startTs < observationMs) {
+                if (ts - startTs < config.observationMs) {
                     requestAnimationFrame(tick);
 
                     return;
@@ -366,16 +396,28 @@ export async function run60sSmoothnessProbe(
         gaps.sort((a, b) => a - b);
         const p99 = gaps[Math.floor(gaps.length * 0.99)] ?? 0;
         const max = gaps[gaps.length - 1] ?? 0;
+        // Sorted ascending; missed-vsync count is everything above the
+        // threshold. Walking from the end stops as soon as a sample
+        // falls under the threshold, so the cost is O(misses) not
+        // O(gaps).
+        let gapsOverVsync = 0;
+        for (let i = gaps.length - 1; i >= 0; i -= 1) {
+            if (gaps[i] <= config.gapOverVsyncThresholdMs) {
+                break;
+            }
+            gapsOverVsync += 1;
+        }
 
         return {
             p99,
             max,
             gapCount: gaps.length,
+            gapsOverVsync,
             longtaskCount: longtasks.length,
             heapDelta: supportsMemory ? heapAfter - heapBaseline : -1,
             heapMeasured: supportsMemory,
         };
-    }, OBSERVATION_MS);
+    }, {observationMs: OBSERVATION_MS, gapOverVsyncThresholdMs: GAP_OVER_VSYNC_THRESHOLD_MS});
 
     // Stop the trace (if started) before the assertions so the
     // file is on disk regardless of whether a budget assertion
@@ -390,7 +432,7 @@ export async function run60sSmoothnessProbe(
     // Per-fixture-per-arm reporter line: feeds the spec's
     // "Prototype results" section.
 
-    console.log(`[smoothness:${fixtureLabel}:${arm.label}] p99=${result.p99}ms max=${result.max}ms longtasks=${result.longtaskCount} heapDelta=${result.heapDelta}B`);
+    console.log(`[smoothness:${fixtureLabel}:${arm.label}] p99=${result.p99}ms max=${result.max}ms gapsOverVsync=${result.gapsOverVsync} longtasks=${result.longtaskCount} heapDelta=${result.heapDelta}B`);
 
     // Hard-fail on an empty rAF stream: result.p99 / result.max
     // both fall back to 0 when no gaps were collected, which would
@@ -405,6 +447,7 @@ export async function run60sSmoothnessProbe(
 
     expect(result.p99).toBeLessThan(P99_FRAME_GAP_BUDGET_MS);
     expect(result.max).toBeLessThan(MAX_FRAME_GAP_BUDGET_MS);
+    expect(result.gapsOverVsync).toBeLessThan(GAP_OVER_VSYNC_BUDGET);
     expect(result.longtaskCount).toBe(LONGTASK_BUDGET);
     if (result.heapMeasured) {
         expect(result.heapDelta).toBeLessThan(HEAP_DELTA_BUDGET_BYTES);
