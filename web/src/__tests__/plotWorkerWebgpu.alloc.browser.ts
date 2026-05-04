@@ -1,5 +1,5 @@
 import {describe, expect, test} from 'vitest';
-import {WebgpuPlotRenderer} from '../plot/webgpuPlotRenderer';
+import {TraceModule} from '../plot/traceModule';
 import {createFrameRing, FrameRingWriter, type FrameSource} from '../audio/frameRing';
 import type {VoiceEntry} from '../plot/plotMessages';
 
@@ -30,12 +30,12 @@ describe('WebGPU plot paint allocation budget', () => {
         canvas.width = 800;
         canvas.height = 360;
         document.body.appendChild(canvas);
-        // OffscreenCanvas-equivalent: WebgpuPlotRenderer.init expects an
+        // OffscreenCanvas-equivalent: TraceModule.init expects an
         // OffscreenCanvas; the page-realm equivalent is
         // canvas.transferControlToOffscreen().
         const offscreen = canvas.transferControlToOffscreen();
 
-        const renderer = new WebgpuPlotRenderer();
+        const renderer = new TraceModule();
         await renderer.init(offscreen);
         renderer.setBacking(800, 360, 1);
         renderer.setWindow(10_000, 80, 600);

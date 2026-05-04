@@ -44,7 +44,7 @@ interface ChannelState {
     color: Float32Array;
 }
 
-export class WebgpuPlotRenderer {
+export class TraceModule {
     private device: GPUDevice | null = null;
     private context: GPUCanvasContext | null = null;
     private format: GPUTextureFormat | null = null;
@@ -74,11 +74,11 @@ export class WebgpuPlotRenderer {
 
     public async init(canvas: OffscreenCanvas): Promise<void> {
         if (!navigator.gpu) {
-            throw new Error('WebgpuPlotRenderer: navigator.gpu unavailable');
+            throw new Error('TraceModule: navigator.gpu unavailable');
         }
         const adapter = await navigator.gpu.requestAdapter({powerPreference: 'high-performance'});
         if (!adapter) {
-            throw new Error('WebgpuPlotRenderer: no GPU adapter');
+            throw new Error('TraceModule: no GPU adapter');
         }
         const device = await adapter.requestDevice();
         // OffscreenCanvas.getContext('webgpu') is typed as the broader
@@ -90,7 +90,7 @@ export class WebgpuPlotRenderer {
         // the GPU-specific shape.
         const context = canvas.getContext('webgpu') as GPUCanvasContext | null;
         if (!context) {
-            throw new Error('WebgpuPlotRenderer: webgpu context unavailable');
+            throw new Error('TraceModule: webgpu context unavailable');
         }
         const format = navigator.gpu.getPreferredCanvasFormat();
         // Deliberately do NOT configure the context here. The
