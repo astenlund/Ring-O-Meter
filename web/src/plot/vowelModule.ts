@@ -51,8 +51,14 @@ export const MAX_VOICES = 8;
 // Exported here (single source of truth) so both vowelModuleWebgpu.ts
 // and plotWorker2dCanvas.ts import from one place; local copies in
 // each renderer would risk silent axis-range drift.
-// heuristic: vowel-axis-f1-min - lower bound on F1 axis
-export const F1_MIN = 200;
+// heuristic: vowel-axis-f1-min - lower bound on F1 axis. 100 (not
+// 200) so close-front-rounded /y/ at ~250 Hz F1 has visible headroom
+// from the top edge; the original 200 floor put /y/ ~5% from top
+// (50 Hz of 900 Hz span), which read as "clipped" even though the dot
+// was technically inside. Widening the axis 11% (900 -> 1000 Hz span)
+// is a small compression cost in the populated region (most vowels
+// sit F1 250-900) for visible margin on the tightest case.
+export const F1_MIN = 100;
 // heuristic: vowel-axis-f1-max - upper bound on F1 axis
 export const F1_MAX = 1100;
 // heuristic: vowel-axis-f2-min - lower bound on F2 axis
