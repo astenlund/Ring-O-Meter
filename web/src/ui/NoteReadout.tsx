@@ -3,6 +3,44 @@ import {useRef} from 'react';
 import {shouldDisplayPitch} from './displayGate';
 import {formatNoteWithCents} from './formatPitch';
 
+const PEAK_HOLD_MS = 1000;
+
+// Peak-hold tracker for diagnostic min/max display. Standard
+// audio-meter pattern: capture an extreme, hold for `holdMs`, then
+// auto-reset so the next extreme of any size can be captured. Returns
+// the held value when an active hold exists AND it differs from the
+// current value (so the held line only appears when there's something
+// meaningfully different from the live reading); returns null
+// otherwise. State persists across renders via useRef; values reset
+// on holdMs expiry without requiring an explicit timer (the polling
+// re-render at ~15 Hz from useFrameState drives the elapsed check).
+function usePeakHold(current: number, mode: 'min' | 'max', holdMs: number): number | null {
+    const ref = useRef<{value: number; setAt: number}>({value: 0, setAt: 0});
+    const now = performance.now();
+
+    if (current > 0) {
+        const elapsed = ref.current.setAt > 0 ? now - ref.current.setAt : Infinity;
+
+        if (elapsed > holdMs) {
+            // Reset: capture current as new tracking baseline.
+            ref.current.value = current;
+            ref.current.setAt = now;
+        } else if (mode === 'min' ? current < ref.current.value : current > ref.current.value) {
+            // New extreme within hold window.
+            ref.current.value = current;
+            ref.current.setAt = now;
+        }
+    }
+
+    if (ref.current.setAt > 0
+        && now - ref.current.setAt < holdMs
+        && ref.current.value !== current) {
+        return ref.current.value;
+    }
+
+    return null;
+}
+
 export interface NoteReadoutProps {
     deviceLabel: string;
     fundamentalHz: number;
@@ -43,6 +81,19 @@ export interface NoteReadoutProps {
 // tales).
 const PLACEHOLDER_TEXT = '--';
 
+function formatFormantLine(label: string, current: number, min: number | null, max: number | null): string {
+    const currentText = current > 0 ? Math.round(current).toString() : PLACEHOLDER_TEXT;
+    const parts = [`${label}: ${currentText}`];
+    if (min !== null) {
+        parts.push(`min ${Math.round(min)}`);
+    }
+    if (max !== null) {
+        parts.push(`max ${Math.round(max)}`);
+    }
+
+    return parts.length > 1 ? `${parts[0]}  (${parts.slice(1).join(', ')})` : parts[0];
+}
+
 export function NoteReadout({deviceLabel, fundamentalHz, confidence, f1Hz, f2Hz}: NoteReadoutProps) {
     const dim = !shouldDisplayPitch(fundamentalHz, confidence);
     const lastValidTextRef = useRef(PLACEHOLDER_TEXT);
@@ -50,9 +101,14 @@ export function NoteReadout({deviceLabel, fundamentalHz, confidence, f1Hz, f2Hz}
         lastValidTextRef.current = formatNoteWithCents(fundamentalHz);
     }
 
+    // Peak-hold trackers for each formant. Hooks always run unconditionally
+    // (React's rules); when f1Hz/f2Hz props are undefined we pass 0, which
+    // skips updates inside usePeakHold via the `current > 0` guard.
+    const f1Min = usePeakHold(f1Hz ?? 0, 'min', PEAK_HOLD_MS);
+    const f1Max = usePeakHold(f1Hz ?? 0, 'max', PEAK_HOLD_MS);
+    const f2Min = usePeakHold(f2Hz ?? 0, 'min', PEAK_HOLD_MS);
+    const f2Max = usePeakHold(f2Hz ?? 0, 'max', PEAK_HOLD_MS);
     const showFormants = f1Hz !== undefined && f2Hz !== undefined;
-    const f1Text = f1Hz && f1Hz > 0 ? Math.round(f1Hz).toString() : PLACEHOLDER_TEXT;
-    const f2Text = f2Hz && f2Hz > 0 ? Math.round(f2Hz).toString() : PLACEHOLDER_TEXT;
 
     return (
         <div style={{
@@ -68,14 +124,24 @@ export function NoteReadout({deviceLabel, fundamentalHz, confidence, f1Hz, f2Hz}
                 color: dim ? '#888' : '#eee',
             }}>{lastValidTextRef.current}</div>
             {showFormants && (
-                <div style={{
-                    fontSize: 11,
-                    fontFamily: 'monospace',
-                    color: '#888',
-                    marginTop: 4,
-                }}>
-                    F1={f1Text} F2={f2Text}
-                </div>
+                <>
+                    <div style={{
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: '#888',
+                        marginTop: 4,
+                    }}>
+                        {formatFormantLine('F1', f1Hz ?? 0, f1Min, f1Max)}
+                    </div>
+                    <div style={{
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: '#888',
+                        marginTop: 2,
+                    }}>
+                        {formatFormantLine('F2', f2Hz ?? 0, f2Min, f2Max)}
+                    </div>
+                </>
             )}
         </div>
     );
