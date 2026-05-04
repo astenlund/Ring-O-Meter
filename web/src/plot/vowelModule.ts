@@ -36,8 +36,12 @@ export const ORDER_DEBOUNCE_MS = 200;
 export const VOWEL_DIM_BRIGHTNESS = 0.5;
 
 // Pre-allocated upper bound for ordering buffers; matches the
-// variable-voice-count pattern's range (1-8 voices).
-const MAX_VOICES = 8;
+// variable-voice-count pattern's range (1-8 voices). Exported so the
+// per-renderer paint modules can size their own pre-allocated scratch
+// (vertex buffers, index buffers, dot staging) against the same upper
+// bound; a local redeclaration would risk silent drift if the pattern
+// ever extends to 5-12 voices for non-barbershop ensembles.
+export const MAX_VOICES = 8;
 
 export interface VoicePoint {
     channelId: string;
@@ -48,39 +52,87 @@ export interface VoicePoint {
     hasEverPublished: boolean; // false until the first formant frame arrives
 }
 
-// Sort voice points by polar angle around their centroid. Returns
-// the ordering as an index permutation into `points`. Stable
-// tie-break on channelId so degenerate cases (collinear, identical
-// positions) produce deterministic ordering.
+// Sort voice points by polar angle around their centroid, writing the
+// ordering as an index permutation into a caller-supplied Int32Array.
+// Zero-alloc: the angles scratch is also caller-supplied so the
+// per-renderer paint modules (vowelModuleWebgpu, 2D paint helpers) can
+// reuse one Float64Array across frames. Insertion sort over an
+// Int32Array stays alloc-free for any N <= MAX_VOICES; the cost is
+// O(N^2) but the upper bound on N here makes that ~64 comparisons in
+// the worst case, so the algorithmic choice is dominated by the
+// allocation discipline. Stable tie-break on channelId for
+// determinism in degenerate (collinear, identical-position) cases.
 //
-// Allocates the result array; the per-renderer paint modules
-// (Task 10's vowelModuleWebgpu, Task 11's 2D paint helpers) will
-// own their own zero-alloc sort variants writing into a hoisted
-// Int32Array scratch buffer for the per-frame hot path.
-export function polarAngleSort(points: ReadonlyArray<VoicePoint>): number[] {
-    if (points.length <= 2) {
-        return points.map((_, i) => i);
+// `points` may have unused slots beyond `length` (e.g., a capacity-
+// primed VoicePoint[] with .length=0 then partial push); only the
+// first `length` entries are read.
+export function polarAngleSortInto(
+    points: ReadonlyArray<VoicePoint>,
+    length: number,
+    anglesScratch: Float64Array,
+    outIndices: Int32Array,
+): void {
+    for (let i = 0; i < length; i++) {
+        outIndices[i] = i;
+    }
+    if (length <= 2) {
+        return;
     }
     let cx = 0;
     let cy = 0;
-    for (const p of points) {
-        cx += p.f2Hz;
-        cy += p.f1Hz;
+    for (let i = 0; i < length; i++) {
+        cx += points[i].f2Hz;
+        cy += points[i].f1Hz;
     }
-    cx /= points.length;
-    cy /= points.length;
-    const indices = points.map((_, i) => i);
-    indices.sort((a, b) => {
-        const angleA = Math.atan2(points[a].f1Hz - cy, points[a].f2Hz - cx);
-        const angleB = Math.atan2(points[b].f1Hz - cy, points[b].f2Hz - cx);
-        if (angleA !== angleB) {
-            return angleA - angleB;
+    cx /= length;
+    cy /= length;
+    for (let i = 0; i < length; i++) {
+        const p = points[i];
+        anglesScratch[i] = Math.atan2(p.f1Hz - cy, p.f2Hz - cx);
+    }
+    for (let i = 1; i < length; i++) {
+        const key = outIndices[i];
+        const angleKey = anglesScratch[key];
+        const channelKey = points[key].channelId;
+        let j = i - 1;
+        while (j >= 0) {
+            const cur = outIndices[j];
+            const angleCur = anglesScratch[cur];
+            // Strict-less-than at the angle level keeps tie-break
+            // routing deterministic; ASCII string compare is alloc-free
+            // on V8 and produces the same ordering as localeCompare
+            // for GUID-shaped channelIds (the project's only producer).
+            if (angleCur < angleKey) {
+                break;
+            }
+            if (angleCur === angleKey && points[cur].channelId < channelKey) {
+                break;
+            }
+            outIndices[j + 1] = outIndices[j];
+            j--;
         }
+        outIndices[j + 1] = key;
+    }
+}
 
-        return points[a].channelId.localeCompare(points[b].channelId);
-    });
+// Allocating wrapper around polarAngleSortInto. Used by jsdom unit
+// tests and any caller that does not own pre-allocated scratch
+// buffers; the per-renderer paint modules call polarAngleSortInto
+// directly to keep the hot path zero-alloc.
+export function polarAngleSort(points: ReadonlyArray<VoicePoint>): number[] {
+    const n = points.length;
+    if (n === 0) {
+        return [];
+    }
+    const angles = new Float64Array(n);
+    const indices = new Int32Array(n);
+    polarAngleSortInto(points, n, angles, indices);
+    const result: number[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+        result[i] = indices[i];
+    }
 
-    return indices;
+    return result;
 }
 
 // Compute the polygon-area metric in Hz^2. For N >= 3, shoelace
