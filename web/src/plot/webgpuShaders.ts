@@ -11,7 +11,7 @@
 // spacing is 0.125-8 ms. Subtracting startMs in the shader against
 // near-equal large f32 operands produces catastrophic cancellation
 // and visible vertex jitter. By subtracting on the CPU before the
-// f32 narrowing (per-paint, in TraceModule.paint()), every
+// f32 narrowing (per-paint, in TraceModule.update()), every
 // vertex value lands in [0, windowMs] = [0, 10000] where f32 spacing
 // is < 0.001 ms - well below any visible threshold. The shader then
 // just normalises by windowMs.

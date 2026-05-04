@@ -53,8 +53,10 @@ export interface VoicePoint {
 // tie-break on channelId so degenerate cases (collinear, identical
 // positions) produce deterministic ordering.
 //
-// Allocates the result array; renderer-side code uses
-// polarAngleSortInto() (below) for zero-alloc steady-state hot paths.
+// Allocates the result array; the per-renderer paint modules
+// (Task 10's vowelModuleWebgpu, Task 11's 2D paint helpers) will
+// own their own zero-alloc sort variants writing into a hoisted
+// Int32Array scratch buffer for the per-frame hot path.
 export function polarAngleSort(points: ReadonlyArray<VoicePoint>): number[] {
     if (points.length <= 2) {
         return points.map((_, i) => i);
@@ -229,10 +231,11 @@ export class OrderDebounce {
 
 // Read the latest formant frame from a SAB reader, apply the display
 // gate, update the voice's visible state. Mutates `voice` in place.
-// Returns true if the formant position moved (paint should refresh
-// the vertex coordinates); gate flips are reflected in voice.isDimmed
-// regardless of return value, so the caller repaints either way if
-// any voice changed.
+// Returns true if the frame contained a valid formant position
+// (f1 > 0 && f2 > 0) and the voice's f1Hz/f2Hz were updated; false
+// otherwise (no published frame yet, or the published frame had a
+// 0-sentinel formant slot meaning "no formant detected"). Gate flips
+// are reflected in voice.isDimmed regardless of return value.
 //
 // The whole gate-relevant input (fundamentalHz, confidence, rmsDb)
 // rides inside FormantFrame from a single coherent SAB slot read, so
