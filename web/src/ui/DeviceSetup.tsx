@@ -21,16 +21,13 @@ export function DeviceSetup({devices, selectedDeviceId, onSelect}: DeviceSetupPr
     }
 
     return (
-        <label style={{display: 'flex', alignItems: 'center', gap: 8}}>
-            <span>Input</span>
-            <select
-                value={selectedDeviceId}
-                onChange={(e) => onSelect(e.target.value)}
-            >
-                {devices.map((d) => (
-                    <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
-                ))}
-            </select>
-        </label>
+        <select
+            value={selectedDeviceId}
+            onChange={(e) => onSelect(e.target.value)}
+        >
+            {devices.map((d) => (
+                <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+            ))}
+        </select>
     );
 }
