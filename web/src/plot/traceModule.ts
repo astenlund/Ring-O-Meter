@@ -298,8 +298,30 @@ export class TraceModule {
         }
     }
 
-    public paint(): void {
-        if (!this.device || !this.context || !this.pipeline || !this.viewportUniform) {
+    public canRender(): boolean {
+        return (
+            this.device !== null
+            && this.context !== null
+            && this.pipeline !== null
+            && this.viewportUniform !== null
+            && this.cssHeight > 0
+        );
+    }
+
+    // Host accesses these to manage encoder + render pass + submit
+    // lifecycle; Task 12 will lift device acquisition fully to the host
+    // and these getters retire. Marked readonly so the host cannot
+    // accidentally reassign module-internal state.
+    public get gpuDevice(): GPUDevice | null {
+        return this.device;
+    }
+
+    public get gpuContext(): GPUCanvasContext | null {
+        return this.context;
+    }
+
+    public update(_dtMs: number): void {
+        if (!this.device || !this.viewportUniform) {
             return;
         }
         if (this.cssHeight === 0) {
@@ -377,34 +399,25 @@ export class TraceModule {
                 );
             }
         }
+    }
 
-        const encoder = this.device.createCommandEncoder();
-        const pass = encoder.beginRenderPass({
-            colorAttachments: [{
-                view: this.context.getCurrentTexture().createView(),
-                // Transparent clear so the underlay (grid + legend)
-                // shows through. Trace pixels are written by the
-                // fragment shader with alpha = 1.
-                clearValue: {r: 0, g: 0, b: 0, a: 0},
-                loadOp: 'clear',
-                storeOp: 'store',
-            }],
-        });
-        pass.setPipeline(this.pipeline);
+    public draw(passEncoder: GPURenderPassEncoder): void {
+        if (!this.pipeline) {
+            return;
+        }
+        passEncoder.setPipeline(this.pipeline);
         for (const voice of this.voices) {
             const state = this.channels.get(voice.channelId);
             if (!state || state.vertexCount === 0) {
                 continue;
             }
-            pass.setBindGroup(0, state.bindGroup);
-            pass.setVertexBuffer(0, state.vertexBuffer);
+            passEncoder.setBindGroup(0, state.bindGroup);
+            passEncoder.setVertexBuffer(0, state.vertexBuffer);
             // Single draw per channel regardless of staccato pattern;
             // line-list topology pairs vertices into independent
             // segments inside the buffer.
-            pass.draw(state.vertexCount, 1, 0, 0);
+            passEncoder.draw(state.vertexCount, 1, 0, 0);
         }
-        pass.end();
-        this.device.queue.submit([encoder.finish()]);
     }
 
     public dispose(): void {

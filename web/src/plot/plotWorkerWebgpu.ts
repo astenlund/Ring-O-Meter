@@ -9,9 +9,40 @@ let initFailed = false;
 const pendingMessages: PlotMessage[] = [];
 let rafId = 0;
 
-function paintLoop(): void {
-    renderer.paint();
-    rafId = requestAnimationFrame(paintLoop);
+let lastFrameMs = 0;
+
+function frame(nowMs: number): void {
+    const dtMs = nowMs - lastFrameMs;
+    lastFrameMs = nowMs;
+
+    renderer.update(dtMs);
+
+    const device = renderer.gpuDevice;
+    const context = renderer.gpuContext;
+    if (!device || !context || !renderer.canRender()) {
+        rafId = requestAnimationFrame(frame);
+
+        return;
+    }
+
+    const encoder = device.createCommandEncoder();
+    const tracePass = encoder.beginRenderPass({
+        colorAttachments: [{
+            view: context.getCurrentTexture().createView(),
+            // Transparent clear so the underlay (grid + legend)
+            // shows through. Trace pixels are written by the
+            // fragment shader with alpha = 1.
+            clearValue: {r: 0, g: 0, b: 0, a: 0},
+            loadOp: 'clear',
+            storeOp: 'store',
+        }],
+    });
+    renderer.draw(tracePass);
+    tracePass.end();
+
+    device.queue.submit([encoder.finish()]);
+
+    rafId = requestAnimationFrame(frame);
 }
 
 function applyMessage(msg: PlotMessage): void {
@@ -29,7 +60,7 @@ function applyMessage(msg: PlotMessage): void {
         case PlotMessageType.SetBacking: {
             renderer.setBacking(msg.cssWidth, msg.cssHeight, msg.dpr);
             if (rafId === 0 && msg.cssHeight > 0) {
-                rafId = requestAnimationFrame(paintLoop);
+                rafId = requestAnimationFrame(frame);
             }
 
             return;
@@ -96,7 +127,7 @@ self.onmessage = async (event: MessageEvent<PlotMessage>) => {
         }
         pendingMessages.length = 0;
         if (rafId === 0 && msg.backing.cssHeight > 0) {
-            rafId = requestAnimationFrame(paintLoop);
+            rafId = requestAnimationFrame(frame);
         }
 
         return;
