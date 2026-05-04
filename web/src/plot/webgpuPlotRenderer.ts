@@ -410,6 +410,7 @@ export class WebgpuPlotRenderer {
         this.device?.destroy();
         this.device = null;
         this.channels.clear();
+        this.configured = false;
     }
 }
 
