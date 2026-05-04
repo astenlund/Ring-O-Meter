@@ -151,6 +151,9 @@ function applyMessage(msg: PlotMessage): void {
         }
         case PlotMessageType.SetRoster: {
             renderer.setRoster(msg.voices);
+            if (vowelModule) {
+                vowelModule.setRoster(msg.voices);
+            }
 
             return;
         }
