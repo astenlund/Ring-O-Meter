@@ -345,27 +345,18 @@ function AlgorithmToggle() {
         }
     }, [method]);
 
+    const label = method === 'burg' ? 'Burg' : 'Autocorrelation (Levinson)';
+
     return (
         <div style={{marginTop: 16, padding: 12, border: '1px dashed #555', borderRadius: 6}}>
             <strong>LPC algorithm (temporary triage):</strong>
-            <label style={{marginLeft: 12}}>
-                <input
-                    type="radio"
-                    name="lpcMethod"
-                    checked={method === 'burg'}
-                    onChange={() => setMethod('burg')}
-                />
-                Burg
-            </label>
-            <label style={{marginLeft: 8}}>
-                <input
-                    type="radio"
-                    name="lpcMethod"
-                    checked={method === 'autocorrelation'}
-                    onChange={() => setMethod('autocorrelation')}
-                />
-                Autocorrelation (Levinson)
-            </label>
+            <button
+                type="button"
+                onClick={() => setMethod(method === 'burg' ? 'autocorrelation' : 'burg')}
+                style={{marginLeft: 12, padding: '4px 12px', cursor: 'pointer'}}
+            >
+                {label}
+            </button>
         </div>
     );
 }
