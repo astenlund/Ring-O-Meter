@@ -7,6 +7,15 @@ export interface NoteReadoutProps {
     deviceLabel: string;
     fundamentalHz: number;
     confidence: number;
+    // Optional formant readout. When both are supplied, a small "F1=N
+    // F2=N" line renders below the pitch digits. Used for manual
+    // triage during the vowel-graph slice's algorithm-comparison phase
+    // - lets the user verify polygon-position observations against
+    // raw Hz numbers (especially useful for diagnosing spurious-root
+    // blips where F2 jumps to F3-territory frequencies). Pass undefined
+    // (or omit) to suppress the formant line.
+    f1Hz?: number;
+    f2Hz?: number;
 }
 
 // Cache the last valid formatted text so audio-transition gaps don't
@@ -34,12 +43,16 @@ export interface NoteReadoutProps {
 // tales).
 const PLACEHOLDER_TEXT = '--';
 
-export function NoteReadout({deviceLabel, fundamentalHz, confidence}: NoteReadoutProps) {
+export function NoteReadout({deviceLabel, fundamentalHz, confidence, f1Hz, f2Hz}: NoteReadoutProps) {
     const dim = !shouldDisplayPitch(fundamentalHz, confidence);
     const lastValidTextRef = useRef(PLACEHOLDER_TEXT);
     if (!dim) {
         lastValidTextRef.current = formatNoteWithCents(fundamentalHz);
     }
+
+    const showFormants = f1Hz !== undefined && f2Hz !== undefined;
+    const f1Text = f1Hz && f1Hz > 0 ? Math.round(f1Hz).toString() : PLACEHOLDER_TEXT;
+    const f2Text = f2Hz && f2Hz > 0 ? Math.round(f2Hz).toString() : PLACEHOLDER_TEXT;
 
     return (
         <div style={{
@@ -54,6 +67,16 @@ export function NoteReadout({deviceLabel, fundamentalHz, confidence}: NoteReadou
                 fontFamily: 'monospace',
                 color: dim ? '#888' : '#eee',
             }}>{lastValidTextRef.current}</div>
+            {showFormants && (
+                <div style={{
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: '#888',
+                    marginTop: 4,
+                }}>
+                    F1={f1Text} F2={f2Text}
+                </div>
+            )}
         </div>
     );
 }
