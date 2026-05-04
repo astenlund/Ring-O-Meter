@@ -127,6 +127,17 @@ export function App() {
 
     const [controller] = useState(() => new PlotController(useWebGpu ? webgpuWorkerUrl : undefined));
 
+    // Started gates audio construction on an explicit user gesture: the
+    // Start button overlay on the pitch plot. Browser autoplay policy
+    // (Chrome on Windows in particular) starts AudioContexts in
+    // 'suspended' state when constructed without recent user activation;
+    // resume() doesn't reliably help (it pends until the next gesture
+    // that triggers a state change, which a no-op dropdown click is
+    // not). An explicit Start click synchronously builds slots inside
+    // the click's activation context, so useVoiceChannels' new
+    // AudioContext starts in 'running' immediately.
+    const [started, setStarted] = useState(false);
+
     // Slots are built in an effect (not a useMemo) so crypto.randomUUID()
     // fires exactly once per device change. useMemo's "best-effort cache"
     // contract allows React to invalidate even when deps haven't changed,
@@ -136,7 +147,7 @@ export function App() {
     // channel and constructs a new one keyed on the fresh channelId.
     const [slots, setSlots] = useState<Slot[] | null>(null);
     useEffect(() => {
-        if (!selectedDevice) {
+        if (!started || !selectedDevice) {
             setSlots(null);
 
             return;
@@ -174,7 +185,7 @@ export function App() {
             deviceLabel: selectedDevice.label,
             color: SLOT_COLORS[0],
         }]);
-    }, [selectedDevice, fanoutConfig]);
+    }, [started, selectedDevice, fanoutConfig]);
 
     useVoiceChannels(slots, registry);
 
@@ -249,15 +260,38 @@ export function App() {
                 })}
             </div>
             <div style={{display: 'flex', gap: 16, alignItems: 'stretch', height: 360}}>
-                <PitchPlot
-                    voices={voices}
-                    windowMs={PLOT_WINDOW_MS}
-                    handleRef={plotHandleRef}
-                    rendererWorkerUrl={useWebGpu ? webgpuWorkerUrl : undefined}
-                    useUnderlay={useWebGpu}
-                    controller={controller}
-                    style={{flex: 1}}
-                />
+                <div style={{position: 'relative', flex: 1}}>
+                    <PitchPlot
+                        voices={voices}
+                        windowMs={PLOT_WINDOW_MS}
+                        handleRef={plotHandleRef}
+                        rendererWorkerUrl={useWebGpu ? webgpuWorkerUrl : undefined}
+                        useUnderlay={useWebGpu}
+                        controller={controller}
+                    />
+                    {!started && (
+                        <button
+                            type="button"
+                            onClick={() => setStarted(true)}
+                            style={{
+                                position: 'absolute',
+                                inset: 0,
+                                margin: 'auto',
+                                width: 200,
+                                height: 80,
+                                fontSize: '1.5em',
+                                fontWeight: 'bold',
+                                color: '#eee',
+                                background: '#2a5a2a',
+                                border: '2px solid #4a8a4a',
+                                borderRadius: 8,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Start
+                        </button>
+                    )}
+                </div>
                 <VowelPlot
                     controller={controller}
                     useUnderlay={useWebGpu}
