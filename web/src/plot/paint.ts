@@ -193,3 +193,103 @@ export function drawLegend(frame: PaintFrame, voiceValues: ReadonlyArray<VoiceSt
         legendY += 18;
     }
 }
+
+// Per-voice state for the vowel polygon's 2D paint surface. CSS-pixel
+// coordinates (the caller's applyCanvasBacking has already installed a
+// DPR transform on the context). Color strings pre-computed and cached
+// by the caller so per-frame paint does not re-stringify hex tuples.
+export interface VowelPoint2d {
+    x: number;
+    y: number;
+    color: string;
+    dimColor: string;
+    isDimmed: boolean;
+}
+
+// Vowel polygon helpers. Symmetric to drawTraces / drawGrid pair: the
+// dynamic content (polygon edges + dots) is painted per frame; the
+// chrome (axis labels, gridlines for F1/F2 plane) is painted per frame
+// on the 2D arm and per-roster/backing-change on the WebGPU arm via the
+// main-thread underlay path. Both arms import these helpers; the call
+// site decides cadence.
+
+export function drawVowelPolygon(
+    ctx: AnyCanvasCtx,
+    points: ReadonlyArray<VowelPoint2d>,
+    ordering: ReadonlyArray<number>,
+    strokeWidthDevicePx: number,
+): void {
+    if (ordering.length < 2) {
+        return;
+    }
+    ctx.lineWidth = strokeWidthDevicePx;
+    for (let i = 0; i < ordering.length; i++) {
+        const a = points[ordering[i]];
+        const b = points[ordering[(i + 1) % ordering.length]];
+        const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+        grad.addColorStop(0, a.isDimmed ? a.dimColor : a.color);
+        grad.addColorStop(1, b.isDimmed ? b.dimColor : b.color);
+        ctx.strokeStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+    }
+}
+
+export function drawVowelDots(
+    ctx: AnyCanvasCtx,
+    points: ReadonlyArray<VowelPoint2d>,
+    sizeDevicePx: number,
+): void {
+    const half = sizeDevicePx / 2;
+    for (const p of points) {
+        ctx.fillStyle = p.isDimmed ? p.dimColor : p.color;
+        ctx.fillRect(p.x - half, p.y - half, sizeDevicePx, sizeDevicePx);
+    }
+}
+
+export function drawVowelChrome(
+    ctx: AnyCanvasCtx,
+    size: CanvasSize,
+    f1Range: {min: number; max: number},
+    f2Range: {min: number; max: number},
+): void {
+    // Background fill matches the trace plot's #0a0a0a (see drawBackground).
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, size.width, size.height);
+
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+
+    // F2 gridlines: every 500 Hz. IPA-inverted axis: high F2 = front
+    // vowels = LEFT side of canvas, so x decreases as F2 increases.
+    const f2Span = f2Range.max - f2Range.min;
+    const f2Start = Math.ceil(f2Range.min / 500) * 500;
+    for (let f2 = f2Start; f2 <= f2Range.max; f2 += 500) {
+        const x = size.width * (1 - (f2 - f2Range.min) / f2Span);
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, size.height);
+        ctx.stroke();
+    }
+
+    // F1 gridlines: every 100 Hz. IPA-inverted axis: high F1 = open
+    // vowels = BOTTOM, so y increases as F1 increases.
+    const f1Span = f1Range.max - f1Range.min;
+    const f1Start = Math.ceil(f1Range.min / 100) * 100;
+    for (let f1 = f1Start; f1 <= f1Range.max; f1 += 100) {
+        const y = size.height * (1 - (f1 - f1Range.min) / f1Span);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(size.width, y);
+        ctx.stroke();
+    }
+
+    // Axis labels at corners. F2 label top-left, F1 label bottom-right
+    // matches the IPA quadrilateral's axis convention.
+    ctx.fillStyle = '#888';
+    ctx.font = '12px sans-serif';
+    ctx.fillText('F2', 8, 16);
+    ctx.fillText('F1', size.width - 24, size.height - 8);
+}
