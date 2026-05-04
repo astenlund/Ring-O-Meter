@@ -9,7 +9,7 @@ import {computeRmsDb} from '../rmsDb';
 import {OctaveStabilizer} from '../octaveStabilizer';
 import {PITCH_PROCESSOR_NAME} from '../constants';
 import {FrameRingWriter, type PublishFrame} from '../frameRing';
-import {FormantDetector, type LpcMethod} from '../formantDetector';
+import {FormantDetector} from '../formantDetector';
 
 const FRAME_SIZE = 1024;
 const PUBLISH_INTERVAL_FRAMES = 1; // every ~21 ms at 48 kHz -> ~47 Hz publish
@@ -24,9 +24,7 @@ class PitchProcessor extends AudioWorkletProcessor {
     private framesSinceLastPublish = 0;
     private readonly writer: FrameRingWriter;
     private readonly stabilizer = new OctaveStabilizer();
-    // Not readonly: handlePortMessage reassigns it on algorithm swap.
-    private formantDetector: FormantDetector;
-    private currentLpcMethod: LpcMethod = 'burg';
+    private readonly formantDetector: FormantDetector;
     // Hoisted scratch reused across every publish so the hot-path
     // stays zero-alloc; the writer reads the fields and copies them
     // into the SAB ring slot. Mutated in place inside publish().
@@ -49,8 +47,13 @@ class PitchProcessor extends AudioWorkletProcessor {
             throw new Error('PitchProcessor: processorOptions.frameRingSab is required');
         }
         this.writer = new FrameRingWriter(opts.frameRingSab);
-        this.formantDetector = this.createFormantDetector(this.currentLpcMethod);
-        this.port.onmessage = (event: MessageEvent) => this.handlePortMessage(event.data);
+        this.formantDetector = new FormantDetector({
+            inputRate: sampleRate,
+            decimatedRate: 12000,
+            decimatorCutoffHz: 5500,
+            lpcOrder: 14,
+            formantCount: 4,
+        });
     }
 
     public process(
@@ -130,28 +133,6 @@ class PitchProcessor extends AudioWorkletProcessor {
         this.scratch.f3Hz = Number.isFinite(formants[2]) ? formants[2] : 0;
         this.scratch.f4Hz = Number.isFinite(formants[3]) ? formants[3] : 0;
         this.writer.publish(this.scratch);
-    }
-
-    private createFormantDetector(method: LpcMethod): FormantDetector {
-        return new FormantDetector({
-            inputRate: sampleRate,
-            decimatedRate: 12000,
-            decimatorCutoffHz: 5500,
-            lpcOrder: 14,
-            lpcMethod: method,
-            formantCount: 4,
-        });
-    }
-
-    private handlePortMessage(data: unknown): void {
-        if (typeof data !== 'object' || data === null) {
-            return;
-        }
-        const msg = data as {type?: string; method?: LpcMethod};
-        if (msg.type === 'setLpcMethod' && (msg.method === 'burg' || msg.method === 'autocorrelation')) {
-            this.currentLpcMethod = msg.method;
-            this.formantDetector = this.createFormantDetector(msg.method);
-        }
     }
 }
 
