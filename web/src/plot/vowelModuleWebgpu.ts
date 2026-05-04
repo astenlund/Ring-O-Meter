@@ -176,7 +176,17 @@ export class VowelModuleWebgpu implements RenderModule {
                     },
                 }],
             },
-            primitive: {topology: 'line-strip'},
+            // stripIndexFormat is required by WebGPU for strip-topology
+            // pipelines that will be used with drawIndexed: the GPU needs
+            // to know how to interpret potential primitive-restart values
+            // in the index stream. Our polygon index buffer is a Uint16Array
+            // (declared via polygonIndexData = new Uint16Array(MAX_VOICES + 1)),
+            // so 'uint16' here matches. Omitting this triggers a validation
+            // error on encoder.finish() the first time drawIndexed runs
+            // (currentVoiceCount >= 2) and silently kills the entire frame
+            // submission - including the trace's pass, since both share one
+            // command encoder per the render-system invariant.
+            primitive: {topology: 'line-strip', stripIndexFormat: 'uint16'},
         });
 
         // Dot pipeline: triangle-list (two triangles = square dot).
