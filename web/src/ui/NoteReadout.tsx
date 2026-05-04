@@ -1,4 +1,4 @@
-import {useRef} from 'react';
+import {type CSSProperties, useRef} from 'react';
 
 import {shouldDisplayPitch} from './displayGate';
 import {formatNoteWithCents} from './formatPitch';
@@ -81,17 +81,47 @@ export interface NoteReadoutProps {
 // tales).
 const PLACEHOLDER_TEXT = '--';
 
-function formatFormantLine(label: string, current: number, min: number | null, max: number | null): string {
-    const currentText = current > 0 ? Math.round(current).toString() : PLACEHOLDER_TEXT;
-    const parts = [`${label}: ${currentText}`];
-    if (min !== null) {
-        parts.push(`min ${Math.round(min)}`);
-    }
-    if (max !== null) {
-        parts.push(`max ${Math.round(max)}`);
-    }
+// Fixed-width column slots for each formant line so the three values
+// (current, min, max) stay put as annotations come and go. Without
+// fixed columns, hiding the min slot would shift the max slot left,
+// hiding the max slot would shift the min slot, and re-showing either
+// would jump them back - making them hard to read at a glance.
+//
+// Sizes assume 11px monospace at ~6.6 px/char: "F1: 1100" = 8 chars
+// = ~53px; "min 1080" = 8 chars = ~53px; "max 3000" = 8 chars
+// = ~53px. 65px slots leave ~12px padding within each.
+const FORMANT_COL_WIDTH = 65;
 
-    return parts.length > 1 ? `${parts[0]}  (${parts.slice(1).join(', ')})` : parts[0];
+const formantLineStyle: CSSProperties = {
+    display: 'flex',
+    fontFamily: 'monospace',
+    fontSize: 11,
+    color: '#888',
+    marginTop: 4,
+};
+
+const formantColStyle: CSSProperties = {width: FORMANT_COL_WIDTH};
+
+function FormantLine({
+    label,
+    current,
+    min,
+    max,
+}: {
+    label: string;
+    current: number;
+    min: number | null;
+    max: number | null;
+}) {
+    const currentText = current > 0 ? Math.round(current).toString() : PLACEHOLDER_TEXT;
+
+    return (
+        <div style={formantLineStyle}>
+            <div style={formantColStyle}>{label}: {currentText}</div>
+            <div style={formantColStyle}>{min !== null ? `min ${Math.round(min)}` : ''}</div>
+            <div style={formantColStyle}>{max !== null ? `max ${Math.round(max)}` : ''}</div>
+        </div>
+    );
 }
 
 export function NoteReadout({deviceLabel, fundamentalHz, confidence, f1Hz, f2Hz}: NoteReadoutProps) {
@@ -132,22 +162,8 @@ export function NoteReadout({deviceLabel, fundamentalHz, confidence, f1Hz, f2Hz}
             }}>{lastValidTextRef.current}</div>
             {showFormants && (
                 <>
-                    <div style={{
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                        color: '#888',
-                        marginTop: 4,
-                    }}>
-                        {formatFormantLine('F1', f1Hz ?? 0, f1Min, f1Max)}
-                    </div>
-                    <div style={{
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                        color: '#888',
-                        marginTop: 2,
-                    }}>
-                        {formatFormantLine('F2', f2Hz ?? 0, f2Min, f2Max)}
-                    </div>
+                    <FormantLine label="F1" current={f1Hz ?? 0} min={f1Min} max={f1Max} />
+                    <FormantLine label="F2" current={f2Hz ?? 0} min={f2Min} max={f2Max} />
                 </>
             )}
         </div>
