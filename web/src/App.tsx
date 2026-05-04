@@ -366,9 +366,6 @@ function AlgorithmToggle() {
                 />
                 Autocorrelation (Levinson)
             </label>
-            <span style={{marginLeft: 12, color: '#888', fontSize: '0.85em'}}>
-                Refresh page after toggling for clean A/B (live swap is best-effort)
-            </span>
         </div>
     );
 }

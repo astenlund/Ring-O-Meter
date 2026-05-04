@@ -150,7 +150,24 @@ export function useVoiceChannels(
             await channel.start(stream);
             if (cancelled) {
                 channel.stop();
+
+                return;
             }
+            // Apply the persisted LPC algorithm choice now that the
+            // worklet's port is wired (channel.node became non-null
+            // inside start()). The AlgorithmToggle's UI-side effect
+            // can't reliably do this itself: at toggle mount, channels
+            // do not yet exist; once they do, the toggle's effect does
+            // not re-fire because `method` has not changed. Reading
+            // localStorage here picks up the current value INCLUDING
+            // any toggle the user flipped during the async start()
+            // window, so the swap is reliable across both initial-load
+            // persistence and mid-flight toggle changes. Cleanup task
+            // removes this along with the toggle UI once manual triage
+            // picks a winner.
+            const stored = localStorage.getItem('lpcMethod');
+            const method = stored === 'autocorrelation' ? 'autocorrelation' : 'burg';
+            channel.setLpcMethod(method);
         })).then((results) => {
             if (cancelled) {
                 // Cleanup already tore everything down; any rejections here are
