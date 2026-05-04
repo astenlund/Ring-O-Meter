@@ -47,4 +47,32 @@ public class AnalysisFrameTests
         frame.FundamentalHz.Should().Be(0);
         frame.FundamentalHzRaw.Should().Be(0);
     }
+
+    [Fact]
+    public void Round_trips_formants_through_messagepack()
+    {
+        // Arrange
+        var original = TestData.Frame(
+            channelId: "ch3",
+            clientTsMs: 22222,
+            fundamentalHz: 220f,
+            confidence: 0.9f,
+            rmsDb: -15f,
+            fundamentalHzRaw: 220f,
+            f1Hz: 500f,
+            f2Hz: 1500f,
+            f3Hz: 2500f,
+            f4Hz: 3500f);
+
+        // Act
+        var bytes = MessagePackSerializer.Serialize(original);
+        var restored = MessagePackSerializer.Deserialize<AnalysisFrame>(bytes);
+
+        // Assert
+        restored.Should().Be(original);
+        restored.F1Hz.Should().Be(500f);
+        restored.F2Hz.Should().Be(1500f);
+        restored.F3Hz.Should().Be(2500f);
+        restored.F4Hz.Should().Be(3500f);
+    }
 }

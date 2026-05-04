@@ -18,4 +18,8 @@ public sealed record AnalysisFrame(
     [property: Key(2)] float FundamentalHz,
     [property: Key(3)] float Confidence,
     [property: Key(4)] float RmsDb,
-    [property: Key(5)] float FundamentalHzRaw);
+    [property: Key(5)] float FundamentalHzRaw,
+    [property: Key(6)] float F1Hz,
+    [property: Key(7)] float F2Hz,
+    [property: Key(8)] float F3Hz,
+    [property: Key(9)] float F4Hz);

@@ -16,4 +16,8 @@ export interface AnalysisFrame {
     confidence: number;       // [Key(3)]
     rmsDb: number;            // [Key(4)]
     fundamentalHzRaw: number; // [Key(5)]
+    f1Hz: number;             // [Key(6)]
+    f2Hz: number;             // [Key(7)]
+    f3Hz: number;             // [Key(8)]
+    f4Hz: number;             // [Key(9)]
 }

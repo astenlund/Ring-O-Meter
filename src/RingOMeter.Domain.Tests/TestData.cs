@@ -15,7 +15,11 @@ internal static class TestData
         float fundamentalHz = 440f,
         float confidence = 0.9f,
         float rmsDb = -10f,
-        float? fundamentalHzRaw = null)
+        float? fundamentalHzRaw = null,
+        float f1Hz = 0f,
+        float f2Hz = 0f,
+        float f3Hz = 0f,
+        float f4Hz = 0f)
     {
         return new AnalysisFrame(
             channelId,
@@ -23,6 +27,10 @@ internal static class TestData
             fundamentalHz,
             confidence,
             rmsDb,
-            fundamentalHzRaw ?? fundamentalHz);
+            fundamentalHzRaw ?? fundamentalHz,
+            f1Hz,
+            f2Hz,
+            f3Hz,
+            f4Hz);
     }
 }
