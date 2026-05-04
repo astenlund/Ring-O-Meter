@@ -14,11 +14,33 @@ export interface FanoutFlag {
 }
 
 const MAX_FANOUT_COUNT = 16;
+// JI dom7 chord (root / maj-3 / P5 / harmonic-7). This is the canonical
+// fanout test pattern used by the smoothness e2e arms and documented in
+// CLAUDE.md; barbershop "ring" requires JI ratios (5/4 = 386 cents,
+// 3/2 = 702 cents, 7/4 = 969 cents), not 12-TET approximations. Default
+// when ?fanout is bare or count === 4 and no explicit offsets given.
+const DEFAULT_DOM7_OFFSETS_CENTS = [0, 386, 702, 969] as const;
+// Step pattern used as the default for non-dom7 counts (count !== 4).
+// 8 cents is barely audible, intentional for renderer-stress scenarios
+// where stacked-near-unison traces test occlusion / anti-aliasing
+// behavior. Also used to pad partially-supplied offsets up to count.
 const DEFAULT_OFFSET_STEP_CENTS = 8;
+// `?fanout` with no value (or `?fanout=`) defaults to a dom7 quartet,
+// matching the e2e + CLAUDE.md convention so a developer typing the
+// flag from memory gets the chord they expect.
+const DEFAULT_COUNT_FOR_BARE_FLAG = 4;
+
+function defaultOffsetsFor(count: number): number[] {
+    if (count === 4) {
+        return [...DEFAULT_DOM7_OFFSETS_CENTS];
+    }
+
+    return Array.from({length: count}, (_, i) => i * DEFAULT_OFFSET_STEP_CENTS);
+}
 
 /**
- * Parse `?fanout=N` (and optional `?offsets=a,b,c,...`) from a URL
- * search string. Returns a normalised {count, offsetsCents} (with
+ * Parse `?fanout` / `?fanout=N` (and optional `?offsets=a,b,c,...`) from
+ * a URL search string. Returns a normalised {count, offsetsCents} (with
  * `offsetsCents.length === count` always) for valid input, or null for
  * the production path.
  *
@@ -28,10 +50,12 @@ const DEFAULT_OFFSET_STEP_CENTS = 8;
  * validate input columns; readers and the canvas would render garbage).
  *
  * Examples:
- *   ?fanout=4                       -> {count:4, offsetsCents:[0,8,16,24]}
+ *   ?fanout                         -> {count:4, offsetsCents:[0,386,702,969]}  (bare flag)
+ *   ?fanout=4                       -> {count:4, offsetsCents:[0,386,702,969]}  (dom7)
  *   ?fanout=4&offsets=0,15,30,45    -> {count:4, offsetsCents:[0,15,30,45]}
  *   ?fanout=4&offsets=0,5           -> {count:4, offsetsCents:[0,5,16,24]} (pad)
  *   ?fanout=4&offsets=0,5,10,15,20  -> {count:4, offsetsCents:[0,5,10,15]} (truncate)
+ *   ?fanout=2                       -> {count:2, offsetsCents:[0,8]} (step)
  *   ?fanout=0|-1|4.5|garbage|>16    -> null + console.warn
  *   ?offsets=0,abc,30,45            -> null + console.warn
  *   no fanout param                 -> null (production path)
@@ -42,9 +66,12 @@ export function parseFanoutFlag(search: string): FanoutFlag | null {
     if (fanoutParam === null) {
         return null;
     }
+    // URLSearchParams returns '' for `?fanout` (no value) and `?fanout=`
+    // (explicit empty value). Both shapes mean "give me the canonical
+    // test pattern" rather than "invalid count".
+    const count = fanoutParam === '' ? DEFAULT_COUNT_FOR_BARE_FLAG : Number(fanoutParam);
     // Number() rejects fractional strings ("4.5" -> 4.5, not an integer)
     // while parseInt("4.5") would silently truncate to 4.
-    const count = Number(fanoutParam);
     if (!Number.isInteger(count) || count < 1) {
         console.warn(`[fanout] invalid count ${fanoutParam}; using production path`);
 
@@ -60,10 +87,7 @@ export function parseFanoutFlag(search: string): FanoutFlag | null {
 
     const offsetsParam = params.get('offsets');
     if (offsetsParam === null) {
-        return {
-            count,
-            offsetsCents: Array.from({length: count}, (_, i) => i * DEFAULT_OFFSET_STEP_CENTS),
-        };
+        return {count, offsetsCents: defaultOffsetsFor(count)};
     }
     const supplied = offsetsParam.split(',').map((s) => Number.parseFloat(s));
     if (supplied.some((n) => !Number.isFinite(n))) {
@@ -74,6 +98,10 @@ export function parseFanoutFlag(search: string): FanoutFlag | null {
         return null;
     }
     // supplied is a dense array; supplied[i] is undefined for i >= supplied.length.
+    // Pads short input with the step pattern (not dom7): the user supplied
+    // SOME explicit values, signalling they want a custom shape, so the
+    // pad fills the tail with a benign linear progression rather than
+    // fabricating a chord they didn't ask for.
     const offsetsCents = Array.from({length: count}, (_, i) =>
         supplied[i] !== undefined ? supplied[i] : i * DEFAULT_OFFSET_STEP_CENTS,
     );
