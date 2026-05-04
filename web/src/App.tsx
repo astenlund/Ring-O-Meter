@@ -261,6 +261,8 @@ export function App() {
                                 deviceLabel={slot.deviceLabel}
                                 fundamentalHz={frame?.fundamentalHz ?? 0}
                                 confidence={frame?.confidence ?? 0}
+                                f1Hz={frame?.f1Hz ?? 0}
+                                f2Hz={frame?.f2Hz ?? 0}
                             />
                         );
                     })

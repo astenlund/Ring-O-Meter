@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import type {FrameRingReader, UiFrame} from './frameRing';
+import type {FormantFrame, FrameRingReader} from './frameRing';
 
 // Polls each registered reader on an rAF-paced schedule (capped at
 // ~15 Hz) and swaps a 2-buffer pool of `Record<string, UiFrame>` into
@@ -23,12 +23,29 @@ import type {FrameRingReader, UiFrame} from './frameRing';
 // heuristic: ui-flush-rate
 const MIN_FLUSH_INTERVAL_MS = 66;
 
-// Copies UiFrame fields in place from src into dst. Centralised so
-// that adding a field to UiFrame requires only one update here
-// rather than at every carry-over call site.
-function copyFrame(dst: UiFrame, src: UiFrame): void {
+// Copies FormantFrame fields in place from src into dst. Centralised
+// so that adding a field to FormantFrame requires only one update
+// here rather than at every carry-over call site.
+function copyFrame(dst: FormantFrame, src: FormantFrame): void {
     dst.fundamentalHz = src.fundamentalHz;
     dst.confidence = src.confidence;
+    dst.rmsDb = src.rmsDb;
+    dst.f1Hz = src.f1Hz;
+    dst.f2Hz = src.f2Hz;
+    dst.f3Hz = src.f3Hz;
+    dst.f4Hz = src.f4Hz;
+}
+
+function makeEmptyFrame(): FormantFrame {
+    return {
+        fundamentalHz: 0,
+        confidence: 0,
+        rmsDb: 0,
+        f1Hz: 0,
+        f2Hz: 0,
+        f3Hz: 0,
+        f4Hz: 0,
+    };
 }
 
 // Returns [active, scratch] for the given buffer-pool index.
@@ -38,9 +55,9 @@ function copyFrame(dst: UiFrame, src: UiFrame): void {
 // imperceptible and keeps callers free of repeated ternary pairs.
 function getBuffers(
     index: 0 | 1,
-    bufA: Record<string, UiFrame>,
-    bufB: Record<string, UiFrame>,
-): [Record<string, UiFrame>, Record<string, UiFrame>] {
+    bufA: Record<string, FormantFrame>,
+    bufB: Record<string, FormantFrame>,
+): [Record<string, FormantFrame>, Record<string, FormantFrame>] {
     return index === 0 ? [bufA, bufB] : [bufB, bufA];
 }
 
@@ -57,26 +74,29 @@ interface ReaderEntry {
 export interface FrameStateControl {
     /**
      * Latest frame snapshot per registered channelId. Keys are
-     * eagerly present with `{fundamentalHz: 0, confidence: 0}`
-     * immediately after `registerReader` — they do not wait for the
-     * first flush. Consumers should use optional-chaining or `?? 0`
-     * rather than membership checks.
+     * eagerly present with all-zero fields immediately after
+     * `registerReader` — they do not wait for the first flush.
+     * Consumers should use optional-chaining or `?? 0` rather than
+     * membership checks. The shape is FormantFrame (superset of
+     * the original UiFrame) so consumers can surface formants
+     * alongside pitch without a parallel hook; pitch-only consumers
+     * just ignore the formant fields.
      */
-    latest: Record<string, UiFrame>;
+    latest: Record<string, FormantFrame>;
     registerReader(channelId: string, reader: FrameRingReader): void;
     unregisterReader(channelId: string): void;
 }
 
 export function useFrameState(): FrameStateControl {
-    const bufARef = useRef<Record<string, UiFrame>>({});
-    const bufBRef = useRef<Record<string, UiFrame>>({});
+    const bufARef = useRef<Record<string, FormantFrame>>({});
+    const bufBRef = useRef<Record<string, FormantFrame>>({});
     // Mutated only from `flush` (rAF callback) and `unregisterReader`
     // (event handler); both run on the main thread without
     // preemption, so no Atomics guard is needed. Hardening this with
     // synchronisation would actually break the read/write ordering
     // the buffer pool relies on.
     const activeIndexRef = useRef<0 | 1>(0);
-    const [latest, setLatest] = useState<Record<string, UiFrame>>(bufARef.current);
+    const [latest, setLatest] = useState<Record<string, FormantFrame>>(bufARef.current);
     const readersRef = useRef<Map<string, ReaderEntry>>(new Map());
     const rafIdRef = useRef(0);
     const lastFlushMsRef = useRef(0);
@@ -121,7 +141,7 @@ export function useFrameState(): FrameStateControl {
                 copyFrame(target, active[channelId]);
                 continue;
             }
-            if (!entry.reader.readLatest(target)) {
+            if (!entry.reader.readLatestFormants(target)) {
                 // No frame published yet for this advanced channel
                 // (rare past first publish): carry over from active.
                 copyFrame(target, active[channelId]);
@@ -143,8 +163,8 @@ export function useFrameState(): FrameStateControl {
 
     const registerReader = useCallback((channelId: string, reader: FrameRingReader) => {
         readersRef.current.set(channelId, {reader, lastSeenPublished: 0});
-        bufARef.current[channelId] = {fundamentalHz: 0, confidence: 0};
-        bufBRef.current[channelId] = {fundamentalHz: 0, confidence: 0};
+        bufARef.current[channelId] = makeEmptyFrame();
+        bufBRef.current[channelId] = makeEmptyFrame();
         armIfIdle();
     }, [armIfIdle]);
 
