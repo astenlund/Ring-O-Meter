@@ -21,6 +21,11 @@ export const PlotMessageType = {
     AttachChannel: 'attachChannel',
     DetachChannel: 'detachChannel',
     RebaseChannel: 'rebaseChannel',
+    InitVowelCanvas: 'initVowelCanvas',
+    AttachVowelChannel: 'attachVowelChannel',
+    DetachVowelChannel: 'detachVowelChannel',
+    RebaseVowelChannel: 'rebaseVowelChannel',
+    SetVowelBacking: 'setVowelBacking',
 } as const;
 
 export interface InitMessage {
@@ -74,10 +79,46 @@ export interface RebaseChannelMessage {
     epochOffsetMs: number;
 }
 
+export interface InitVowelCanvasMessage {
+    type: typeof PlotMessageType.InitVowelCanvas;
+    canvas: OffscreenCanvas;
+    backing: {cssWidth: number; cssHeight: number; dpr: number};
+}
+
+export interface AttachVowelChannelMessage {
+    type: typeof PlotMessageType.AttachVowelChannel;
+    channelId: string;
+    color: string;
+    source: FrameSource;
+}
+
+export interface DetachVowelChannelMessage {
+    type: typeof PlotMessageType.DetachVowelChannel;
+    channelId: string;
+}
+
+export interface RebaseVowelChannelMessage {
+    type: typeof PlotMessageType.RebaseVowelChannel;
+    channelId: string;
+    epochOffsetMs: number;
+}
+
+export interface SetVowelBackingMessage {
+    type: typeof PlotMessageType.SetVowelBacking;
+    cssWidth: number;
+    cssHeight: number;
+    dpr: number;
+}
+
 export type PlotMessage =
     | InitMessage
     | SetRosterMessage
     | SetBackingMessage
     | AttachChannelMessage
     | DetachChannelMessage
-    | RebaseChannelMessage;
+    | RebaseChannelMessage
+    | InitVowelCanvasMessage
+    | AttachVowelChannelMessage
+    | DetachVowelChannelMessage
+    | RebaseVowelChannelMessage
+    | SetVowelBackingMessage;

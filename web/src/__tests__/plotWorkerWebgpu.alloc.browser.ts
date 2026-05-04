@@ -35,8 +35,15 @@ describe('WebGPU plot paint allocation budget', () => {
         // canvas.transferControlToOffscreen().
         const offscreen = canvas.transferControlToOffscreen();
 
+        const adapter = await navigator.gpu.requestAdapter({powerPreference: 'high-performance'});
+        if (!adapter) {
+            throw new Error('Test requires a WebGPU adapter');
+        }
+        const device = await adapter.requestDevice();
+        const format = navigator.gpu.getPreferredCanvasFormat();
+
         const renderer = new TraceModule();
-        await renderer.init(offscreen);
+        await renderer.init(offscreen, device, format);
         renderer.setBacking(800, 360, 1);
         renderer.setWindow(10_000, 80, 600);
         renderer.setEpochOffset(0);
@@ -73,7 +80,6 @@ describe('WebGPU plot paint allocation budget', () => {
         // encoder + render pass + submit (mirroring plotWorkerWebgpu.ts).
         const runFrame = (): void => {
             renderer.update(0);
-            const device = renderer.gpuDevice!;
             const context = renderer.gpuContext!;
             const encoder = device.createCommandEncoder();
             const pass = encoder.beginRenderPass({
