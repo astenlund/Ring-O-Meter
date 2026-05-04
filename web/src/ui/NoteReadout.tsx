@@ -115,7 +115,14 @@ export function NoteReadout({deviceLabel, fundamentalHz, confidence, f1Hz, f2Hz}
             padding: 12,
             border: '1px solid #444',
             borderRadius: 6,
-            minWidth: 160,
+            // Bumped from 160 to 240 to accommodate the diagnostic
+            // F1/F2 lines (up to "F1: 320  (min 280, max 340)" with
+            // both peak-hold annotations active). Without this, the
+            // readout's width oscillates as min/max annotations come
+            // and go, making the digits hard to read. Cleanup task 19
+            // drops both the F1/F2 lines and this width bump back to
+            // 160 once the manual algorithm triage is complete.
+            minWidth: 240,
         }}>
             <div style={{fontSize: 12, opacity: 0.7}}>{deviceLabel}</div>
             <div style={{
