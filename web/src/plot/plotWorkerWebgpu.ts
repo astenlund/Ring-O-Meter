@@ -5,6 +5,7 @@ import {
     PlotMessageType,
     type InitVowelCanvasMessage,
     type PlotMessage,
+    type VoiceEntry,
 } from './plotMessages';
 import {TraceModule} from './traceModule';
 import {VowelModuleWebgpu} from './vowelModuleWebgpu';
@@ -53,6 +54,17 @@ let vowelInitialised = false;
 // (Safari/iPadOS WebKit doesn't auto-reconfigure on canvas resize).
 let resolvedVowelDevice: GPUDevice | null = null;
 let resolvedVowelFormat: GPUTextureFormat | null = null;
+
+// Most-recent roster, updated by both Init and SetRoster handlers.
+// initVowelCanvas seeds vowelModule.setRoster(lastVoices) on creation
+// to cover the timing window where SetRoster arrives during the async
+// initVowelCanvas await: the trace renderer is constructed at module
+// load and receives setRoster directly, but vowelModule is created
+// inside the async path, so any SetRoster that arrives during the
+// await silently skips the vowel fanout (the `if (vowelModule)` guard
+// sees null). Without seeding, the vowel module's `voices` stays empty
+// and update() iterates an empty list, producing zero points.
+let lastVoices: ReadonlyArray<VoiceEntry> = [];
 
 // Resize the vowel canvas + reconfigure the GPU context + propagate
 // dims to the module. Called from initVowelCanvas (after the initial
@@ -166,6 +178,14 @@ async function initVowelCanvas(msg: InitVowelCanvasMessage): Promise<void> {
 
         vowelModule = new VowelModuleWebgpu();
         vowelModule.init(device, queue, format);
+        // Seed the vowel module's roster from the most-recent SetRoster
+        // (or Init) the worker has seen. Covers the timing window where
+        // SetRoster arrives during this initVowelCanvas await: the
+        // SetRoster handler's `if (vowelModule)` guard silently skipped
+        // the fanout because vowelModule was still null. Without this
+        // seeding, vowelModule.voices stays empty and update() produces
+        // zero points even when channels are attached.
+        vowelModule.setRoster(lastVoices);
         // applyVowelCanvasBacking handles canvas resize + context
         // reconfigure when the initial backing has real CSS dims; with
         // a 0x0 placeholder it just propagates dims to the module
@@ -201,6 +221,7 @@ function applyMessage(msg: PlotMessage): void {
             return;
         }
         case PlotMessageType.SetRoster: {
+            lastVoices = msg.voices;
             renderer.setRoster(msg.voices);
             if (vowelModule) {
                 vowelModule.setRoster(msg.voices);
@@ -308,6 +329,7 @@ self.onmessage = async (event: MessageEvent<PlotMessage>) => {
             const {device, format} = await devicePromise;
             const mainEpochOffsetMs = msg.mainNowAtInitMs - performance.now();
             renderer.setEpochOffset(mainEpochOffsetMs);
+            lastVoices = msg.voices;
             renderer.setRoster(msg.voices);
             renderer.setWindow(msg.windowMs, msg.minHz, msg.maxHz);
             await renderer.init(msg.canvas, device, format);
