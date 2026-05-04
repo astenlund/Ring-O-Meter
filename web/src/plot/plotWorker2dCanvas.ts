@@ -175,16 +175,17 @@ function paintVowel(): void {
     const appliedLen = vowelOrderDebounce.getAppliedLength();
 
     // Map each VoicePoint to a VowelPoint2d in the pre-allocated scratch.
-    // IPA-inverted axes: high F2 = front = LEFT; high F1 = open = BOTTOM.
-    // Y-axis convention matches drawVowelChrome's gridline mapping:
-    //   y = height * (1 - (f1 - F1_MIN) / F1_SPAN)
-    // so F1_MIN maps to y=height (bottom) and F1_MAX maps to y=0 (top).
+    // IPA-inverted axes: high F2 = front = LEFT; high F1 = open = BOTTOM,
+    // low F1 = close = TOP. F2 needs the (1 - xNorm) inversion because
+    // canvas x grows left-to-right; F1 does NOT need the (1 - yNorm)
+    // inversion because canvas y already grows top-to-bottom, so plain
+    // yNorm puts low F1 (small numerator) near the top automatically.
     vowelDrawPoints.length = 0;
     for (let i = 0; i < voiceCount; i++) {
         const pt = vowelPointsScratch[i];
         const state = vowelChannels.get(pt.channelId)!;
         const x = vowelSize.width * (1 - (pt.f2Hz - F2_MIN) / F2_SPAN);
-        const y = vowelSize.height * (1 - (pt.f1Hz - F1_MIN) / F1_SPAN);
+        const y = vowelSize.height * ((pt.f1Hz - F1_MIN) / F1_SPAN);
         vowelDrawPoints.push({
             x,
             y,
