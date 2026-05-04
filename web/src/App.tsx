@@ -230,34 +230,53 @@ export function App() {
     return (
         <main style={mainStyle}>
             <h1>Ring-O-Meter</h1>
+            {/*
+              * Both rows below render placeholder content (a disabled
+              * <select> in DeviceSetup, an inert NoteReadout below) when
+              * the live data is not yet available. The placeholders'
+              * natural heights anchor the layout so the plot row stays
+              * put as devices enumerate and slots populate; no
+              * pixel-value minHeight reservations to guess and rot.
+              */}
             <div style={{display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16}}>
+                <DeviceSetup
+                    devices={devicesError ? [] : devices}
+                    selectedDeviceId={selectedDeviceId}
+                    onSelect={setSelectedDeviceId}
+                />
                 {devicesError && (
                     <p style={{color: 'crimson', margin: 0}}>
                         Could not enumerate audio inputs: {devicesError.message}
                     </p>
                 )}
-                {!devicesError && !devices && <p style={{margin: 0}}>Discovering audio inputs...</p>}
-                {!devicesError && devices && (
-                    <DeviceSetup
-                        devices={devices}
-                        selectedDeviceId={selectedDeviceId}
-                        onSelect={setSelectedDeviceId}
-                    />
-                )}
             </div>
             <div style={{display: 'flex', gap: 16, marginBottom: 16}}>
-                {(slots ?? []).map((slot) => {
-                    const frame = latest[slot.channelId];
+                {slots && slots.length > 0 ? (
+                    slots.map((slot) => {
+                        const frame = latest[slot.channelId];
 
-                    return (
-                        <NoteReadout
-                            key={slot.channelId}
-                            deviceLabel={slot.deviceLabel}
-                            fundamentalHz={frame?.fundamentalHz ?? 0}
-                            confidence={frame?.confidence ?? 0}
-                        />
-                    );
-                })}
+                        return (
+                            <NoteReadout
+                                key={slot.channelId}
+                                deviceLabel={slot.deviceLabel}
+                                fundamentalHz={frame?.fundamentalHz ?? 0}
+                                confidence={frame?.confidence ?? 0}
+                            />
+                        );
+                    })
+                ) : (
+                    // Placeholder NoteReadout while pre-Start (or no
+                    // device selected yet). Renders the dim "--" digits
+                    // path (fundamentalHz=0 fails shouldDisplayPitch),
+                    // pinning the row's height to whatever the live
+                    // readout will be. selectedDevice?.label gracefully
+                    // falls back if devices haven't enumerated yet.
+                    <NoteReadout
+                        deviceLabel={selectedDevice?.label ?? 'Voice 1'}
+                        fundamentalHz={0}
+                        confidence={0}
+                    />
+                )}
             </div>
             <div style={{display: 'flex', gap: 16, alignItems: 'stretch', height: 360}}>
                 <div style={{position: 'relative', flex: 1}}>
