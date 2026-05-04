@@ -1,0 +1,95 @@
+import {type CSSProperties, useEffect, useRef} from 'react';
+import {PlotController} from '../plot/plotController';
+import {useCanvasBacking} from './useCanvasBacking';
+
+export interface VowelPlotProps {
+    // App-level shared PlotController. Unlike PitchPlot, VowelPlot does
+    // NOT have a self-construct fallback: this component shipped after
+    // the Task 14 controller-hoist and there is no legacy consumer that
+    // needs the back-compat shape. Required so the inter-singer F1/F2
+    // polygon is always wired into the same render worker as the trace
+    // (one device, one queue, one submit per frame).
+    controller: PlotController;
+    // Mirrors PitchPlot's useUnderlay: when true (WebGPU arm), an
+    // absolute-positioned 2D underlay canvas sits behind the WebGPU
+    // canvas and carries the static chrome (gridlines + axis labels).
+    // When false (2D arm), the worker paints chrome inline each frame
+    // and no main-thread underlay canvas is mounted.
+    useUnderlay?: boolean;
+    style?: CSSProperties;
+}
+
+const canvasStyle: CSSProperties = {
+    width: '100%',
+    height: '100%',
+    borderRadius: 6,
+    border: '1px solid #444',
+};
+
+// Inter-singer F1/F2 polygon visualization. Mirror of PitchPlot for
+// the vowel coaching surface: one main-thread component owning canvas
+// refs, hooked into useCanvasBacking for DPR/size tracking, attached
+// to the lifted PlotController. The actual paint runs inside the plot
+// worker (one shared with PitchPlot via the controller); this
+// component only manages canvas mount + lifecycle messages.
+//
+// Strict-mode safety. transferControlToOffscreen() is one-shot per
+// <canvas> element. attachedRef gates the attach so the strict-mode
+// double-mount does not call attachVowelCanvas twice on the same
+// canvas. No deferred-dispose dance is needed here because the
+// controller's lifetime is owned by App, not by this component:
+// disposal happens when App unmounts (rare in production, expected in
+// dev strict-mode), at which point the controller terminates the
+// shared worker and the vowel canvas is implicitly released.
+export function VowelPlot({controller, useUnderlay = false, style}: VowelPlotProps) {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const underlayRef = useRef<HTMLCanvasElement>(null);
+    const attachedRef = useRef(false);
+    const backing = useCanvasBacking(canvasRef);
+
+    useEffect(() => {
+        if (attachedRef.current) {
+            return;
+        }
+        const canvas = canvasRef.current;
+        if (!canvas) {
+            return;
+        }
+        controller.attachVowelCanvas(canvas, backing);
+        attachedRef.current = true;
+        // No teardown: VowelPlot does not own the controller. App owns
+        // it via useState; controller.dispose() (which terminates the
+        // shared worker) is responsible for releasing the OffscreenCanvas
+        // we transferred above.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        if (!attachedRef.current) {
+            return;
+        }
+        controller.setVowelBacking(backing.cssWidth, backing.cssHeight, backing.dpr);
+    }, [backing, controller]);
+
+    useEffect(() => {
+        if (!useUnderlay) {
+            return;
+        }
+        const c = underlayRef.current;
+        const ctx = c?.getContext('2d');
+        if (!c || !ctx) {
+            return;
+        }
+        controller.setVowelUnderlay(ctx);
+        controller.setVowelUnderlayBacking(backing.cssWidth, backing.cssHeight, backing.dpr);
+    }, [useUnderlay, backing, controller]);
+
+    return (
+        <div style={{position: 'relative', width: '100%', height: '100%', ...style}}>
+            {useUnderlay && (
+                <canvas ref={underlayRef} style={{...canvasStyle, position: 'absolute', inset: 0}} />
+            )}
+            <canvas ref={canvasRef} style={{...canvasStyle, position: 'absolute', inset: 0}} />
+        </div>
+    );
+}
