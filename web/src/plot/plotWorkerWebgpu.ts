@@ -1,9 +1,9 @@
 /// <reference lib="webworker" />
 
 import {PlotMessageType, type PlotMessage} from './plotMessages';
-import {WebgpuPlotRenderer} from './webgpuPlotRenderer';
+import {TraceModule} from './traceModule';
 
-const renderer = new WebgpuPlotRenderer();
+const renderer = new TraceModule();
 let initialised = false;
 let initFailed = false;
 const pendingMessages: PlotMessage[] = [];
