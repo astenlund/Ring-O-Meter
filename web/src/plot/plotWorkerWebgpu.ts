@@ -45,6 +45,43 @@ let vowelModule: VowelModuleWebgpu | null = null;
 let vowelCanvasContext: GPUCanvasContext | null = null;
 const pendingVowelMessages: PlotMessage[] = [];
 let vowelInitialised = false;
+// Captured once initVowelCanvas resolves devicePromise so subsequent
+// SetVowelBacking handlers can resize+reconfigure the GPUCanvasContext
+// without re-awaiting the device. The trace's TraceModule does its own
+// resize internally; the vowel side's host-owned context model needs
+// these to match the reconfigure shape across canvas size changes
+// (Safari/iPadOS WebKit doesn't auto-reconfigure on canvas resize).
+let resolvedVowelDevice: GPUDevice | null = null;
+let resolvedVowelFormat: GPUTextureFormat | null = null;
+
+// Resize the vowel canvas + reconfigure the GPU context + propagate
+// dims to the module. Called from initVowelCanvas (after the initial
+// configure) and from the SetVowelBacking dispatch (every backing
+// update, including the post-mount transition from placeholder 0x0
+// to real CSS dimensions). Cross-platform-parity rationale matches
+// TraceModule.setBacking: reconfigure unconditionally on every actual
+// resize so Safari/iPadOS WebKit doesn't paint to a stale swap-chain.
+function applyVowelCanvasBacking(cssWidth: number, cssHeight: number, dpr: number): void {
+    if (!vowelModule) {
+        return;
+    }
+    vowelModule.setBacking(cssWidth, cssHeight, dpr);
+    if (cssWidth === 0 || cssHeight === 0 || !vowelCanvasContext || !resolvedVowelDevice || !resolvedVowelFormat) {
+        return;
+    }
+    const canvas = vowelCanvasContext.canvas as OffscreenCanvas;
+    const w = Math.round(cssWidth * dpr);
+    const h = Math.round(cssHeight * dpr);
+    if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+        vowelCanvasContext.configure({
+            device: resolvedVowelDevice,
+            format: resolvedVowelFormat,
+            alphaMode: 'premultiplied',
+        });
+    }
+}
 
 // Initialised lazily on the first frame: a literal 0 baseline would
 // produce a multi-million-ms first-frame dt (rAF stamps wall-clock
@@ -124,10 +161,17 @@ async function initVowelCanvas(msg: InitVowelCanvasMessage): Promise<void> {
         // pixels the polygon/dot fragment shader does not write.
         ctx.configure({device, format, alphaMode: 'premultiplied'});
         vowelCanvasContext = ctx;
+        resolvedVowelDevice = device;
+        resolvedVowelFormat = format;
 
         vowelModule = new VowelModuleWebgpu();
         vowelModule.init(device, queue, format);
-        vowelModule.setBacking(msg.backing.cssWidth, msg.backing.cssHeight, msg.backing.dpr);
+        // applyVowelCanvasBacking handles canvas resize + context
+        // reconfigure when the initial backing has real CSS dims; with
+        // a 0x0 placeholder it just propagates dims to the module
+        // (which early-exits its update loop until real dims arrive
+        // via SetVowelBacking).
+        applyVowelCanvasBacking(msg.backing.cssWidth, msg.backing.cssHeight, msg.backing.dpr);
         vowelInitialised = true;
 
         for (const queued of pendingVowelMessages) {
@@ -228,7 +272,13 @@ function applyMessage(msg: PlotMessage): void {
 
                 return;
             }
-            vowelModule!.setBacking(msg.cssWidth, msg.cssHeight, msg.dpr);
+            // Resize the OffscreenCanvas + reconfigure the GPU context
+            // when CSS dimensions change. Without this the canvas stays
+            // at its initial size (typically 0x0 because VowelPlot's
+            // mount effect runs before useCanvasBacking has settled) and
+            // getCurrentTexture returns an empty texture - the polygon
+            // pass succeeds but produces nothing visible.
+            applyVowelCanvasBacking(msg.cssWidth, msg.cssHeight, msg.dpr);
             // Arm rAF if a vowel-only mount has not started painting
             // yet (the trace's SetBacking handler also arms; idempotent).
             if (rafId === 0 && msg.cssHeight > 0) {
