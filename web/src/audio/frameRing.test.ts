@@ -6,6 +6,7 @@ import {
     HZ_RAW_OFFSET,
     RING_SAB_BYTES,
     RMS_DB_OFFSET,
+    type FormantFrame,
     type PublishFrame,
     type UiFrame,
     createFrameRing,
@@ -26,9 +27,10 @@ describe('createFrameRing', () => {
         const sab = createFrameRing();
         expect(sab).toBeInstanceOf(SharedArrayBuffer);
         expect(sab.byteLength).toBe(RING_SAB_BYTES);
-        // 8 header + 24 bytes per slot * 1024 slots (Float64 contextMs
-        // + four Float32 columns: hz, conf, rmsDb, hzRaw).
-        expect(RING_SAB_BYTES).toBe(8 + 24 * CAPACITY);
+        // 8-byte header + 8-byte contextMs Float64 + four 4-byte Float32 columns
+        // (hz, conf, rmsDb, hzRaw) + four new 4-byte Float32 columns (f1Hz, f2Hz,
+        // f3Hz, f4Hz) per slot = 40 bytes per slot.
+        expect(RING_SAB_BYTES).toBe(8 + 40 * CAPACITY);
     });
 });
 
@@ -224,5 +226,59 @@ describe('FrameRingWriter trailing-column writes', () => {
         // single precision; -27.5 and 880 both are.
         expect(rmsDbView[0]).toBe(-27.5);
         expect(hzRawView[0]).toBe(880);
+    });
+});
+
+describe('FrameRingReader.readLatestFormants', () => {
+    it('round-trips formant columns through writer + readLatestFormants', () => {
+        // Arrange
+        const sab = createFrameRing();
+        const w = writer(sab);
+        const r = reader(sab, 0);
+        const out: FormantFrame = {f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0, rmsDb: 0, fundamentalHz: 0, confidence: 0};
+
+        // Act
+        w.publish({
+            captureContextMs: 100,
+            fundamentalHz: 220,
+            confidence: 0.9,
+            rmsDb: -12,
+            fundamentalHzRaw: 220,
+            f1Hz: 500,
+            f2Hz: 1500,
+            f3Hz: 2500,
+            f4Hz: 3500,
+        });
+        const ok = r.readLatestFormants(out);
+
+        // Assert
+        expect(ok).toBe(true);
+        expect(out.f1Hz).toBe(500);
+        expect(out.f2Hz).toBe(1500);
+        expect(out.f3Hz).toBe(2500);
+        expect(out.f4Hz).toBe(3500);
+        expect(out.rmsDb).toBe(-12);
+        expect(out.fundamentalHz).toBeCloseTo(220, 5);
+        expect(out.confidence).toBeCloseTo(0.9, 5);
+    });
+
+    it('readLatestFormants returns false on never-published reader', () => {
+        // Arrange
+        const sab = createFrameRing();
+        const r = reader(sab, 0);
+        const out: FormantFrame = {f1Hz: 1, f2Hz: 2, f3Hz: 3, f4Hz: 4, rmsDb: 5, fundamentalHz: 6, confidence: 7};
+
+        // Act
+        const ok = r.readLatestFormants(out);
+
+        // Assert: ok=false and out untouched (sentinel-preserving contract).
+        expect(ok).toBe(false);
+        expect(out.f1Hz).toBe(1);
+        expect(out.f2Hz).toBe(2);
+        expect(out.f3Hz).toBe(3);
+        expect(out.f4Hz).toBe(4);
+        expect(out.rmsDb).toBe(5);
+        expect(out.fundamentalHz).toBe(6);
+        expect(out.confidence).toBe(7);
     });
 });
