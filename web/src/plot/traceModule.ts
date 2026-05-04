@@ -73,15 +73,12 @@ export class TraceModule {
     // and the next paint would fail with "context is not configured".
     private configured = false;
 
-    public async init(canvas: OffscreenCanvas): Promise<void> {
-        if (!navigator.gpu) {
-            throw new Error('TraceModule: navigator.gpu unavailable');
-        }
-        const adapter = await navigator.gpu.requestAdapter({powerPreference: 'high-performance'});
-        if (!adapter) {
-            throw new Error('TraceModule: no GPU adapter');
-        }
-        const device = await adapter.requestDevice();
+    // Device acquisition has been lifted to the worker host (plotWorkerWebgpu.ts
+    // devicePromise) so both TraceModule.init and VowelModuleWebgpu.init receive
+    // a pre-resolved device + queue + format; neither module races the other
+    // for adapter/device acquisition, and message-arrival order (Init vs
+    // InitVowelCanvas) does not affect device readiness.
+    public async init(canvas: OffscreenCanvas, device: GPUDevice, format: GPUTextureFormat): Promise<void> {
         // OffscreenCanvas.getContext('webgpu') is typed as the broader
         // OffscreenRenderingContext union (TS 6's lib.webworker.d.ts has
         // overloads only for "2d" / "bitmaprenderer" / "webgl" /
@@ -93,7 +90,6 @@ export class TraceModule {
         if (!context) {
             throw new Error('TraceModule: webgpu context unavailable');
         }
-        const format = navigator.gpu.getPreferredCanvasFormat();
         // Deliberately do NOT configure the context here. The
         // OffscreenCanvas dimensions at this point reflect the
         // pre-layout state of the source canvas (often 0x0 or 300x150

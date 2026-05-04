@@ -51,7 +51,7 @@ describe('Vowel module WebGPU paint allocation budget', () => {
         context.configure({device, format, alphaMode: 'premultiplied'});
 
         const module = new VowelModuleWebgpu();
-        module.init(device, device.queue);
+        module.init(device, device.queue, format);
         module.setBacking(360, 360, 1);
 
         // 4-voice fanout fixture matching the dom7 chord shape used by

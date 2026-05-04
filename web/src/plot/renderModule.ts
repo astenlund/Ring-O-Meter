@@ -11,10 +11,12 @@
 // module count.
 
 export interface RenderModule {
-    // Initialize GPU resources. Called once after device + queue are
-    // ready. Modules should NOT create canvas contexts here - the
-    // worker host owns canvas lifecycle.
-    init(device: GPUDevice, queue: GPUQueue): void;
+    // Initialize GPU resources. Called once after device + queue + format
+    // are ready. Modules should NOT create canvas contexts here - the
+    // worker host owns canvas lifecycle. The format comes from the host's
+    // devicePromise so all modules in one worker share the same swap-chain
+    // format without each independently calling getPreferredCanvasFormat().
+    init(device: GPUDevice, queue: GPUQueue, format: GPUTextureFormat): void;
 
     // Per-frame state update from CPU side. Called before draw().
     // Module reads its data sources (SAB rings, etc.) here, computes

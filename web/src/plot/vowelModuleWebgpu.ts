@@ -11,6 +11,10 @@ import type {RenderModule} from './renderModule';
 import {hexToRgba} from './color';
 import type {VoiceEntry} from './plotMessages';
 import {
+    F1_MIN,
+    F1_SPAN,
+    F2_MIN,
+    F2_SPAN,
     GateDebounce,
     MAX_VOICES,
     OrderDebounce,
@@ -25,26 +29,6 @@ import {
 // crisp pixel marker at typical DPRs (4, 8, 10 device px); larger
 // values feel "bubbly", smaller values disappear at high DPR.
 const VOWEL_DOT_CSS_SIZE = 4;
-
-// Adult-inclusive (both male and female) F1/F2 ranges, narrowly
-// excluding child voices. Linear Hz on both axes; perceptual scales
-// (Bark, mel, log-Hz) are an explicit anti-goal because they compress
-// F2 where ring coaching needs amplification (see spec "Axis
-// convention" and CLAUDE.md "Vowel-matching metric uses raw absolute Hz").
-// The four bounds are tagged for the heuristic registry: the
-// visualization range is itself a coaching surface, and a future
-// session that introduces child voices, a non-IPA convention, or a
-// per-cohort-tuned axis would discover them via grep "// heuristic:".
-// heuristic: vowel-axis-f1-min - lower bound on F1 axis
-const F1_MIN = 200;
-// heuristic: vowel-axis-f1-max - upper bound on F1 axis
-const F1_MAX = 1100;
-// heuristic: vowel-axis-f2-min - lower bound on F2 axis
-const F2_MIN = 700;
-// heuristic: vowel-axis-f2-max - upper bound on F2 axis
-const F2_MAX = 3300;
-const F1_SPAN = F1_MAX - F1_MIN;
-const F2_SPAN = F2_MAX - F2_MIN;
 
 // Polygon vertex buffer: MAX_VOICES + 1 for the closed-loop indexed
 // draw (last index = first vertex re-referenced). Each vertex is
@@ -124,7 +108,7 @@ export class VowelModuleWebgpu implements RenderModule {
     // update(). Controls draw() early-exit and indexed draw count.
     private currentVoiceCount = 0;
 
-    public init(device: GPUDevice, queue: GPUQueue): void {
+    public init(device: GPUDevice, queue: GPUQueue, format: GPUTextureFormat): void {
         this.device = device;
         this.queue = queue;
 
@@ -185,7 +169,7 @@ export class VowelModuleWebgpu implements RenderModule {
                 module: shaderModule,
                 entryPoint: 'fs_main',
                 targets: [{
-                    format: navigator.gpu.getPreferredCanvasFormat(),
+                    format,
                     blend: {
                         color: {srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha'},
                         alpha: {srcFactor: 'one', dstFactor: 'one-minus-src-alpha'},
@@ -207,7 +191,7 @@ export class VowelModuleWebgpu implements RenderModule {
                 module: shaderModule,
                 entryPoint: 'fs_main',
                 targets: [{
-                    format: navigator.gpu.getPreferredCanvasFormat(),
+                    format,
                     blend: {
                         color: {srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha'},
                         alpha: {srcFactor: 'one', dstFactor: 'one-minus-src-alpha'},

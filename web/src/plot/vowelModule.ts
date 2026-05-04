@@ -43,6 +43,25 @@ export const VOWEL_DIM_BRIGHTNESS = 0.5;
 // ever extends to 5-12 voices for non-barbershop ensembles.
 export const MAX_VOICES = 8;
 
+// Adult-inclusive (both male and female) F1/F2 ranges, narrowly
+// excluding child voices. Linear Hz on both axes; perceptual scales
+// (Bark, mel, log-Hz) are an explicit anti-goal because they compress
+// F2 where ring coaching needs amplification (see CLAUDE.md
+// "Vowel-matching metric uses raw absolute Hz").
+// Exported here (single source of truth) so both vowelModuleWebgpu.ts
+// and plotWorker2dCanvas.ts import from one place; local copies in
+// each renderer would risk silent axis-range drift.
+// heuristic: vowel-axis-f1-min - lower bound on F1 axis
+export const F1_MIN = 200;
+// heuristic: vowel-axis-f1-max - upper bound on F1 axis
+export const F1_MAX = 1100;
+// heuristic: vowel-axis-f2-min - lower bound on F2 axis
+export const F2_MIN = 700;
+// heuristic: vowel-axis-f2-max - upper bound on F2 axis
+export const F2_MAX = 3300;
+export const F1_SPAN = F1_MAX - F1_MIN;
+export const F2_SPAN = F2_MAX - F2_MIN;
+
 export interface VoicePoint {
     channelId: string;
     color: string;          // 3- or 6-digit hex from SLOT_COLORS
