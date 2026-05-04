@@ -66,7 +66,7 @@ self.onmessage = (event: MessageEvent<PlotMessage>) => {
             canvas = msg.canvas;
             const got = canvas.getContext('2d');
             if (!got) {
-                throw new Error('plotWorker: OffscreenCanvas 2d context unavailable');
+                throw new Error('plotWorker2dCanvas: OffscreenCanvas 2d context unavailable');
             }
             ctx = got;
             paintFrame.ctx = ctx;
