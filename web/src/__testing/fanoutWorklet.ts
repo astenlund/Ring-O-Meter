@@ -22,6 +22,7 @@ import {computeRmsDb} from '../audio/rmsDb';
 import {OctaveStabilizer} from '../audio/octaveStabilizer';
 import {FrameRingWriter, type PublishFrame} from '../audio/frameRing';
 import {PITCH_FANOUT_PROCESSOR_NAME} from './fanoutConstants';
+import {FormantDetector, type LpcMethod} from '../audio/formantDetector';
 
 const FRAME_SIZE = 1024;
 const PUBLISH_INTERVAL_FRAMES = 1;
@@ -38,6 +39,9 @@ class FanoutPitchProcessor extends AudioWorkletProcessor {
     private readonly writers: FrameRingWriter[];
     private readonly multipliers: readonly number[];
     private readonly stabilizer = new OctaveStabilizer();
+    // Not readonly: handlePortMessage reassigns it on algorithm swap.
+    private formantDetector: FormantDetector;
+    private currentLpcMethod: LpcMethod = 'burg';
     // One scratch struct mutated in place across publish() iterations
     // and across writers, mirroring the zero-alloc pattern documented
     // in pitchWorklet.ts.
@@ -73,6 +77,8 @@ class FanoutPitchProcessor extends AudioWorkletProcessor {
         }
         this.writers = sabs.map((s) => new FrameRingWriter(s));
         this.multipliers = multipliers;
+        this.formantDetector = this.createFormantDetector(this.currentLpcMethod);
+        this.port.onmessage = (event: MessageEvent) => this.handlePortMessage(event.data);
     }
 
     public process(
@@ -121,11 +127,44 @@ class FanoutPitchProcessor extends AudioWorkletProcessor {
         this.scratch.confidence = result.confidence;
         this.scratch.rmsDb = rmsDb;
 
+        // Formants computed ONCE before the fan-out loop: all N rings
+        // share one mic input (same vocal tract), so formants are
+        // identical across rings. Computing per-ring would be wasteful
+        // and still produce the same values.
+        this.formantDetector.process(this.buffer);
+        const formants = this.formantDetector.result.frequencies;
+        this.scratch.f1Hz = Number.isFinite(formants[0]) ? formants[0] : 0;
+        this.scratch.f2Hz = Number.isFinite(formants[1]) ? formants[1] : 0;
+        this.scratch.f3Hz = Number.isFinite(formants[2]) ? formants[2] : 0;
+        this.scratch.f4Hz = Number.isFinite(formants[3]) ? formants[3] : 0;
+
         for (let i = 0; i < this.writers.length; i++) {
             const m = this.multipliers[i];
             this.scratch.fundamentalHz = stabilized.hz * m;
             this.scratch.fundamentalHzRaw = fundamentalHzRaw * m;
             this.writers[i].publish(this.scratch);
+        }
+    }
+
+    private createFormantDetector(method: LpcMethod): FormantDetector {
+        return new FormantDetector({
+            inputRate: sampleRate,
+            decimatedRate: 12000,
+            decimatorCutoffHz: 5500,
+            lpcOrder: 14,
+            lpcMethod: method,
+            formantCount: 4,
+        });
+    }
+
+    private handlePortMessage(data: unknown): void {
+        if (typeof data !== 'object' || data === null) {
+            return;
+        }
+        const msg = data as {type?: string; method?: LpcMethod};
+        if (msg.type === 'setLpcMethod' && (msg.method === 'burg' || msg.method === 'autocorrelation')) {
+            this.currentLpcMethod = msg.method;
+            this.formantDetector = this.createFormantDetector(msg.method);
         }
     }
 }

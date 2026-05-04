@@ -9,6 +9,7 @@ import {computeRmsDb} from '../rmsDb';
 import {OctaveStabilizer} from '../octaveStabilizer';
 import {PITCH_PROCESSOR_NAME} from '../constants';
 import {FrameRingWriter, type PublishFrame} from '../frameRing';
+import {FormantDetector, type LpcMethod} from '../formantDetector';
 
 const FRAME_SIZE = 1024;
 const PUBLISH_INTERVAL_FRAMES = 1; // every ~21 ms at 48 kHz -> ~47 Hz publish
@@ -23,6 +24,9 @@ class PitchProcessor extends AudioWorkletProcessor {
     private framesSinceLastPublish = 0;
     private readonly writer: FrameRingWriter;
     private readonly stabilizer = new OctaveStabilizer();
+    // Not readonly: handlePortMessage reassigns it on algorithm swap.
+    private formantDetector: FormantDetector;
+    private currentLpcMethod: LpcMethod = 'burg';
     // Hoisted scratch reused across every publish so the hot-path
     // stays zero-alloc; the writer reads the fields and copies them
     // into the SAB ring slot. Mutated in place inside publish().
@@ -45,6 +49,8 @@ class PitchProcessor extends AudioWorkletProcessor {
             throw new Error('PitchProcessor: processorOptions.frameRingSab is required');
         }
         this.writer = new FrameRingWriter(opts.frameRingSab);
+        this.formantDetector = this.createFormantDetector(this.currentLpcMethod);
+        this.port.onmessage = (event: MessageEvent) => this.handlePortMessage(event.data);
     }
 
     public process(
@@ -99,6 +105,13 @@ class PitchProcessor extends AudioWorkletProcessor {
         // so future tooling can audit octave corrections after the fact.
         const fundamentalHzRaw = result.fundamentalHz;
         const stabilized = this.stabilizer.apply(fundamentalHzRaw);
+
+        // Formants alongside pitch. The detector mutates its public
+        // `result.frequencies` field in place; copy values out before
+        // calling writer.publish() since the writer captures by value.
+        this.formantDetector.process(this.buffer);
+        const formants = this.formantDetector.result.frequencies;
+
         // currentTime is AudioContext seconds; multiply by 1000 for
         // ms matching the ring's contextMs field semantics. Readers
         // (main + worker) convert to paint epoch via their offset.
@@ -107,7 +120,38 @@ class PitchProcessor extends AudioWorkletProcessor {
         this.scratch.confidence = result.confidence;
         this.scratch.rmsDb = rmsDb;
         this.scratch.fundamentalHzRaw = fundamentalHzRaw;
+        // Map detector NaN to 0 for SAB transit. Float32 NaN survives
+        // memory stores, but downstream consumers (TS gates, the polygon
+        // module's gating debounce) treat 0 as the "no formant in slot"
+        // sentinel; 0-as-sentinel keeps the contract uniform with the
+        // writer's existing "fundamentalHz === 0 means no pitch" idiom.
+        this.scratch.f1Hz = Number.isFinite(formants[0]) ? formants[0] : 0;
+        this.scratch.f2Hz = Number.isFinite(formants[1]) ? formants[1] : 0;
+        this.scratch.f3Hz = Number.isFinite(formants[2]) ? formants[2] : 0;
+        this.scratch.f4Hz = Number.isFinite(formants[3]) ? formants[3] : 0;
         this.writer.publish(this.scratch);
+    }
+
+    private createFormantDetector(method: LpcMethod): FormantDetector {
+        return new FormantDetector({
+            inputRate: sampleRate,
+            decimatedRate: 12000,
+            decimatorCutoffHz: 5500,
+            lpcOrder: 14,
+            lpcMethod: method,
+            formantCount: 4,
+        });
+    }
+
+    private handlePortMessage(data: unknown): void {
+        if (typeof data !== 'object' || data === null) {
+            return;
+        }
+        const msg = data as {type?: string; method?: LpcMethod};
+        if (msg.type === 'setLpcMethod' && (msg.method === 'burg' || msg.method === 'autocorrelation')) {
+            this.currentLpcMethod = msg.method;
+            this.formantDetector = this.createFormantDetector(msg.method);
+        }
     }
 }
 

@@ -121,6 +121,10 @@ export class VoiceChannel {
         this.epoch.arm();
     }
 
+    public setLpcMethod(method: 'burg' | 'autocorrelation'): void {
+        this.node?.port.postMessage({type: 'setLpcMethod', method});
+    }
+
     public stop(): void {
         this.epoch.stop();
         this.source?.disconnect();
