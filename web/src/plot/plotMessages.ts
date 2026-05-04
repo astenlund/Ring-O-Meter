@@ -1,9 +1,13 @@
-// Wire contract between main (plotController.ts) and worker
-// (plotWorker2dCanvas.ts). Per-frame data flows via SAB now;
+// Wire contract between main (plotController.ts) and the plot worker
+// (plotWorker2dCanvas.ts on the 2D fallback arm; plotWorkerWebgpu.ts
+// on the WebGPU production arm). Per-frame data flows via SAB now;
 // AttachChannelMessage carries a FrameSource descriptor (SAB is
 // shared, not transferred - SAB is not Transferable). Remaining
 // message variants handle lifecycle events and the one-time canvas
-// transfer at init.
+// transfer at init. Both workers consume the same PlotMessage union;
+// asymmetries (e.g., webgpuInitError + vowelInitError surface only
+// from the WebGPU worker) flow as out-of-band postMessage events
+// rather than typed PlotMessage variants.
 
 import type {FrameSource} from '../audio/frameRing';
 

@@ -134,6 +134,13 @@ async function initVowelCanvas(msg: InitVowelCanvasMessage): Promise<void> {
             applyMessage(queued);
         }
         pendingVowelMessages.length = 0;
+
+        // Arm rAF here so a vowel-only mount (no PitchPlot) still
+        // paints. The trace's Init handler also arms; the guard
+        // ensures only one arming per worker lifetime.
+        if (rafId === 0 && msg.backing.cssHeight > 0) {
+            rafId = requestAnimationFrame(frame);
+        }
     } catch (err) {
         self.postMessage({
             type: 'vowelInitError',
@@ -222,6 +229,11 @@ function applyMessage(msg: PlotMessage): void {
                 return;
             }
             vowelModule!.setBacking(msg.cssWidth, msg.cssHeight, msg.dpr);
+            // Arm rAF if a vowel-only mount has not started painting
+            // yet (the trace's SetBacking handler also arms; idempotent).
+            if (rafId === 0 && msg.cssHeight > 0) {
+                rafId = requestAnimationFrame(frame);
+            }
 
             return;
         }

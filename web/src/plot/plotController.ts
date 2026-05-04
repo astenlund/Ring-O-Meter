@@ -73,7 +73,20 @@ export class PlotController {
 
     public attach(canvas: HTMLCanvasElement, opts: PlotControllerOptions): void {
         if (this.attached) {
-            throw new Error('PlotController: already attached');
+            // PlotController is one-shot per lifetime: the worker's Init
+            // handler ignores subsequent Init messages, and the canvas
+            // passed via transferControlToOffscreen is irrevocably
+            // transferred. Re-attach after detach is unsupported -
+            // construct a fresh PlotController via dispose() + new
+            // PlotController() (or use a fresh App-level useState slot).
+            // The non-owning unmount path in PitchPlot deliberately
+            // does NOT reset this flag, because doing so would mask
+            // this fundamental constraint with what looks like
+            // working code that paints onto a stale canvas.
+            throw new Error(
+                'PlotController.attach: already attached. PlotController is one-shot per lifetime; '
+                + 'dispose() and construct a fresh instance to re-attach.',
+            );
         }
         this.attached = true;
         const worker = this.ensureWorker();
