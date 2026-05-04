@@ -15,10 +15,6 @@ import {
 } from '../plot/paint';
 import {createFrameRing, FrameRingReader, FrameRingWriter} from '../audio/frameRing';
 
-declare global {
-    var gc: (() => void) | undefined;
-}
-
 interface PerformanceWithMemory extends Performance {
     memory?: {usedJSHeapSize: number};
 }

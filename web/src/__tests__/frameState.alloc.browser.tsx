@@ -4,10 +4,6 @@ import {act} from 'react';
 import {useFrameState, type FrameStateControl} from '../audio/useFrameState';
 import {createFrameRing, FrameRingReader, FrameRingWriter, type PublishFrame} from '../audio/frameRing';
 
-declare global {
-    var gc: (() => void) | undefined;
-}
-
 interface PerformanceWithMemory extends Performance {
     memory?: {usedJSHeapSize: number};
 }

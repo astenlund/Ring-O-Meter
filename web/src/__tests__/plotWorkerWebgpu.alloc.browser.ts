@@ -3,10 +3,6 @@ import {WebgpuPlotRenderer} from '../plot/webgpuPlotRenderer';
 import {createFrameRing, FrameRingWriter, type FrameSource} from '../audio/frameRing';
 import type {VoiceEntry} from '../plot/plotMessages';
 
-declare global {
-    var gc: (() => void) | undefined;
-}
-
 interface PerformanceWithMemory extends Performance {
     memory?: {usedJSHeapSize: number};
 }
