@@ -5,6 +5,7 @@ import {
     drawBackground,
     drawGrid,
     drawLegend,
+    drawVowelChrome,
     makeHzToY,
     type CanvasBacking,
     type CanvasSize,
@@ -12,6 +13,7 @@ import {
     type PaintFrame,
 } from './paint';
 import {PlotMessageType, type PlotMessage, type VoiceEntry} from './plotMessages';
+import {F1_MAX, F1_MIN, F2_MAX, F2_MIN} from './vowelModule';
 
 export interface PlotControllerOptions {
     voices: ReadonlyArray<VoiceEntry>;
@@ -48,8 +50,25 @@ export class PlotController {
     private underlayBacking: CanvasBacking = {cssWidth: 0, cssHeight: 0, dpr: 1};
     private underlaySize: CanvasSize = {width: 0, height: 0};
 
+    private vowelUnderlayCtx: CanvasRenderingContext2D | null = null;
+    private vowelUnderlayActive = false;
+    private vowelUnderlayBacking: CanvasBacking = {cssWidth: 0, cssHeight: 0, dpr: 1};
+    private vowelUnderlaySize: CanvasSize = {width: 0, height: 0};
+
     public constructor(workerUrl: string | URL = defaultWorkerUrl) {
         this.workerUrl = workerUrl;
+    }
+
+    private ensureWorker(): Worker {
+        if (!this.worker) {
+            this.worker = new Worker(this.workerUrl, {type: 'module'});
+        }
+
+        return this.worker;
+    }
+
+    public get isAttached(): boolean {
+        return this.attached;
     }
 
     public attach(canvas: HTMLCanvasElement, opts: PlotControllerOptions): void {
@@ -57,8 +76,8 @@ export class PlotController {
             throw new Error('PlotController: already attached');
         }
         this.attached = true;
+        const worker = this.ensureWorker();
         const offscreen = canvas.transferControlToOffscreen();
-        this.worker = new Worker(this.workerUrl, {type: 'module'});
         const init: PlotMessage = {
             type: PlotMessageType.Init,
             canvas: offscreen,
@@ -69,7 +88,68 @@ export class PlotController {
             maxHz: opts.maxHz,
             mainNowAtInitMs: performance.now(),
         };
-        this.worker.postMessage(init, [offscreen]);
+        worker.postMessage(init, [offscreen]);
+    }
+
+    public attachVowelCanvas(canvas: HTMLCanvasElement, backing: CanvasBacking): void {
+        const worker = this.ensureWorker();
+        const offscreen = canvas.transferControlToOffscreen();
+        const msg: PlotMessage = {
+            type: PlotMessageType.InitVowelCanvas,
+            canvas: offscreen,
+            backing,
+        };
+        worker.postMessage(msg, [offscreen]);
+    }
+
+    public attachVowelChannel(channelId: string, color: string, source: FrameSource): void {
+        this.post({type: PlotMessageType.AttachVowelChannel, channelId, color, source});
+    }
+
+    public detachVowelChannel(channelId: string): void {
+        this.post({type: PlotMessageType.DetachVowelChannel, channelId});
+    }
+
+    public rebaseVowelChannel(channelId: string, epochOffsetMs: number): void {
+        this.post({type: PlotMessageType.RebaseVowelChannel, channelId, epochOffsetMs});
+    }
+
+    public setVowelBacking(cssWidth: number, cssHeight: number, dpr: number): void {
+        this.post({type: PlotMessageType.SetVowelBacking, cssWidth, cssHeight, dpr});
+    }
+
+    /**
+     * Register the vowel underlay 2D context. Used only on the WebGPU
+     * arm; the 2D arm paints vowel chrome inline in the worker each
+     * frame via drawVowelChrome. Repaints the chrome immediately if
+     * backing dims are known.
+     */
+    public setVowelUnderlay(ctx: CanvasRenderingContext2D): void {
+        this.vowelUnderlayCtx = ctx;
+        this.vowelUnderlayActive = true;
+        this.repaintVowelUnderlay();
+    }
+
+    public setVowelUnderlayBacking(cssWidth: number, cssHeight: number, dpr: number): void {
+        this.vowelUnderlayBacking.cssWidth = cssWidth;
+        this.vowelUnderlayBacking.cssHeight = cssHeight;
+        this.vowelUnderlayBacking.dpr = dpr;
+        this.repaintVowelUnderlay();
+    }
+
+    private repaintVowelUnderlay(): void {
+        const ctx = this.vowelUnderlayCtx;
+        if (!ctx || !this.vowelUnderlayActive || this.vowelUnderlayBacking.cssHeight === 0) {
+            return;
+        }
+        const canvas = ctx.canvas;
+        applyCanvasBacking(canvas, ctx, this.vowelUnderlayBacking, this.vowelUnderlaySize);
+        drawVowelChrome(
+            ctx,
+            this.vowelUnderlaySize,
+            {min: F1_MIN, max: F1_MAX},
+            {min: F2_MIN, max: F2_MAX},
+        );
     }
 
     public setRoster(voices: ReadonlyArray<VoiceEntry>): void {
@@ -78,6 +158,12 @@ export class PlotController {
             this.underlayOpts = {...this.underlayOpts, voices};
             this.repaintUnderlay();
         }
+        // Note: vowel underlay does NOT repaint on roster changes for this
+        // slice. drawVowelChrome takes axis ranges only (no per-voice
+        // content), so a roster change has no visible effect on the chrome.
+        // If a future slice introduces a per-voice vowel legend, fan out
+        // here and add a corresponding test for the WebGPU arm's repaint
+        // cadence.
     }
 
     public setBacking(cssWidth: number, cssHeight: number, dpr: number): void {
@@ -153,6 +239,8 @@ export class PlotController {
         this.attached = false;
         this.underlayCtx = null;
         this.underlayOpts = null;
+        this.vowelUnderlayCtx = null;
+        this.vowelUnderlayActive = false;
     }
 
     private post(msg: PlotMessage): void {

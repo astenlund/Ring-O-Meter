@@ -6,6 +6,7 @@ import {slotsToVoices} from './ui/rosterToVoices';
 import {useFrameState} from './audio/useFrameState';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
 import {FrameSourceRegistry} from './audio/frameSourceRegistry';
+import {PlotController} from './plot/plotController';
 // Cleanup: remove this import + fanoutConfig state + fanout branch in
 // handleDeviceConfirm + trim SLOT_COLORS back to ['#5cf', '#fc5'] when
 // the fanout test mode is retired (also remove FanoutGroup + fanoutGroup
@@ -91,6 +92,8 @@ export function App() {
     // through the WebGPU path. Hoisted so the two PitchPlot props
     // (rendererWorkerUrl + useUnderlay) cannot diverge.
     const useWebGpu = rendererFlag !== '2d';
+
+    const [controller] = useState(() => new PlotController(useWebGpu ? webgpuWorkerUrl : undefined));
 
     const handleDeviceConfirm = useCallback((selection: DeviceSelection) => {
         if (fanoutConfig) {
@@ -204,6 +207,7 @@ export function App() {
                 rendererWorkerUrl={useWebGpu ? webgpuWorkerUrl : undefined}
                 useUnderlay={useWebGpu}
                 style={{height: 360}}
+                controller={controller}
             />
         </main>
     );
