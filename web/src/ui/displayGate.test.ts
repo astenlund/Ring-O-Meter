@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {MIN_DISPLAY_CONFIDENCE, shouldDisplayPitch} from './displayGate';
+import {MIN_DISPLAY_CONFIDENCE, MIN_FORMANT_RMS_DB, shouldDisplayFormants, shouldDisplayPitch} from './displayGate';
 
 describe('shouldDisplayPitch', () => {
     it('returns true for a confident, finite, positive pitch', () => {
@@ -56,5 +56,32 @@ describe('shouldDisplayPitch', () => {
     it('excludes hz = 0 regardless of confidence sanity', () => {
         // Arrange / Act / Assert
         expect(shouldDisplayPitch(0, Number.NaN)).toBe(false);
+    });
+});
+
+describe('shouldDisplayFormants', () => {
+    it('passes when pitch valid and rms above threshold', () => {
+        // Arrange / Act / Assert
+        expect(shouldDisplayFormants(220, 0.9, MIN_FORMANT_RMS_DB + 5)).toBe(true);
+    });
+
+    it('rejects when rms is below threshold (silent / voiceless segment)', () => {
+        // Arrange / Act / Assert
+        expect(shouldDisplayFormants(220, 0.9, MIN_FORMANT_RMS_DB - 1)).toBe(false);
+    });
+
+    it('rejects when pitch is invalid even if rms is high', () => {
+        // Arrange / Act / Assert
+        expect(shouldDisplayFormants(0, 0.9, -10)).toBe(false);
+    });
+
+    it('rejects when confidence is below threshold even if rms is high', () => {
+        // Arrange / Act / Assert
+        expect(shouldDisplayFormants(220, MIN_DISPLAY_CONFIDENCE - 0.01, -10)).toBe(false);
+    });
+
+    it('boundary: rms exactly at threshold returns false (predicate is strict >)', () => {
+        // Arrange / Act / Assert
+        expect(shouldDisplayFormants(220, 0.9, MIN_FORMANT_RMS_DB)).toBe(false);
     });
 });
