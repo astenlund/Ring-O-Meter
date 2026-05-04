@@ -1,5 +1,6 @@
 import {CAPACITY, FrameRingReader, type FrameSource} from '../audio/frameRing';
 import {shouldDisplayPitch} from '../ui/displayGate';
+import {hexToRgba} from './color';
 import type {VoiceEntry} from './plotMessages';
 import {FRAGMENT_WGSL, VERTEX_WGSL} from './webgpuShaders';
 
@@ -426,32 +427,4 @@ export class TraceModule {
         this.channels.clear();
         this.configured = false;
     }
-}
-
-// Parses VoiceEntry.color (e.g. '#5cf', '#fc5') into [r,g,b,1] floats
-// in [0..1]. Supports 3-digit and 6-digit hex; does NOT handle named
-// colors or rgb()/rgba() syntax (the codebase exclusively uses hex
-// triples in SLOT_COLORS today). Throws on unsupported input rather
-// than silently rendering black.
-export function hexToRgba(hex: string, out: Float32Array): void {
-    if (hex.length === 4 && hex[0] === '#') {
-        const r = parseInt(hex[1] + hex[1], 16);
-        const g = parseInt(hex[2] + hex[2], 16);
-        const b = parseInt(hex[3] + hex[3], 16);
-        out[0] = r / 255;
-        out[1] = g / 255;
-        out[2] = b / 255;
-        out[3] = 1;
-
-        return;
-    }
-    if (hex.length === 7 && hex[0] === '#') {
-        out[0] = parseInt(hex.slice(1, 3), 16) / 255;
-        out[1] = parseInt(hex.slice(3, 5), 16) / 255;
-        out[2] = parseInt(hex.slice(5, 7), 16) / 255;
-        out[3] = 1;
-
-        return;
-    }
-    throw new Error(`hexToRgba: unsupported color ${hex}`);
 }
