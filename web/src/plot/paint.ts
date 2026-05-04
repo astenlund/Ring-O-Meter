@@ -275,11 +275,15 @@ export function drawVowelChrome(
     }
 
     // F1 gridlines: every 100 Hz. IPA-inverted axis: high F1 = open
-    // vowels = BOTTOM, so y increases as F1 increases.
+    // vowels = BOTTOM, low F1 = close vowels = TOP. Canvas y grows
+    // top-to-bottom which already matches that mapping when yNorm is
+    // applied directly (no `1 -` inversion); the F2 axis above DOES
+    // need the inversion because canvas x grows left-to-right and
+    // high F2 = LEFT in the IPA convention.
     const f1Span = f1Range.max - f1Range.min;
     const f1Start = Math.ceil(f1Range.min / 100) * 100;
     for (let f1 = f1Start; f1 <= f1Range.max; f1 += 100) {
-        const y = size.height * (1 - (f1 - f1Range.min) / f1Span);
+        const y = size.height * ((f1 - f1Range.min) / f1Span);
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(size.width, y);
