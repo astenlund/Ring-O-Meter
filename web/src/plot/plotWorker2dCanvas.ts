@@ -297,6 +297,13 @@ self.onmessage = (event: MessageEvent<PlotMessage>) => {
             vowelBacking.cssWidth = msg.backing.cssWidth;
             vowelBacking.cssHeight = msg.backing.cssHeight;
             vowelBacking.dpr = msg.backing.dpr;
+            // Arm the rAF loop here too so a vowel-only mount (no
+            // PitchPlot) still paints. The trace's Init / SetBacking
+            // handlers also arm rAF; the guard ensures only one arming
+            // per worker lifetime.
+            if (rafId === 0 && vowelBacking.cssHeight > 0) {
+                rafId = requestAnimationFrame(paint);
+            }
 
             return;
         }
@@ -334,6 +341,9 @@ self.onmessage = (event: MessageEvent<PlotMessage>) => {
             vowelBacking.cssWidth = msg.cssWidth;
             vowelBacking.cssHeight = msg.cssHeight;
             vowelBacking.dpr = msg.dpr;
+            if (rafId === 0 && vowelBacking.cssHeight > 0) {
+                rafId = requestAnimationFrame(paint);
+            }
 
             return;
         }
