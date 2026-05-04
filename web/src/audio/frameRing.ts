@@ -38,13 +38,42 @@ export const RMS_DB_OFFSET = CONF_OFFSET + CONF_BYTES;
 const RMS_DB_BYTES = CAPACITY * 4;
 export const HZ_RAW_OFFSET = RMS_DB_OFFSET + RMS_DB_BYTES;
 const HZ_RAW_BYTES = CAPACITY * 4;
+const F1_HZ_OFFSET = HZ_RAW_OFFSET + HZ_RAW_BYTES;
+const F1_HZ_BYTES = CAPACITY * 4;
+const F2_HZ_OFFSET = F1_HZ_OFFSET + F1_HZ_BYTES;
+const F2_HZ_BYTES = CAPACITY * 4;
+const F3_HZ_OFFSET = F2_HZ_OFFSET + F2_HZ_BYTES;
+const F3_HZ_BYTES = CAPACITY * 4;
+const F4_HZ_OFFSET = F3_HZ_OFFSET + F3_HZ_BYTES;
+const F4_HZ_BYTES = CAPACITY * 4;
 // Layout-drift tripwire: any column add/remove/resize updates this
-// total. createFrameRing's size-invariant test pins 8 + 24 * CAPACITY
-// = 24584; the trailing-column offset test then catches column
+// total. createFrameRing's size-invariant test pins 8 + 40 * CAPACITY
+// = 40968; the trailing-column offset test then catches column
 // reordering at finer grain.
-export const RING_SAB_BYTES = HZ_RAW_OFFSET + HZ_RAW_BYTES;
+export const RING_SAB_BYTES = F4_HZ_OFFSET + F4_HZ_BYTES;
 
 export interface UiFrame {
+    fundamentalHz: number;
+    confidence: number;
+}
+
+/**
+ * Output shape for the SAB reader's formant accessor. Carries the four
+ * formant frequencies plus everything `shouldDisplayFormants(hz, conf,
+ * rmsDb)` needs - rmsDb, fundamentalHz, confidence - all from the same
+ * slot. A single coherent read satisfies the full gate predicate
+ * without a second `readLatest` call on a potentially-newer slot. The
+ * fields beyond f1-f4 are duplicates of what `readLatest(UiFrame)`
+ * also exposes, but routing them through this interface keeps the
+ * vowel module's per-frame call shape uniform (one out-param, one
+ * read) instead of needing two interlocked reads.
+ */
+export interface FormantFrame {
+    f1Hz: number;
+    f2Hz: number;
+    f3Hz: number;
+    f4Hz: number;
+    rmsDb: number;
     fundamentalHz: number;
     confidence: number;
 }
@@ -99,7 +128,7 @@ export function createFrameRing(): SharedArrayBuffer {
 
 // Shape the typed-array views a ring user needs. Factored so writer
 // and reader construct identical views from the same constants, with
-// no drift risk. Header + five data columns.
+// no drift risk. Header + nine data columns.
 interface RingViews {
     header: Int32Array;
     contextMs: Float64Array;
@@ -107,6 +136,10 @@ interface RingViews {
     conf: Float32Array;
     rmsDb: Float32Array;
     hzRaw: Float32Array;
+    f1Hz: Float32Array;
+    f2Hz: Float32Array;
+    f3Hz: Float32Array;
+    f4Hz: Float32Array;
 }
 
 function viewsOver(sab: SharedArrayBuffer): RingViews {
@@ -117,6 +150,10 @@ function viewsOver(sab: SharedArrayBuffer): RingViews {
         conf: new Float32Array(sab, CONF_OFFSET, CAPACITY),
         rmsDb: new Float32Array(sab, RMS_DB_OFFSET, CAPACITY),
         hzRaw: new Float32Array(sab, HZ_RAW_OFFSET, CAPACITY),
+        f1Hz: new Float32Array(sab, F1_HZ_OFFSET, CAPACITY),
+        f2Hz: new Float32Array(sab, F2_HZ_OFFSET, CAPACITY),
+        f3Hz: new Float32Array(sab, F3_HZ_OFFSET, CAPACITY),
+        f4Hz: new Float32Array(sab, F4_HZ_OFFSET, CAPACITY),
     };
 }
 
@@ -190,6 +227,11 @@ export class FrameRingReader {
     private readonly contextMs: Float64Array;
     private readonly hz: Float32Array;
     private readonly conf: Float32Array;
+    private readonly rmsDb: Float32Array;
+    private readonly f1Hz: Float32Array;
+    private readonly f2Hz: Float32Array;
+    private readonly f3Hz: Float32Array;
+    private readonly f4Hz: Float32Array;
     private epochOffsetMs: number;
 
     public constructor(sab: SharedArrayBuffer, epochOffsetMs: number) {
@@ -199,8 +241,13 @@ export class FrameRingReader {
         this.contextMs = views.contextMs;
         this.hz = views.hz;
         this.conf = views.conf;
-        // viewsOver also returns rmsDb/hzRaw; bind them here when a
-        // reader-side consumer lands (see top-of-file comment).
+        this.rmsDb = views.rmsDb;
+        this.f1Hz = views.f1Hz;
+        this.f2Hz = views.f2Hz;
+        this.f3Hz = views.f3Hz;
+        this.f4Hz = views.f4Hz;
+        // hzRaw is still unbound; bind it when its first reader-side
+        // consumer lands (heuristic-introspection raw-YIN audit).
     }
 
     /** Current write index (monotonic, unbounded modulo Int32 wrap). */
@@ -227,6 +274,33 @@ export class FrameRingReader {
             return false;
         }
         const slot = (pub - 1) & CAP_MASK;
+        out.fundamentalHz = this.hz[slot];
+        out.confidence = this.conf[slot];
+
+        return true;
+    }
+
+    /**
+     * Main + worker pull for the formant slot + everything the gate
+     * predicate needs from the same slot. Mirrors readLatest's out-param
+     * convention so per-voice consumers can hoist one FormantFrame and
+     * reuse it across calls. Writes f1-f4 plus rmsDb plus the fundamental
+     * + confidence atomically (single slot read) so the
+     * shouldDisplayFormants(hz, conf, rmsDb) predicate runs against one
+     * coherent frame. Returns true on success; false when no frame has
+     * been published yet (out untouched).
+     */
+    public readLatestFormants(out: FormantFrame): boolean {
+        const pub = Atomics.load(this.header, 0);
+        if (pub === 0) {
+            return false;
+        }
+        const slot = (pub - 1) & CAP_MASK;
+        out.f1Hz = this.f1Hz[slot];
+        out.f2Hz = this.f2Hz[slot];
+        out.f3Hz = this.f3Hz[slot];
+        out.f4Hz = this.f4Hz[slot];
+        out.rmsDb = this.rmsDb[slot];
         out.fundamentalHz = this.hz[slot];
         out.confidence = this.conf[slot];
 
