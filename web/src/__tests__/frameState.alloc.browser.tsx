@@ -64,8 +64,8 @@ describe('frame-state allocation budget', () => {
         // One scratch per writer; mutated in place each advance() so
         // the publish path stays zero-alloc against this hook's heap
         // budget rather than burning two object literals per tick.
-        const scratchA: PublishFrame = {captureContextMs: 0, fundamentalHz: 0, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 0};
-        const scratchB: PublishFrame = {captureContextMs: 0, fundamentalHz: 0, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 0};
+        const scratchA: PublishFrame = {captureContextMs: 0, fundamentalHz: 0, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 0, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0};
+        const scratchB: PublishFrame = {captureContextMs: 0, fundamentalHz: 0, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 0, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0};
         const advance = (idx: number) => {
             const hzA = 220 + (idx & 0xff) * 0.01;
             const hzB = 440 + (idx & 0xff) * 0.01;

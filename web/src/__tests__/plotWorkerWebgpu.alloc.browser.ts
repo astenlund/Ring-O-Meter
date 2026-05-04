@@ -62,6 +62,10 @@ describe('WebGPU plot paint allocation budget', () => {
                 confidence: 0.9,
                 rmsDb: -30,
                 fundamentalHzRaw: hz,
+                f1Hz: 0,
+                f2Hz: 0,
+                f3Hz: 0,
+                f4Hz: 0,
             });
         }
 
