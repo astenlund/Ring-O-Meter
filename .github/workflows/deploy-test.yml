@@ -15,7 +15,9 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  # contents: write is needed for the final release-marker push.
+  # See the "Mark deployed commit" step at the bottom of the job.
+  contents: write
 
 env:
   REGISTRY_NAME: ''  # Resolved from Azure on first step; recorded as repo var if a stable value is preferred.
@@ -127,3 +129,16 @@ jobs:
             sleep 5
           done
           curl -fsS "https://$FQDN/config.json"
+
+      # Mirrors Update-ReleaseBranch in Deploy-RingOMeter.ps1. Moves the
+      # release-test branch to the just-deployed commit so anyone asking
+      # "what's actually running in test?" can answer with a single ref.
+      # Force-push is intentional: this is a marker branch with no
+      # contributors and no merges, only ever advanced forward by a
+      # successful deploy. continue-on-error matches the PS script's
+      # warning-only semantics: the deploy already succeeded; a failed
+      # marker push leaves it one commit stale until the next deploy.
+      - name: Mark deployed commit
+        continue-on-error: true
+        run: |
+          git push --force origin "HEAD:refs/heads/release-test"
