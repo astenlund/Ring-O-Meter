@@ -69,14 +69,34 @@ describe('WebGPU plot paint allocation budget', () => {
             });
         }
 
+        // Simulate the host frame loop: update (CPU + writeBuffer) then
+        // encoder + render pass + submit (mirroring plotWorkerWebgpu.ts).
+        const runFrame = (): void => {
+            renderer.update(0);
+            const device = renderer.gpuDevice!;
+            const context = renderer.gpuContext!;
+            const encoder = device.createCommandEncoder();
+            const pass = encoder.beginRenderPass({
+                colorAttachments: [{
+                    view: context.getCurrentTexture().createView(),
+                    clearValue: {r: 0, g: 0, b: 0, a: 0},
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                }],
+            });
+            renderer.draw(pass);
+            pass.end();
+            device.queue.submit([encoder.finish()]);
+        };
+
         for (let i = 0; i < WARMUP_ITERATIONS; i += 1) {
-            renderer.paint();
+            runFrame();
         }
         globalThis.gc();
         const baseline = perfMem.memory.usedJSHeapSize;
 
         for (let i = 0; i < PAINT_ITERATIONS; i += 1) {
-            renderer.paint();
+            runFrame();
         }
         globalThis.gc();
         const after = perfMem.memory.usedJSHeapSize;
