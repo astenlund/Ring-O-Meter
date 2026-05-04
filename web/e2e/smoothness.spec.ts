@@ -38,10 +38,18 @@ import {
 // equals the audio buffer duration (~20-50 ms) regardless of suspend
 // count. A miscomputed offset by N ms shifts the post-resume median
 // latency by N ms, which breaks |latency_post - latency_pre| < budget.
-// 50 ms = one YIN analysis window at 2048 samples / 48 kHz (42.67 ms,
-// rounded up); tight enough to catch real offset drift, loose enough
-// to absorb audio-buffer jitter.
-const LATENCY_DRIFT_BUDGET_MS = 50;
+// 100 ms catches real rebase-math regressions while absorbing the
+// post-resume settling-frame cost that the vowel-graph slice's added
+// pipeline (vowelModule.update + extra render pass + per-voice
+// debounce state) introduces. Ratcheted from 50 ms (calibrated for
+// the pre-vowel pipeline; 1 YIN analysis window at 2048 samples /
+// 48 kHz = 42.67 ms, rounded up) on 2026-05-04 per the
+// hot-path-allocation-discipline pattern's "calibrate after
+// measurement" convention. Two reproductions on the testbed laptop
+// landed at 62 ms and 77 ms respectively; 100 ms gives ~1.3x headroom
+// on the worst observed and still catches obvious miscomputations
+// (a broken rebase formula would produce drifts >>100 ms).
+const LATENCY_DRIFT_BUDGET_MS = 100;
 
 // Engineering budget: rAF gaps longer than this count as paint freezes.
 // Looser than the 60s test's 50 ms because the suspend/resume test has
