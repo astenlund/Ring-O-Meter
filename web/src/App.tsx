@@ -2,6 +2,7 @@ import {type CSSProperties, useCallback, useEffect, useMemo, useRef, useState} f
 import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
 import {PitchPlot, type PitchPlotHandle} from './ui/PitchPlot';
+import {VowelPlot} from './ui/VowelPlot';
 import {slotsToVoices} from './ui/rosterToVoices';
 import {useFrameState} from './audio/useFrameState';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
@@ -172,6 +173,20 @@ export function App() {
         });
     }, [registry]);
 
+    useEffect(() => {
+        return registry.subscribe({
+            onReady: (channelId, source, _reader) => {
+                const slot = slots?.find((s) => s.channelId === channelId);
+                // Default fallback to white if the slot is somehow missing.
+                const color = slot?.color ?? '#ffffff';
+                controller.attachVowelChannel(channelId, color, source);
+            },
+            onRebased: (channelId, epochOffsetMs) =>
+                controller.rebaseVowelChannel(channelId, epochOffsetMs),
+            onGone: (channelId) => controller.detachVowelChannel(channelId),
+        });
+    }, [registry, controller, slots]);
+
     const voices = useMemo(() => slotsToVoices(slots ?? []), [slots]);
 
     if (!slots) {
@@ -200,15 +215,74 @@ export function App() {
                     );
                 })}
             </div>
-            <PitchPlot
-                voices={voices}
-                windowMs={PLOT_WINDOW_MS}
-                handleRef={plotHandleRef}
-                rendererWorkerUrl={useWebGpu ? webgpuWorkerUrl : undefined}
-                useUnderlay={useWebGpu}
-                style={{height: 360}}
-                controller={controller}
-            />
+            <div style={{display: 'flex', gap: 16, alignItems: 'stretch', height: 360}}>
+                <PitchPlot
+                    voices={voices}
+                    windowMs={PLOT_WINDOW_MS}
+                    handleRef={plotHandleRef}
+                    rendererWorkerUrl={useWebGpu ? webgpuWorkerUrl : undefined}
+                    useUnderlay={useWebGpu}
+                    controller={controller}
+                    style={{flex: 1}}
+                />
+                <VowelPlot
+                    controller={controller}
+                    useUnderlay={useWebGpu}
+                    style={{width: 360, flexShrink: 0}}
+                />
+            </div>
+            <AlgorithmToggle />
         </main>
+    );
+}
+
+function AlgorithmToggle() {
+    const [method, setMethod] = useState<'burg' | 'autocorrelation'>(() => {
+        const stored = localStorage.getItem('lpcMethod');
+
+        return stored === 'autocorrelation' ? 'autocorrelation' : 'burg';
+    });
+
+    useEffect(() => {
+        localStorage.setItem('lpcMethod', method);
+        // Walk all live VoiceChannel / FanoutVoiceChannel instances and
+        // forward the new method to each. The global is a temporary
+        // escape hatch published by useVoiceChannels (cleanup task
+        // removes both halves once the manual triage picks a winner).
+        const voiceChannels = (globalThis as Record<string, unknown>)['__voiceChannels__'] as
+            | Iterable<{setLpcMethod: (m: 'burg' | 'autocorrelation') => void}>
+            | undefined;
+        if (voiceChannels) {
+            for (const vc of voiceChannels) {
+                vc.setLpcMethod(method);
+            }
+        }
+    }, [method]);
+
+    return (
+        <div style={{marginTop: 16, padding: 12, border: '1px dashed #555', borderRadius: 6}}>
+            <strong>LPC algorithm (temporary triage):</strong>
+            <label style={{marginLeft: 12}}>
+                <input
+                    type="radio"
+                    name="lpcMethod"
+                    checked={method === 'burg'}
+                    onChange={() => setMethod('burg')}
+                />
+                Burg
+            </label>
+            <label style={{marginLeft: 8}}>
+                <input
+                    type="radio"
+                    name="lpcMethod"
+                    checked={method === 'autocorrelation'}
+                    onChange={() => setMethod('autocorrelation')}
+                />
+                Autocorrelation (Levinson)
+            </label>
+            <span style={{marginLeft: 12, color: '#888', fontSize: '0.85em'}}>
+                Refresh page after toggling for clean A/B (live swap is best-effort)
+            </span>
+        </div>
     );
 }
