@@ -203,6 +203,7 @@ export function App() {
                 handleRef={plotHandleRef}
                 rendererWorkerUrl={useWebGpu ? webgpuWorkerUrl : undefined}
                 useUnderlay={useWebGpu}
+                style={{height: 360}}
             />
         </main>
     );
