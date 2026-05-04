@@ -1,7 +1,7 @@
 // URL query-string flag selecting the rendering path. As of 2026-04-30
 // the production default is WebGPU
 // (web/src/plot/plotWorkerWebgpu.ts); ?renderer=2d opts back into the
-// 2D canvas worker (web/src/plot/plotWorker.ts). ?renderer=webgpu
+// 2D canvas worker (web/src/plot/plotWorker2dCanvas.ts). ?renderer=webgpu
 // stays accepted as an explicit no-op selector for symmetry. Returns
 // null when the flag is absent (caller picks the default).
 //

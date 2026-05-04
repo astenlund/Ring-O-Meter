@@ -1,5 +1,5 @@
 // Wire contract between main (plotController.ts) and worker
-// (plotWorker.ts). Per-frame data flows via SAB now;
+// (plotWorker2dCanvas.ts). Per-frame data flows via SAB now;
 // AttachChannelMessage carries a FrameSource descriptor (SAB is
 // shared, not transferred - SAB is not Transferable). Remaining
 // message variants handle lifecycle events and the one-time canvas

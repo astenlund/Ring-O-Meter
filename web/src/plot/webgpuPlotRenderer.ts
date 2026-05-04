@@ -59,7 +59,7 @@ export class WebgpuPlotRenderer {
     private logSpanHz = Math.log(600) - Math.log(80);
     private mainEpochOffsetMs = 0;
     // Tracked so paint() can early-exit before the canvas has a real
-    // CSS size (matches plotWorker.ts:79 cssHeight gate). cssWidth and
+    // CSS size (matches plotWorker2dCanvas.ts:79 cssHeight gate). cssWidth and
     // dpr aren't kept as fields because nothing else reads them; the
     // backing-store sizing in setBacking writes the canvas dimensions
     // directly.

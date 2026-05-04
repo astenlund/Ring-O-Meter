@@ -1,4 +1,4 @@
-import defaultWorkerUrl from './plotWorker.ts?worker&url';
+import defaultWorkerUrl from './plotWorker2dCanvas.ts?worker&url';
 import type {FrameSource} from '../audio/frameRing';
 import {
     applyCanvasBacking,
