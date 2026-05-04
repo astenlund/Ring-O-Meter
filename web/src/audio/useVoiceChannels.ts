@@ -62,6 +62,18 @@ export function useVoiceChannels(
 
         let cancelled = false;
         const audioContext = new AudioContext({sampleRate: TARGET_SAMPLE_RATE_HZ});
+        // Browser autoplay policy starts AudioContext in 'suspended' state
+        // when constructed without recent user activation (Chrome on
+        // Windows, Safari, etc.). resume() is non-blocking and
+        // gesture-aware: returns a pending promise if no activation,
+        // resolves on the next user gesture (any click, keydown, etc.).
+        // Errors are swallowed because the only failure mode is "context
+        // already closed by teardown" which is benign. Without this call
+        // the worklet runs but receives no input frames until the user
+        // performs an action that re-creates the AudioContext (e.g. the
+        // device-picker swap, since teardown + new AudioContext inside a
+        // click handler counts as a fresh activation).
+        audioContext.resume().catch(() => undefined);
 
         // Stable wrappers that route through the ref so VoiceChannel can
         // capture them once at construction without pinning a stale render's

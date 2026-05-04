@@ -1,15 +1,16 @@
 import {type CSSProperties, useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {DeviceSetup, type DeviceSelection} from './ui/DeviceSetup';
+import {DeviceSetup} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
 import {PitchPlot, type PitchPlotHandle} from './ui/PitchPlot';
 import {VowelPlot} from './ui/VowelPlot';
 import {slotsToVoices} from './ui/rosterToVoices';
 import {useFrameState} from './audio/useFrameState';
+import {useInputDevices} from './audio/useInputDevices';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
 import {FrameSourceRegistry} from './audio/frameSourceRegistry';
 import {PlotController} from './plot/plotController';
 // Cleanup: remove this import + fanoutConfig state + fanout branch in
-// handleDeviceConfirm + trim SLOT_COLORS back to ['#5cf', '#fc5'] when
+// the slot-build effect + trim SLOT_COLORS back to ['#5cf', '#fc5'] when
 // the fanout test mode is retired (also remove FanoutGroup + fanoutGroup
 // field from useVoiceChannels.ts + its FanoutVoiceChannel import; also
 // rm __testing/fanoutFlag.ts, fanoutVoiceChannel.ts, fanoutWorklet.ts,
@@ -41,11 +42,13 @@ import webgpuWorkerUrl from './plot/plotWorkerWebgpu.ts?worker&url';
 // heuristic: plot-window-ms
 const PLOT_WINDOW_MS = 5_000;
 
-// Four entries to support ?fanout=4 test mode. Production today only
-// uses the first two (Voice 1 / Voice 2); the 3rd and 4th are consumed
-// only when fanoutConfig is non-null. SLOT_COLORS[i % length] cycles if
-// fanout count exceeds 4.
+// Four entries to support ?fanout=4 test mode. Production uses the
+// first entry (the single live mic); 2-4 are consumed only when
+// fanoutConfig is non-null. SLOT_COLORS[i % length] cycles if fanout
+// count exceeds 4.
 const SLOT_COLORS = ['#5cf', '#fc5', '#5f9', '#f5c'] as const;
+
+const DEVICE_STORAGE_KEY = 'lastDeviceId';
 
 const mainStyle: CSSProperties = {
     padding: 24,
@@ -69,23 +72,51 @@ export function App() {
     const {latest, registerReader, unregisterReader} = useFrameState();
     const plotHandleRef = useRef<PitchPlotHandle | null>(null);
     // One registry instance per App lifetime, fed by useVoiceChannels and
-    // multicasting to two subscribers (frame state + plot worker) today.
-    // Slice 1's SignalR publish sink subscribes through the same surface.
+    // multicasting to three subscribers (frame state + plot worker + vowel
+    // module). Slice 1's SignalR publish sink subscribes through the same
+    // surface.
     const [registry] = useState(() => new FrameSourceRegistry());
 
-    // channelId is a client-minted GUID per slot so slice 1's aggregator
-    // (which keys LatestPerChannel by channelId) cannot collide across
-    // publishers. Minted inside the confirm handler rather than a useMemo:
-    // useMemo is documented as a best-effort cache, so a future React
-    // re-evaluation would regenerate every channelId and desync every key
-    // in the worker's rings from the still-arriving frames. One-shot
-    // event handler is the correct place for non-idempotent work.
-    const [slots, setSlots] = useState<Slot[] | null>(null);
+    const {devices, error: devicesError} = useInputDevices();
+    // selectedDeviceId is a single-source-of-truth string; the live
+    // AudioInputDevice (with label) is resolved from the enumerated list
+    // each render. Persisted to localStorage so dev refreshes pick up
+    // the previous mic without going through a setup screen.
+    const [selectedDeviceId, setSelectedDeviceIdState] = useState<string>(() =>
+        localStorage.getItem(DEVICE_STORAGE_KEY) ?? '',
+    );
+    const setSelectedDeviceId = useCallback((id: string) => {
+        setSelectedDeviceIdState(id);
+        localStorage.setItem(DEVICE_STORAGE_KEY, id);
+    }, []);
+
+    // Reconcile the persisted / current selection against the live
+    // device list: pick the first available device when the stored ID
+    // is empty, missing from the list (mic unplugged), or never set.
+    // Runs whenever the device list updates (initial probe completion,
+    // USB plug/unplug). Skips work when the current selection is still
+    // valid so a hot-plug of an unrelated device doesn't switch us.
+    useEffect(() => {
+        if (!devices || devices.length === 0) {
+            return;
+        }
+        const valid = selectedDeviceId !== ''
+            && devices.some((d) => d.deviceId === selectedDeviceId);
+        if (!valid) {
+            setSelectedDeviceId(devices[0].deviceId);
+        }
+    }, [devices, selectedDeviceId, setSelectedDeviceId]);
+
+    const selectedDevice = useMemo(
+        () => devices?.find((d) => d.deviceId === selectedDeviceId) ?? null,
+        [devices, selectedDeviceId],
+    );
+
     // Test-only: parsed once at mount so a query-string change requires a
     // reload to take effect (no live re-evaluation of the flag while a
     // session is in flight). Returns null in production. Cleanup: remove
-    // this state + the parseFanoutFlag import + the fanout branch in
-    // handleDeviceConfirm + the SLOT_COLORS extension.
+    // this state + the parseFanoutFlag import + the fanout branch in the
+    // slot-build effect + the SLOT_COLORS extension.
     const [fanoutConfig] = useState(() => parseFanoutFlag(window.location.search));
     const [rendererFlag] = useState(() => parseRendererFlag(window.location.search));
     // WebGPU is the production default; ?renderer=2d is the only
@@ -96,10 +127,23 @@ export function App() {
 
     const [controller] = useState(() => new PlotController(useWebGpu ? webgpuWorkerUrl : undefined));
 
-    const handleDeviceConfirm = useCallback((selection: DeviceSelection) => {
+    // Slots are built in an effect (not a useMemo) so crypto.randomUUID()
+    // fires exactly once per device change. useMemo's "best-effort cache"
+    // contract allows React to invalidate even when deps haven't changed,
+    // which would silently regenerate channelIds and desync the worker's
+    // rings from the still-arriving frames. The effect runs whenever the
+    // selected device changes; useVoiceChannels then tears down the old
+    // channel and constructs a new one keyed on the fresh channelId.
+    const [slots, setSlots] = useState<Slot[] | null>(null);
+    useEffect(() => {
+        if (!selectedDevice) {
+            setSlots(null);
+
+            return;
+        }
         if (fanoutConfig) {
             // One physical mic + N render slots. The primary slot owns
-            // the audio capture (deviceId from voice1, fanoutGroup
+            // the audio capture (deviceId from the picker, fanoutGroup
             // primary=true); the remaining N-1 are render-only ghosts.
             // FanoutVoiceChannel internally fires N onFrameSourceReady
             // events with these channelIds, populating the registry +
@@ -108,13 +152,10 @@ export function App() {
                 {length: fanoutConfig.count},
                 () => crypto.randomUUID(),
             );
-            const next: Slot[] = channelIds.map((channelId, i) => ({
+            setSlots(channelIds.map((channelId, i) => ({
                 channelId,
                 voiceLabel: `Test ${i + 1}`,
-                deviceId: selection.voice1.deviceId,
-                // deviceLabel is shown in the NoteReadout + plot legend;
-                // the source mic is identical for all N, so distinguish
-                // by index rather than repeating the mic name N times.
+                deviceId: selectedDevice.deviceId,
                 deviceLabel: `Test ${i + 1}`,
                 color: SLOT_COLORS[i % SLOT_COLORS.length],
                 fanoutGroup: {
@@ -122,32 +163,18 @@ export function App() {
                     derivedChannelIds: channelIds,
                     pitchOffsetsCents: fanoutConfig.offsetsCents,
                 },
-            }));
-            setSlots(next);
+            })));
 
             return;
         }
-
-        const next: Slot[] = [
-            {
-                channelId: crypto.randomUUID(),
-                voiceLabel: 'Voice 1',
-                deviceId: selection.voice1.deviceId,
-                deviceLabel: selection.voice1.label,
-                color: SLOT_COLORS[0],
-            },
-        ];
-        if (selection.voice2) {
-            next.push({
-                channelId: crypto.randomUUID(),
-                voiceLabel: 'Voice 2',
-                deviceId: selection.voice2.deviceId,
-                deviceLabel: selection.voice2.label,
-                color: SLOT_COLORS[1],
-            });
-        }
-        setSlots(next);
-    }, [fanoutConfig]);
+        setSlots([{
+            channelId: crypto.randomUUID(),
+            voiceLabel: 'Voice 1',
+            deviceId: selectedDevice.deviceId,
+            deviceLabel: selectedDevice.label,
+            color: SLOT_COLORS[0],
+        }]);
+    }, [selectedDevice, fanoutConfig]);
 
     useVoiceChannels(slots, registry);
 
@@ -189,20 +216,26 @@ export function App() {
 
     const voices = useMemo(() => slotsToVoices(slots ?? []), [slots]);
 
-    if (!slots) {
-        return (
-            <main style={mainStyle}>
-                <h1>Ring-O-Meter</h1>
-                <DeviceSetup onConfirm={handleDeviceConfirm} />
-            </main>
-        );
-    }
-
     return (
         <main style={mainStyle}>
             <h1>Ring-O-Meter</h1>
+            <div style={{display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16}}>
+                {devicesError && (
+                    <p style={{color: 'crimson', margin: 0}}>
+                        Could not enumerate audio inputs: {devicesError.message}
+                    </p>
+                )}
+                {!devicesError && !devices && <p style={{margin: 0}}>Discovering audio inputs...</p>}
+                {!devicesError && devices && (
+                    <DeviceSetup
+                        devices={devices}
+                        selectedDeviceId={selectedDeviceId}
+                        onSelect={setSelectedDeviceId}
+                    />
+                )}
+            </div>
             <div style={{display: 'flex', gap: 16, marginBottom: 16}}>
-                {slots.map((slot) => {
+                {(slots ?? []).map((slot) => {
                     const frame = latest[slot.channelId];
 
                     return (
