@@ -1,7 +1,12 @@
 import {type AudioInputDevice} from '../audio/deviceManager';
 
 export interface DeviceSetupProps {
-    devices: AudioInputDevice[];
+    // null = enumeration in flight; empty array = enumeration done but no
+    // inputs found; populated = ready. All three states render a <select>
+    // element so the row's width and height stay constant across the
+    // transition (otherwise the picker pops in and pushes adjacent
+    // elements when the row's flex layout reflows).
+    devices: AudioInputDevice[] | null;
     selectedDeviceId: string;
     onSelect(deviceId: string): void;
 }
@@ -11,13 +16,24 @@ export interface DeviceSetupProps {
 // selection immediately swaps the active VoiceChannel via slots
 // regeneration in App. No Start button - selection auto-applies.
 //
-// Stays as a separate component (rather than inlining into App.tsx)
-// to keep the empty-list / single-list / multi-list branches in one
-// place; App's responsibility ends at "selectedDeviceId moved, persist
-// to localStorage and rebuild slots".
+// Always renders a <select> element (even during enumeration) so the
+// surrounding layout does not jump when devices arrive. Loading /
+// empty states show a disabled select with a placeholder option.
 export function DeviceSetup({devices, selectedDeviceId, onSelect}: DeviceSetupProps) {
+    if (devices === null) {
+        return (
+            <select disabled value="">
+                <option value="">Loading inputs...</option>
+            </select>
+        );
+    }
+
     if (devices.length === 0) {
-        return <p style={{margin: 0, color: '#888'}}>No audio inputs available.</p>;
+        return (
+            <select disabled value="">
+                <option value="">No audio inputs available</option>
+            </select>
+        );
     }
 
     return (
