@@ -9,10 +9,16 @@ let initFailed = false;
 const pendingMessages: PlotMessage[] = [];
 let rafId = 0;
 
+// Initialised lazily on the first frame: a literal 0 baseline would
+// produce a multi-million-ms first-frame dt (rAF stamps wall-clock
+// since navigation start), which is harmless for the trace's update()
+// (it ignores dtMs) but would instantly satisfy GATE_DEBOUNCE_MS and
+// ORDER_DEBOUNCE_MS on the vowel module's first paint, defeating the
+// debounce on frame 1.
 let lastFrameMs = 0;
 
 function frame(nowMs: number): void {
-    const dtMs = nowMs - lastFrameMs;
+    const dtMs = lastFrameMs === 0 ? 0 : nowMs - lastFrameMs;
     lastFrameMs = nowMs;
 
     renderer.update(dtMs);
