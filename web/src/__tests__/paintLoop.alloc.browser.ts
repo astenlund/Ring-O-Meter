@@ -62,8 +62,8 @@ describe('paint loop allocation budget', () => {
             const ts = baseMs + i * 21;
             const hzA = 220 + Math.sin(i * 0.1) * 10;
             const hzB = 440 + Math.sin(i * 0.1) * 10;
-            writerA.publish({captureContextMs: ts, fundamentalHz: hzA, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: hzA});
-            writerB.publish({captureContextMs: ts, fundamentalHz: hzB, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: hzB});
+            writerA.publish({captureContextMs: ts, fundamentalHz: hzA, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: hzA, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+            writerB.publish({captureContextMs: ts, fundamentalHz: hzB, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: hzB, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
         }
 
         let hzToY = makeHzToY(range, 360);

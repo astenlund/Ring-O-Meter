@@ -50,9 +50,9 @@ describe('FrameRingReader.readLatest', () => {
         const sab = createFrameRing();
         const w = writer(sab);
         const r = reader(sab);
-        w.publish({captureContextMs: 100, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220});
-        w.publish({captureContextMs: 101, fundamentalHz: 330, confidence: 0.85, rmsDb: -30, fundamentalHzRaw: 330});
-        w.publish({captureContextMs: 102, fundamentalHz: 440, confidence: 0.95, rmsDb: -30, fundamentalHzRaw: 440});
+        w.publish({captureContextMs: 100, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+        w.publish({captureContextMs: 101, fundamentalHz: 330, confidence: 0.85, rmsDb: -30, fundamentalHzRaw: 330, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+        w.publish({captureContextMs: 102, fundamentalHz: 440, confidence: 0.95, rmsDb: -30, fundamentalHzRaw: 440, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
         const out: UiFrame = {fundamentalHz: 0, confidence: 0};
 
         // Act
@@ -69,7 +69,7 @@ describe('FrameRingReader.readLatest', () => {
         const sab = createFrameRing();
         const w = writer(sab);
         const r = reader(sab, 999);
-        w.publish({captureContextMs: 50, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220});
+        w.publish({captureContextMs: 50, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
         const out: UiFrame = {fundamentalHz: 0, confidence: 0};
 
         // Act
@@ -107,10 +107,10 @@ describe('FrameRingReader.published', () => {
         const sab = createFrameRing();
         const w = writer(sab);
         const r = reader(sab);
-        w.publish({captureContextMs: 0, fundamentalHz: 200, confidence: 0.5, rmsDb: -30, fundamentalHzRaw: 200});
+        w.publish({captureContextMs: 0, fundamentalHz: 200, confidence: 0.5, rmsDb: -30, fundamentalHzRaw: 200, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
         expect(r.published()).toBe(1);
-        w.publish({captureContextMs: 0, fundamentalHz: 200, confidence: 0.5, rmsDb: -30, fundamentalHzRaw: 200});
-        w.publish({captureContextMs: 0, fundamentalHz: 200, confidence: 0.5, rmsDb: -30, fundamentalHzRaw: 200});
+        w.publish({captureContextMs: 0, fundamentalHz: 200, confidence: 0.5, rmsDb: -30, fundamentalHzRaw: 200, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+        w.publish({captureContextMs: 0, fundamentalHz: 200, confidence: 0.5, rmsDb: -30, fundamentalHzRaw: 200, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
         expect(r.published()).toBe(3);
     });
 });
@@ -129,9 +129,9 @@ describe('FrameRingReader.forEach', () => {
         const w = writer(sab);
         const r = reader(sab, OFFSET_MS);
         // contextMs values 100, 200, 300
-        w.publish({captureContextMs: 100, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220});
-        w.publish({captureContextMs: 200, fundamentalHz: 330, confidence: 0.85, rmsDb: -30, fundamentalHzRaw: 330});
-        w.publish({captureContextMs: 300, fundamentalHz: 440, confidence: 0.95, rmsDb: -30, fundamentalHzRaw: 440});
+        w.publish({captureContextMs: 100, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+        w.publish({captureContextMs: 200, fundamentalHz: 330, confidence: 0.85, rmsDb: -30, fundamentalHzRaw: 330, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+        w.publish({captureContextMs: 300, fundamentalHz: 440, confidence: 0.95, rmsDb: -30, fundamentalHzRaw: 440, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
         const samples: Array<[number, number, number]> = [];
         r.forEach(0, (tsMs, hz, conf) => samples.push([tsMs, hz, conf]));
         // tsMs = contextMs + OFFSET_MS
@@ -147,10 +147,10 @@ describe('FrameRingReader.forEach', () => {
         const w = writer(sab);
         const r = reader(sab, OFFSET_MS);
         // Publishing with contextMs 100, 200, 300, 400
-        w.publish({captureContextMs: 100, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220});
-        w.publish({captureContextMs: 200, fundamentalHz: 330, confidence: 0.85, rmsDb: -30, fundamentalHzRaw: 330});
-        w.publish({captureContextMs: 300, fundamentalHz: 440, confidence: 0.95, rmsDb: -30, fundamentalHzRaw: 440});
-        w.publish({captureContextMs: 400, fundamentalHz: 550, confidence: 0.92, rmsDb: -30, fundamentalHzRaw: 550});
+        w.publish({captureContextMs: 100, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+        w.publish({captureContextMs: 200, fundamentalHz: 330, confidence: 0.85, rmsDb: -30, fundamentalHzRaw: 330, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+        w.publish({captureContextMs: 300, fundamentalHz: 440, confidence: 0.95, rmsDb: -30, fundamentalHzRaw: 440, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+        w.publish({captureContextMs: 400, fundamentalHz: 550, confidence: 0.92, rmsDb: -30, fundamentalHzRaw: 550, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
         // Paint window starts at tsMs = 10_250, so contextMs 200 is
         // the leading pre-window sample, 300 and 400 are in-window.
         const samples: number[] = [];
@@ -164,7 +164,7 @@ describe('FrameRingReader.forEach', () => {
         const sab = createFrameRing();
         const w = writer(sab);
         const r = reader(sab, OFFSET_MS);
-        w.publish({captureContextMs: 100, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220});
+        w.publish({captureContextMs: 100, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
         const before: number[] = [];
         r.forEach(0, (tsMs) => before.push(tsMs));
         expect(before[0]).toBe(OFFSET_MS + 100);
@@ -183,7 +183,7 @@ describe('FrameRingReader.forEach', () => {
         // the test are preserved (contextMs and hz vary per iteration),
         // and the literal-per-call alloc would be irrelevant here anyway
         // since this is a structural test, not an alloc test.
-        const scratch: PublishFrame = {captureContextMs: 0, fundamentalHz: 0, confidence: 0.5, rmsDb: -30, fundamentalHzRaw: 0};
+        const scratch: PublishFrame = {captureContextMs: 0, fundamentalHz: 0, confidence: 0.5, rmsDb: -30, fundamentalHzRaw: 0, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0};
         for (let i = 0; i < 2 * CAPACITY; i += 1) {
             scratch.captureContextMs = i;
             scratch.fundamentalHz = 100 + i;
@@ -218,7 +218,7 @@ describe('FrameRingWriter trailing-column writes', () => {
         // failure mode); caller-side transposition that previously
         // could only be detected here is now a TypeScript error at
         // the publish call site.
-        w.publish({captureContextMs: 100, fundamentalHz: 440, confidence: 0.9, rmsDb: -27.5, fundamentalHzRaw: 880});
+        w.publish({captureContextMs: 100, fundamentalHz: 440, confidence: 0.9, rmsDb: -27.5, fundamentalHzRaw: 880, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
 
         const rmsDbView = new Float32Array(sab, RMS_DB_OFFSET, CAPACITY);
         const hzRawView = new Float32Array(sab, HZ_RAW_OFFSET, CAPACITY);

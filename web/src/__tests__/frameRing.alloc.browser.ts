@@ -29,7 +29,7 @@ describe('frameRing writer allocation budget', () => {
         // Scratch hoisted out of the publish closure so the budget
         // measures the writer's per-call cost (atomic store + five
         // typed-array writes), not a per-call object literal.
-        const scratch: PublishFrame = {captureContextMs: 0, fundamentalHz: 0, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 0};
+        const scratch: PublishFrame = {captureContextMs: 0, fundamentalHz: 0, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 0, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0};
         const publish = () => {
             t += 21;
             const hz = 220 + (t & 0xff) * 0.01;
@@ -73,7 +73,7 @@ describe('frameRing reader.forEach allocation budget', () => {
         const baseMs = 0;
         for (let i = 0; i < 470; i += 1) {
             const hz = 220 + Math.sin(i * 0.1) * 10;
-            writer.publish({captureContextMs: baseMs + i * 21, fundamentalHz: hz, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: hz});
+            writer.publish({captureContextMs: baseMs + i * 21, fundamentalHz: hz, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: hz, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
         }
 
         const readAll = () => {

@@ -98,6 +98,10 @@ export interface PublishFrame {
     confidence: number;
     rmsDb: number;
     fundamentalHzRaw: number;
+    f1Hz: number;
+    f2Hz: number;
+    f3Hz: number;
+    f4Hz: number;
 }
 
 /**
@@ -169,6 +173,10 @@ export class FrameRingWriter {
     private readonly conf: Float32Array;
     private readonly rmsDb: Float32Array;
     private readonly hzRaw: Float32Array;
+    private readonly f1Hz: Float32Array;
+    private readonly f2Hz: Float32Array;
+    private readonly f3Hz: Float32Array;
+    private readonly f4Hz: Float32Array;
     // Monotonic, per-instance. Not atomic itself; only the publish
     // via Atomics.store on this.header is observable externally.
     private writeIdx = 0;
@@ -181,10 +189,14 @@ export class FrameRingWriter {
         this.conf = views.conf;
         this.rmsDb = views.rmsDb;
         this.hzRaw = views.hzRaw;
+        this.f1Hz = views.f1Hz;
+        this.f2Hz = views.f2Hz;
+        this.f3Hz = views.f3Hz;
+        this.f4Hz = views.f4Hz;
     }
 
     /**
-     * Publish a new frame. Writes all five field slots first, then
+     * Publish a new frame. Writes all nine field slots first, then
      * Atomics.store on the header as the "commit" signal. JS
      * Atomics.store is sequentially consistent: any consumer that
      * sees the new writeIdx via Atomics.load is guaranteed to see
@@ -201,6 +213,10 @@ export class FrameRingWriter {
         this.conf[slot] = frame.confidence;
         this.rmsDb[slot] = frame.rmsDb;
         this.hzRaw[slot] = frame.fundamentalHzRaw;
+        this.f1Hz[slot] = frame.f1Hz;
+        this.f2Hz[slot] = frame.f2Hz;
+        this.f3Hz[slot] = frame.f3Hz;
+        this.f4Hz[slot] = frame.f4Hz;
         this.writeIdx += 1;
         Atomics.store(this.header, 0, this.writeIdx);
     }

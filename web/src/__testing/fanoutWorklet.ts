@@ -47,6 +47,10 @@ class FanoutPitchProcessor extends AudioWorkletProcessor {
         confidence: 0,
         rmsDb: 0,
         fundamentalHzRaw: 0,
+        f1Hz: 0,
+        f2Hz: 0,
+        f3Hz: 0,
+        f4Hz: 0,
     };
 
     public constructor(options?: AudioWorkletNodeOptions) {
