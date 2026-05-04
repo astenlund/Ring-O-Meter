@@ -16,7 +16,6 @@
 import fanoutWorkletUrl from './fanoutWorklet.ts?worker&url';
 import {AudioContextEpoch} from '../audio/audioContextEpoch';
 import {createFrameRing, FrameRingReader, type FrameSource} from '../audio/frameRing';
-import {type LpcMethod} from '../audio/formantDetector';
 import type {VoiceChannelEvents} from '../audio/voiceChannel';
 import {publishChannel, revokeChannel} from './channelBridge';
 import {PITCH_FANOUT_PROCESSOR_NAME} from './fanoutConstants';
@@ -117,10 +116,6 @@ export class FanoutVoiceChannel {
         }
 
         this.epoch.arm();
-    }
-
-    public setLpcMethod(method: LpcMethod): void {
-        this.node?.port.postMessage({type: 'setLpcMethod', method});
     }
 
     public stop(): void {

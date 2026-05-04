@@ -6,7 +6,6 @@
 import workletUrl from './worklets/pitchWorklet.ts?worker&url';
 import {PITCH_PROCESSOR_NAME} from './constants';
 import {FrameRingReader, createFrameRing, type FrameSource} from './frameRing';
-import {type LpcMethod} from './formantDetector';
 import {AudioContextEpoch} from './audioContextEpoch';
 import {publishChannel, revokeChannel} from '../__testing/channelBridge';
 
@@ -120,10 +119,6 @@ export class VoiceChannel {
         );
 
         this.epoch.arm();
-    }
-
-    public setLpcMethod(method: LpcMethod): void {
-        this.node?.port.postMessage({type: 'setLpcMethod', method});
     }
 
     public stop(): void {

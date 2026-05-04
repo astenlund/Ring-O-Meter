@@ -98,36 +98,7 @@ function medianFormants(
 }
 
 describe('FormantDetector', () => {
-    it('recovers F1 + F2 from a synthetic vowel at 48->8 kHz, autocorrelation', () => {
-        // Arrange: synthetic vowel with F1=500, F2=1500, F3=2500. Detector
-        // configured for F1+F2 only at 8 kHz; F3 should be excluded by the
-        // formant-count filter (we only ask for 2).
-        const formants = [
-            {f: 500, bw: 80},
-            {f: 1500, bw: 100},
-            {f: 2500, bw: 120},
-        ];
-        const signal = synthesizeVowel(48000, formants, 1.0);
-        const detector = new FormantDetector({
-            inputRate: 48000,
-            decimatedRate: 8000,
-            decimatorCutoffHz: 3500,
-            lpcOrder: 10,
-            lpcMethod: 'autocorrelation',
-            formantCount: 2,
-        });
-
-        // Act
-        const medians = medianFormants(detector, signal, 2);
-
-        // Assert: F1 and F2 within 10% of true values.
-        expect(medians[0]).toBeGreaterThan(450);
-        expect(medians[0]).toBeLessThan(550);
-        expect(medians[1]).toBeGreaterThan(1400);
-        expect(medians[1]).toBeLessThan(1600);
-    });
-
-    it('recovers F1..F4 from a synthetic vowel at 48->12 kHz, Burg', () => {
+    it('recovers F1..F4 from a synthetic vowel at 48->12 kHz', () => {
         // Arrange
         const formants = [
             {f: 500, bw: 80},
@@ -141,7 +112,6 @@ describe('FormantDetector', () => {
             decimatedRate: 12000,
             decimatorCutoffHz: 5500,
             lpcOrder: 14,
-            lpcMethod: 'burg',
             formantCount: 4,
         });
 
@@ -167,7 +137,6 @@ describe('FormantDetector', () => {
             decimatedRate: 12000,
             decimatorCutoffHz: 5500,
             lpcOrder: 14,
-            lpcMethod: 'burg',
             formantCount: 4,
         });
 
@@ -192,7 +161,6 @@ describe('FormantDetector', () => {
             decimatedRate: 7000,
             decimatorCutoffHz: 3000,
             lpcOrder: 10,
-            lpcMethod: 'burg',
             formantCount: 2,
         })).toThrow();
     });

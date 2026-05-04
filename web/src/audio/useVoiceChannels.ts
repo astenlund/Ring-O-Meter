@@ -114,18 +114,6 @@ export function useVoiceChannels(
             });
         });
 
-        // Temporary global escape hatch for the algorithm-toggle UI in
-        // App.tsx. The toggle iterates this global and calls setLpcMethod
-        // on each entry; channels that haven't called start() yet have
-        // node === null, so setLpcMethod is a no-op and the toggle just
-        // retries on the next radio-flip. Cleanup in Task 19 removes
-        // both halves (here + the toggle's reader). The cleaner refactor
-        // would lift the channel list to App.tsx so the toggle reaches
-        // it through props; the global skips that for code with a known
-        // short lifetime.
-        const HATCH_KEY = '__voiceChannels__';
-        (globalThis as Record<string, unknown>)[HATCH_KEY] = channels;
-
         // Shared teardown path for both the effect-cleanup and the setup-failure
         // branch: stop every channel, close the AudioContext. Any future step
         // (e.g. disposing timers, nulling refs) belongs here so the two branches
@@ -150,24 +138,7 @@ export function useVoiceChannels(
             await channel.start(stream);
             if (cancelled) {
                 channel.stop();
-
-                return;
             }
-            // Apply the persisted LPC algorithm choice now that the
-            // worklet's port is wired (channel.node became non-null
-            // inside start()). The AlgorithmToggle's UI-side effect
-            // can't reliably do this itself: at toggle mount, channels
-            // do not yet exist; once they do, the toggle's effect does
-            // not re-fire because `method` has not changed. Reading
-            // localStorage here picks up the current value INCLUDING
-            // any toggle the user flipped during the async start()
-            // window, so the swap is reliable across both initial-load
-            // persistence and mid-flight toggle changes. Cleanup task
-            // removes this along with the toggle UI once manual triage
-            // picks a winner.
-            const stored = localStorage.getItem('lpcMethod');
-            const method = stored === 'autocorrelation' ? 'autocorrelation' : 'burg';
-            channel.setLpcMethod(method);
         })).then((results) => {
             if (cancelled) {
                 // Cleanup already tore everything down; any rejections here are
@@ -186,7 +157,6 @@ export function useVoiceChannels(
 
         return () => {
             cancelled = true;
-            delete (globalThis as Record<string, unknown>)[HATCH_KEY];
             teardown();
         };
     }, [slots]);

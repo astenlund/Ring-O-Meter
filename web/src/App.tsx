@@ -261,8 +261,6 @@ export function App() {
                                 deviceLabel={slot.deviceLabel}
                                 fundamentalHz={frame?.fundamentalHz ?? 0}
                                 confidence={frame?.confidence ?? 0}
-                                f1Hz={frame?.f1Hz ?? 0}
-                                f2Hz={frame?.f2Hz ?? 0}
                             />
                         );
                     })
@@ -319,46 +317,6 @@ export function App() {
                     style={{width: 360, flexShrink: 0}}
                 />
             </div>
-            <AlgorithmToggle />
         </main>
-    );
-}
-
-function AlgorithmToggle() {
-    const [method, setMethod] = useState<'burg' | 'autocorrelation'>(() => {
-        const stored = localStorage.getItem('lpcMethod');
-
-        return stored === 'autocorrelation' ? 'autocorrelation' : 'burg';
-    });
-
-    useEffect(() => {
-        localStorage.setItem('lpcMethod', method);
-        // Walk all live VoiceChannel / FanoutVoiceChannel instances and
-        // forward the new method to each. The global is a temporary
-        // escape hatch published by useVoiceChannels (cleanup task
-        // removes both halves once the manual triage picks a winner).
-        const voiceChannels = (globalThis as Record<string, unknown>)['__voiceChannels__'] as
-            | Iterable<{setLpcMethod: (m: 'burg' | 'autocorrelation') => void}>
-            | undefined;
-        if (voiceChannels) {
-            for (const vc of voiceChannels) {
-                vc.setLpcMethod(method);
-            }
-        }
-    }, [method]);
-
-    const label = method === 'burg' ? 'Burg' : 'Autocorrelation (Levinson)';
-
-    return (
-        <div style={{marginTop: 16, padding: 12, border: '1px dashed #555', borderRadius: 6}}>
-            <strong>LPC algorithm (temporary triage):</strong>
-            <button
-                type="button"
-                onClick={() => setMethod(method === 'burg' ? 'autocorrelation' : 'burg')}
-                style={{marginLeft: 12, padding: '4px 12px', cursor: 'pointer'}}
-            >
-                {label}
-            </button>
-        </div>
     );
 }
