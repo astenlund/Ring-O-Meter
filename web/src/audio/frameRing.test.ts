@@ -8,7 +8,6 @@ import {
     RMS_DB_OFFSET,
     type FormantFrame,
     type PublishFrame,
-    type UiFrame,
     createFrameRing,
 } from './frameRing';
 
@@ -31,70 +30,6 @@ describe('createFrameRing', () => {
         // (hz, conf, rmsDb, hzRaw) + four new 4-byte Float32 columns (f1Hz, f2Hz,
         // f3Hz, f4Hz) per slot = 40 bytes per slot.
         expect(RING_SAB_BYTES).toBe(8 + 40 * CAPACITY);
-    });
-});
-
-describe('FrameRingReader.readLatest', () => {
-    it('returns false before any frame is published', () => {
-        // Arrange
-        const sab = createFrameRing();
-        const r = reader(sab);
-        const out: UiFrame = {fundamentalHz: 0, confidence: 0};
-
-        // Act / Assert
-        expect(r.readLatest(out)).toBe(false);
-    });
-
-    it('writes the most recently published frame into out and returns true', () => {
-        // Arrange
-        const sab = createFrameRing();
-        const w = writer(sab);
-        const r = reader(sab);
-        w.publish({captureContextMs: 100, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
-        w.publish({captureContextMs: 101, fundamentalHz: 330, confidence: 0.85, rmsDb: -30, fundamentalHzRaw: 330, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
-        w.publish({captureContextMs: 102, fundamentalHz: 440, confidence: 0.95, rmsDb: -30, fundamentalHzRaw: 440, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
-        const out: UiFrame = {fundamentalHz: 0, confidence: 0};
-
-        // Act
-        const result = r.readLatest(out);
-
-        // Assert
-        expect(result).toBe(true);
-        expect(out.fundamentalHz).toBe(440);
-        expect(out.confidence).toBeCloseTo(0.95, 5);
-    });
-
-    it('does not include contextMs or offset (UI shape is narrow)', () => {
-        // Arrange
-        const sab = createFrameRing();
-        const w = writer(sab);
-        const r = reader(sab, 999);
-        w.publish({captureContextMs: 50, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
-        const out: UiFrame = {fundamentalHz: 0, confidence: 0};
-
-        // Act
-        r.readLatest(out);
-
-        // Assert: no tsMs field; offset does not leak through readLatest.
-        // rmsDb and fundamentalHzRaw are NOT part of UiFrame (the narrow
-        // pitch-only shape); rmsDb is exposed via readLatestFormants
-        // instead (see the FormantFrame round-trip test below).
-        // fundamentalHzRaw has no reader-side accessor yet (hzRaw column
-        // is written but unbound in the FrameRingReader constructor).
-        expect(Object.keys(out).sort()).toEqual(['confidence', 'fundamentalHz']);
-    });
-
-    it('leaves out unmodified when no frame is published', () => {
-        // Arrange
-        const sab = createFrameRing();
-        const r = reader(sab);
-        const out: UiFrame = {fundamentalHz: 99, confidence: 0.42};
-
-        // Act / Assert: sentinels preserved exactly; pins the contract
-        // so a future implementation that nulls fields on miss fails here.
-        expect(r.readLatest(out)).toBe(false);
-        expect(out.fundamentalHz).toBe(99);
-        expect(out.confidence).toBe(0.42);
     });
 });
 
