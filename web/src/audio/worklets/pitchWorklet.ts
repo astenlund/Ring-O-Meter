@@ -11,7 +11,19 @@ import {PITCH_PROCESSOR_NAME} from '../constants';
 import {FrameRingWriter, type PublishFrame} from '../frameRing';
 import {FormantDetector} from '../formantDetector';
 
+// FRAME_SIZE is the publish-frame unit (~21 ms at 48 kHz): how often
+// publish() runs, and the window size that RMS + formants analyse.
+// ANALYSIS_WINDOW_SIZE is the YIN-only window (2 * FRAME_SIZE): YIN
+// needs at least 2 cycles of the lowest detectable frequency to find
+// a clean autocorrelation lag, and 1024 samples bottoms out at
+// ~94 Hz - just above F#2, leaving E2/F2 (real bass-singer notes,
+// 82-87 Hz) in a detection-blind zone. Doubling the YIN window pushes
+// the floor below C2 (~47 Hz) without changing the publish rate, at
+// the cost of ~4x YIN compute per publish (still well within the
+// 21 ms worklet budget). RMS and formants stay on the 1024-sample
+// latest-frame view because more history doesn't help those analyses.
 const FRAME_SIZE = 1024;
+const ANALYSIS_WINDOW_SIZE = FRAME_SIZE * 2;
 const PUBLISH_INTERVAL_FRAMES = 1; // every ~21 ms at 48 kHz -> ~47 Hz publish
 
 interface PitchProcessorOptions {
@@ -19,8 +31,24 @@ interface PitchProcessorOptions {
 }
 
 class PitchProcessor extends AudioWorkletProcessor {
-    private readonly buffer = new Float32Array(FRAME_SIZE);
-    private bufferIndex = 0;
+    // Rolling 2048-sample window: positions [0, FRAME_SIZE) hold the
+    // previous frame, [FRAME_SIZE, ANALYSIS_WINDOW_SIZE) accumulate the
+    // current frame. After each publish, the latter half shifts to the
+    // former half so the next publish sees both the new latest 1024 and
+    // the previous 1024 as YIN history.
+    private readonly buffer = new Float32Array(ANALYSIS_WINDOW_SIZE);
+    // View over the latest FRAME_SIZE samples (the latter half). Created
+    // once and reused; subarray returns a view onto the same backing
+    // buffer, so RMS + formants always see the just-filled window
+    // without re-allocation per publish.
+    private readonly latestFrame = this.buffer.subarray(FRAME_SIZE, ANALYSIS_WINDOW_SIZE);
+    // Tracks how many FRAME_SIZE blocks have landed since startup. The
+    // first block leaves zeros in [0, FRAME_SIZE); publishing then would
+    // have YIN fit an autocorrelation lag at the silence/audio
+    // discontinuity, returning a spurious low frequency. Skip the first
+    // publish so YIN only ever sees two real frames of audio.
+    private blocksAccumulated = 0;
+    private bufferIndex = FRAME_SIZE;
     private framesSinceLastPublish = 0;
     private readonly writer: FrameRingWriter;
     private readonly stabilizer = new OctaveStabilizer();
@@ -69,24 +97,32 @@ class PitchProcessor extends AudioWorkletProcessor {
         // ring buffer with TypedArray.set, which compiles to a
         // memcpy-class path. The former per-sample loop ran ~128 branches
         // per quantum on the audio thread; this keeps the same logical
-        // behaviour (publish when the buffer is full) at a fraction of
-        // the per-sample overhead.
+        // behaviour (publish when the latter half fills) at a fraction
+        // of the per-sample overhead.
         let inputOffset = 0;
         let remaining = channel.length;
         while (remaining > 0) {
-            const space = FRAME_SIZE - this.bufferIndex;
+            const space = ANALYSIS_WINDOW_SIZE - this.bufferIndex;
             const chunk = remaining < space ? remaining : space;
             this.buffer.set(channel.subarray(inputOffset, inputOffset + chunk), this.bufferIndex);
             this.bufferIndex += chunk;
             inputOffset += chunk;
             remaining -= chunk;
-            if (this.bufferIndex >= FRAME_SIZE) {
-                this.framesSinceLastPublish++;
-                if (this.framesSinceLastPublish >= PUBLISH_INTERVAL_FRAMES) {
-                    this.publish();
-                    this.framesSinceLastPublish = 0;
+            if (this.bufferIndex >= ANALYSIS_WINDOW_SIZE) {
+                this.blocksAccumulated++;
+                if (this.blocksAccumulated >= 2) {
+                    this.framesSinceLastPublish++;
+                    if (this.framesSinceLastPublish >= PUBLISH_INTERVAL_FRAMES) {
+                        this.publish();
+                        this.framesSinceLastPublish = 0;
+                    }
                 }
-                this.bufferIndex = 0;
+                // Shift the latter half to the former half so the NEXT
+                // FRAME_SIZE of input lands behind it, keeping the YIN
+                // window 50%-overlapped with the previous publish. Uses
+                // copyWithin for an in-place memmove; no allocation.
+                this.buffer.copyWithin(0, FRAME_SIZE, ANALYSIS_WINDOW_SIZE);
+                this.bufferIndex = FRAME_SIZE;
             }
         }
 
@@ -94,6 +130,8 @@ class PitchProcessor extends AudioWorkletProcessor {
     }
 
     private publish(): void {
+        // YIN sees the full 2048-sample window for low-frequency reach
+        // down to ~47 Hz (well below C2 = 65.4 Hz).
         const result = detectPitch(this.buffer, sampleRate);
         if (!Number.isFinite(result.fundamentalHz)) {
             // Defensive: pitchDetector may emit 0 for "no pitch"
@@ -101,7 +139,10 @@ class PitchProcessor extends AudioWorkletProcessor {
             // the frame so no corrupted value enters the ring.
             return;
         }
-        const rmsDb = computeRmsDb(this.buffer);
+        // RMS is point-in-time loudness; the latest 1024 is what the
+        // user is currently producing. Averaging over 2048 would smear
+        // attack transients across the window's first half.
+        const rmsDb = computeRmsDb(this.latestFrame);
         // Capture the verbatim YIN reading: stabilizer.apply() returns
         // only the (possibly corrected) hz, not the input, so the raw
         // must be bound here. Preserved on the wire as fundamentalHzRaw
@@ -109,10 +150,13 @@ class PitchProcessor extends AudioWorkletProcessor {
         const fundamentalHzRaw = result.fundamentalHz;
         const stabilized = this.stabilizer.apply(fundamentalHzRaw);
 
-        // Formants alongside pitch. The detector mutates its public
-        // `result.frequencies` field in place; copy values out before
-        // calling writer.publish() since the writer captures by value.
-        this.formantDetector.process(this.buffer);
+        // Formants alongside pitch. Pre-emphasis + decimation carry
+        // filter state across frames, so feeding the latest 1024 keeps
+        // the analysis aligned with the publish cadence. Detector
+        // mutates its public `result.frequencies` field in place; copy
+        // values out before calling writer.publish() since the writer
+        // captures by value.
+        this.formantDetector.process(this.latestFrame);
         const formants = this.formantDetector.result.frequencies;
 
         // currentTime is AudioContext seconds; multiply by 1000 for

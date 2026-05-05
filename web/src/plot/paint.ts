@@ -42,7 +42,13 @@ export interface PaintFrame {
     windowMs: number;
 }
 
-const GRID_STEP_HZ = 50;
+// C0 (~16.35 Hz) is the reference octave for MIDI note 12; doubling
+// from there hits every C in western tuning. drawGrid walks this series
+// and emits a gridline for each C that falls in [minHz, maxHz], giving
+// musically meaningful, visually uniform lines on the log-Hz axis.
+// Below the audible range (~20 Hz), so the loop's pre-range frequencies
+// are skipped quickly without rendering anything.
+const C0_HZ = 16.35;
 
 // CSS-pixel size + device pixel ratio, populated externally from a
 // ResizeObserver (CSS size) and a matchMedia listener (DPR). Keeping this
@@ -100,10 +106,14 @@ export function drawGrid(frame: PaintFrame, range: HzRange): void {
     ctx.strokeStyle = '#222';
     ctx.lineWidth = 1;
     // All grid lines share the same stroke style, so batch them into a
-    // single path: one beginPath + many moveTo/lineTo + one stroke is ~11
-    // fewer driver flushes per paint at the default 80-600 Hz range.
+    // single path: one beginPath + many moveTo/lineTo + one stroke. At
+    // the default C2-C6 range this draws 5 lines (C2/C3/C4/C5/C6); the
+    // top and bottom ones coincide with the canvas border.
     ctx.beginPath();
-    for (let f = range.minHz; f <= range.maxHz; f += GRID_STEP_HZ) {
+    for (let f = C0_HZ; f <= range.maxHz; f *= 2) {
+        if (f < range.minHz) {
+            continue;
+        }
         const y = hzToY(f);
         ctx.moveTo(0, y);
         ctx.lineTo(size.width, y);
