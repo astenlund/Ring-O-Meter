@@ -14,12 +14,9 @@ import {PlotController} from './plot/plotController';
 // the fanout test mode is retired (also remove FanoutGroup + fanoutGroup
 // field from useVoiceChannels.ts + its FanoutVoiceChannel import; also
 // rm __testing/fanoutFlag.ts, fanoutVoiceChannel.ts, fanoutWorklet.ts,
-// fanoutConstants.ts). Do NOT also delete __testing/rendererFlag.ts -
-// it is a production renderer toggle (?renderer=2d), not part of the
-// fanout test mode despite living in the same directory; see the
-// comment at the top of that file.
+// fanoutConstants.ts).
 import {parseFanoutFlag} from './__testing/fanoutFlag';
-import {parseRendererFlag} from './__testing/rendererFlag';
+import {parseRendererFlag} from './plot/rendererFlag';
 // As of 2026-04-30 WebGPU is the production default renderer; the 2D
 // canvas worker remains available via ?renderer=2d. The static
 // `?worker&url` imports bundle both worker chunks at build time so

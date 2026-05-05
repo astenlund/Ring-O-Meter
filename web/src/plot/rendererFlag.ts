@@ -6,16 +6,8 @@
 // null when the flag is absent (caller picks the default).
 //
 // Parsed once at App.tsx mount; mid-session toggling is not
-// supported. Lives under __testing/ for historical reasons (the
-// WebGPU prototype's original opt-in-flag shape); the path is now
-// a real production renderer toggle imported by App.tsx, despite
-// the directory name. Moving the file is mostly a churn cost
-// (import-path updates across App.tsx, the e2e specs, and any
-// future production callers) with no behavioural benefit, so the
-// directory misnomer is accepted as tech debt - retire alongside
-// the rest of __testing/ when the fanout test mode is removed.
-// Mirror of fanoutFlag.ts shape so App.tsx's call site reads
-// consistently across both flags.
+// supported. Mirror of fanoutFlag.ts shape so App.tsx's call site
+// reads consistently across both flags.
 
 export type RendererSelection = '2d' | 'webgpu';
 
