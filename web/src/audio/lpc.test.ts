@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest';
 
+import {makeLcgRand} from '../__testing/testPrng';
 import {LpcBurg} from './lpc';
 
 describe('LpcBurg', () => {
@@ -14,12 +15,7 @@ describe('LpcBurg', () => {
         const a2 = r * r;
         const N = 4096;
         const samples = new Float32Array(N);
-        let seed = 42;
-        const rand = (): number => {
-            seed = (seed * 1103515245 + 12345) >>> 0;
-
-            return ((seed & 0x7fffffff) / 0x7fffffff) * 2 - 1;
-        };
+        const rand = makeLcgRand();
         for (let n = 0; n < N; n++) {
             const drive = rand();
             const y1 = n - 1 >= 0 ? samples[n - 1] : 0;
