@@ -21,7 +21,7 @@ import {detectPitch} from '../audio/pitchDetector';
 import {computeRmsDb} from '../audio/rmsDb';
 import {OctaveStabilizer} from '../audio/octaveStabilizer';
 import {ANALYSIS_WINDOW_SIZE, FRAME_SIZE} from '../audio/constants';
-import {FrameRingWriter, SAB_FORMANT_COLUMN_COUNT, type PublishFrame} from '../audio/frameRing';
+import {FORMANT_ABSENT_SENTINEL, FrameRingWriter, SAB_FORMANT_COLUMN_COUNT, type PublishFrame} from '../audio/frameRing';
 import {PITCH_FANOUT_PROCESSOR_NAME} from './fanoutConstants';
 import {DEFAULT_FORMANT_SPEC, FormantDetector} from '../audio/formantDetector';
 
@@ -146,10 +146,10 @@ class FanoutPitchProcessor extends AudioWorkletProcessor {
         // and still produce the same values.
         this.formantDetector.process(this.latestFrame);
         const formants = this.formantDetector.result.frequencies;
-        this.scratch.f1Hz = Number.isFinite(formants[0]) ? formants[0] : 0;
-        this.scratch.f2Hz = Number.isFinite(formants[1]) ? formants[1] : 0;
-        this.scratch.f3Hz = Number.isFinite(formants[2]) ? formants[2] : 0;
-        this.scratch.f4Hz = Number.isFinite(formants[3]) ? formants[3] : 0;
+        this.scratch.f1Hz = Number.isFinite(formants[0]) ? formants[0] : FORMANT_ABSENT_SENTINEL;
+        this.scratch.f2Hz = Number.isFinite(formants[1]) ? formants[1] : FORMANT_ABSENT_SENTINEL;
+        this.scratch.f3Hz = Number.isFinite(formants[2]) ? formants[2] : FORMANT_ABSENT_SENTINEL;
+        this.scratch.f4Hz = Number.isFinite(formants[3]) ? formants[3] : FORMANT_ABSENT_SENTINEL;
 
         for (let i = 0; i < this.writers.length; i++) {
             const m = this.multipliers[i];

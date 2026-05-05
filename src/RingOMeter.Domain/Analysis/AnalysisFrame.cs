@@ -11,6 +11,13 @@ namespace RingOMeter.Domain.Analysis;
 // correction fired. Consumers default to FundamentalHz; the raw value stays
 // on the wire so logging, re-analysis, and heuristic-introspection tooling
 // can audit the correction after the fact.
+//
+// F1Hz..F4Hz: 0 is the FORMANT_ABSENT_SENTINEL meaning "no formant detected
+// in this slot" (mirror of FORMANT_ABSENT_SENTINEL in
+// web/src/audio/frameRing.ts). Detector NaN is mapped to 0 before SAB
+// transit; consumers gate on `f*Hz > 0`. 0 is physically nonsensical as a
+// real formant frequency and aligns with FundamentalHz's "0 means no
+// pitch" convention.
 [MessagePackObject]
 public sealed record AnalysisFrame(
     [property: Key(0)] string ChannelId,
