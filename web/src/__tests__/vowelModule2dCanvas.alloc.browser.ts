@@ -64,7 +64,7 @@ describe('Vowel module 2D paint allocation budget', () => {
             }
             drawVowelChrome(ctx, size, f1Range, f2Range);
             drawVowelPolygon(ctx, points, ordering, 3);
-            drawVowelDots(ctx, points, 10);
+            drawVowelDots(ctx, points, points.length, 10);
         };
 
         // Warmup

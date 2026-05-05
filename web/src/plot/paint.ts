@@ -256,10 +256,21 @@ export function drawVowelPolygon(
 export function drawVowelDots(
     ctx: AnyCanvasCtx,
     points: ReadonlyArray<VowelPoint2d>,
+    // Explicit count rather than relying on `points.length`. The 2D
+    // worker's `vowelDrawPoints` is a pre-allocated MAX_VOICES-sized
+    // array; the per-frame paint mutates only the first `voiceCount`
+    // slots in place. Truncating `points.length = voiceCount` to bound
+    // iteration would actually delete the slots beyond voiceCount per
+    // the JS spec ("array.length = N" deletes indices >= N), and a
+    // subsequent frame with a larger voiceCount would read undefined
+    // at those indices and crash on `slot.x = ...`. Bounding via an
+    // explicit count parameter keeps the pre-allocated backing alive.
+    count: number,
     sizeDevicePx: number,
 ): void {
     const half = sizeDevicePx / 2;
-    for (const p of points) {
+    for (let i = 0; i < count; i++) {
+        const p = points[i];
         ctx.fillStyle = p.isDimmed ? p.dimColor : p.color;
         ctx.fillRect(p.x - half, p.y - half, sizeDevicePx, sizeDevicePx);
     }

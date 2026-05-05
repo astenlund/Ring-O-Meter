@@ -47,6 +47,16 @@ const F3_HZ_OFFSET = F2_HZ_OFFSET + F2_HZ_BYTES;
 const F3_HZ_BYTES = CAPACITY * 4;
 const F4_HZ_OFFSET = F3_HZ_OFFSET + F3_HZ_BYTES;
 const F4_HZ_BYTES = CAPACITY * 4;
+// Single source of truth for the formant-column count baked into the
+// SAB ring layout, FormantFrame, PublishFrame, and AnalysisFrame Keys
+// 6-9. Worklets assert their `FormantDetector.spec.formantCount`
+// against this so a tuning change to DEFAULT_FORMANT_SPEC cannot
+// silently zero-pad or drop slots. Adding f5Hz means: extend the
+// byte-offset/byte-count constants above, the FormantFrame +
+// PublishFrame + RingViews shapes below, the FrameRingWriter +
+// FrameRingReader binders, AnalysisFrame.cs Keys, frames.ts mirror,
+// and bump this constant.
+export const SAB_FORMANT_COLUMN_COUNT = 4;
 // Layout-drift tripwire: any column add/remove/resize updates this
 // total. createFrameRing's size-invariant test pins 8 + 40 * CAPACITY
 // = 40968; the trailing-column offset test then catches column
@@ -63,11 +73,13 @@ export interface UiFrame {
  * formant frequencies plus everything `shouldDisplayFormants(hz, conf,
  * rmsDb)` needs - rmsDb, fundamentalHz, confidence - all from the same
  * slot. A single coherent read satisfies the full gate predicate
- * without a second `readLatest` call on a potentially-newer slot. The
- * fields beyond f1-f4 are duplicates of what `readLatest(UiFrame)`
- * also exposes, but routing them through this interface keeps the
- * vowel module's per-frame call shape uniform (one out-param, one
- * read) instead of needing two interlocked reads.
+ * without a second `readLatest` call on a potentially-newer slot. Of
+ * the fields beyond f1-f4, `fundamentalHz` and `confidence` overlap
+ * with what `readLatest(out: UiFrame)` also exposes; `rmsDb` is
+ * specific to this accessor (UiFrame doesn't carry it). Routing all
+ * three through this interface keeps the vowel module's per-frame
+ * call shape uniform (one out-param, one read) instead of needing
+ * two interlocked reads.
  */
 export interface FormantFrame {
     f1Hz: number;
@@ -88,10 +100,10 @@ export interface FormantFrame {
  * state while making column transposition (the failure mode of the
  * previous 5-positional-number signature) a TypeScript error rather
  * than a silent miswire that only the byte-offset test in
- * frameRing.test.ts would catch via sentinels. Adding a sixth ring
- * column is now: extend this interface, write the new column in
- * publish(), assign the new field at every caller; TypeScript
- * surfaces the missing assignment at the worklet caller.
+ * frameRing.test.ts would catch via sentinels. Adding a ring column
+ * is now: extend this interface, write the new column in publish(),
+ * assign the new field at every caller; TypeScript surfaces the
+ * missing assignment at the worklet caller.
  */
 export interface PublishFrame {
     captureContextMs: number;
