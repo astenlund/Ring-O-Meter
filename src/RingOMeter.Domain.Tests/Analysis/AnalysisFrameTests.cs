@@ -70,9 +70,9 @@ public class AnalysisFrameTests
 
         // Assert
         restored.Should().Be(original);
-        restored.F1Hz.Should().Be(500f);
-        restored.F2Hz.Should().Be(1500f);
-        restored.F3Hz.Should().Be(2500f);
-        restored.F4Hz.Should().Be(3500f);
+        restored.Formants.F1Hz.Should().Be(500f);
+        restored.Formants.F2Hz.Should().Be(1500f);
+        restored.Formants.F3Hz.Should().Be(2500f);
+        restored.Formants.F4Hz.Should().Be(3500f);
     }
 }

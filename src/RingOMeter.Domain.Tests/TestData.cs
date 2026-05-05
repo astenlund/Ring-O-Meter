@@ -28,9 +28,6 @@ internal static class TestData
             confidence,
             rmsDb,
             fundamentalHzRaw ?? fundamentalHz,
-            f1Hz,
-            f2Hz,
-            f3Hz,
-            f4Hz);
+            new FormantTuple(f1Hz, f2Hz, f3Hz, f4Hz));
     }
 }
