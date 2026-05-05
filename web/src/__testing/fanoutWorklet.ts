@@ -59,34 +59,44 @@ class FanoutPitchProcessor extends AudioWorkletProcessor {
 
     public constructor(options?: AudioWorkletNodeOptions) {
         super();
-        const opts = (options?.processorOptions ?? {}) as FanoutProcessorOptions;
-        const sabs = opts.frameRingSabs;
-        const multipliers = opts.pitchMultipliers;
-        if (!sabs || !multipliers) {
-            throw new Error(
-                'FanoutPitchProcessor: processorOptions.frameRingSabs and pitchMultipliers are required',
-            );
+        try {
+            const opts = (options?.processorOptions ?? {}) as FanoutProcessorOptions;
+            const sabs = opts.frameRingSabs;
+            const multipliers = opts.pitchMultipliers;
+            if (!sabs || !multipliers) {
+                throw new Error(
+                    'FanoutPitchProcessor: processorOptions.frameRingSabs and pitchMultipliers are required',
+                );
+            }
+            if (sabs.length !== multipliers.length) {
+                throw new Error(
+                    'FanoutPitchProcessor: frameRingSabs and pitchMultipliers must have equal length',
+                );
+            }
+            if (sabs.length === 0) {
+                throw new Error('FanoutPitchProcessor: at least one ring is required');
+            }
+            this.writers = sabs.map((s) => new FrameRingWriter(s));
+            this.multipliers = multipliers;
+            // Surface non-48k host failures the same way pitchWorklet.ts
+            // does; see that file for rationale.
+            this.formantDetector = new FormantDetector({
+                ...DEFAULT_FORMANT_SPEC,
+                inputRate: sampleRate,
+            });
+            // Same SAB schema constraint as pitchWorklet.ts: publish()
+            // hardcodes formants[0..N-1] -> f1Hz..fNHz.
+            if (this.formantDetector.spec.formantCount !== SAB_FORMANT_COLUMN_COUNT) {
+                throw new Error(
+                    `fanoutWorklet: formantCount must be ${SAB_FORMANT_COLUMN_COUNT} to match the SAB ring schema (got ${this.formantDetector.spec.formantCount})`,
+                );
+            }
         }
-        if (sabs.length !== multipliers.length) {
-            throw new Error(
-                'FanoutPitchProcessor: frameRingSabs and pitchMultipliers must have equal length',
-            );
-        }
-        if (sabs.length === 0) {
-            throw new Error('FanoutPitchProcessor: at least one ring is required');
-        }
-        this.writers = sabs.map((s) => new FrameRingWriter(s));
-        this.multipliers = multipliers;
-        this.formantDetector = new FormantDetector({
-            ...DEFAULT_FORMANT_SPEC,
-            inputRate: sampleRate,
-        });
-        // Same SAB schema constraint as pitchWorklet.ts: publish()
-        // hardcodes formants[0..N-1] -> f1Hz..fNHz.
-        if (this.formantDetector.spec.formantCount !== SAB_FORMANT_COLUMN_COUNT) {
-            throw new Error(
-                `fanoutWorklet: formantCount must be ${SAB_FORMANT_COLUMN_COUNT} to match the SAB ring schema (got ${this.formantDetector.spec.formantCount})`,
-            );
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('FanoutPitchProcessor: construction failed', message);
+            this.port.postMessage({type: 'processorError', message});
+            throw err;
         }
     }
 

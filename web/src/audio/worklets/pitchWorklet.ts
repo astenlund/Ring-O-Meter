@@ -57,25 +57,43 @@ class PitchProcessor extends AudioWorkletProcessor {
 
     public constructor(options?: AudioWorkletNodeOptions) {
         super();
-        const opts = (options?.processorOptions ?? {}) as PitchProcessorOptions;
-        if (!opts.frameRingSab) {
-            throw new Error('PitchProcessor: processorOptions.frameRingSab is required');
+        try {
+            const opts = (options?.processorOptions ?? {}) as PitchProcessorOptions;
+            if (!opts.frameRingSab) {
+                throw new Error('PitchProcessor: processorOptions.frameRingSab is required');
+            }
+            this.writer = new FrameRingWriter(opts.frameRingSab);
+            // FormantDetector throws when the host's negotiated sampleRate
+            // (e.g. 44100 on macOS/iOS Safari, regardless of the
+            // TARGET_SAMPLE_RATE_HZ hint) is not an integer multiple of
+            // DEFAULT_FORMANT_SPEC.decimatedRate. Browsers swallow
+            // AudioWorkletProcessor constructor errors, so without the
+            // surface below the failure is silent: the node is created,
+            // process() never runs, and the SAB stays empty for the
+            // session's lifetime. Surface it as a structured port message
+            // + console.error before re-throwing so main can render a
+            // diagnostic.
+            this.formantDetector = new FormantDetector({
+                ...DEFAULT_FORMANT_SPEC,
+                inputRate: sampleRate,
+            });
+            // The publish() loop below hardcodes formants[0..N-1] -> f1Hz..fNHz.
+            // SAB_FORMANT_COLUMN_COUNT is the schema authority; bind the
+            // assertion to it so a future ring-schema change (the only
+            // place the column count actually lives) is the single edit
+            // that this guard tracks. A tuning of DEFAULT_FORMANT_SPEC
+            // alone cannot silently zero-pad or drop slots.
+            if (this.formantDetector.spec.formantCount !== SAB_FORMANT_COLUMN_COUNT) {
+                throw new Error(
+                    `pitchWorklet: formantCount must be ${SAB_FORMANT_COLUMN_COUNT} to match the SAB ring schema (got ${this.formantDetector.spec.formantCount})`,
+                );
+            }
         }
-        this.writer = new FrameRingWriter(opts.frameRingSab);
-        this.formantDetector = new FormantDetector({
-            ...DEFAULT_FORMANT_SPEC,
-            inputRate: sampleRate,
-        });
-        // The publish() loop below hardcodes formants[0..N-1] -> f1Hz..fNHz.
-        // SAB_FORMANT_COLUMN_COUNT is the schema authority; bind the
-        // assertion to it so a future ring-schema change (the only
-        // place the column count actually lives) is the single edit
-        // that this guard tracks. A tuning of DEFAULT_FORMANT_SPEC
-        // alone cannot silently zero-pad or drop slots.
-        if (this.formantDetector.spec.formantCount !== SAB_FORMANT_COLUMN_COUNT) {
-            throw new Error(
-                `pitchWorklet: formantCount must be ${SAB_FORMANT_COLUMN_COUNT} to match the SAB ring schema (got ${this.formantDetector.spec.formantCount})`,
-            );
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('PitchProcessor: construction failed', message);
+            this.port.postMessage({type: 'processorError', message});
+            throw err;
         }
     }
 
