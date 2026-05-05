@@ -2,7 +2,7 @@ import {test, expect, type CDPSession, type Page} from '@playwright/test';
 import {createWriteStream, mkdirSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {CHANNEL_BRIDGE_KEY} from '../../src/__testing/channelBridge';
+import {CHANNEL_BRIDGE_KEY} from '../../src/audio/channelBridge';
 
 // Chrome DevTools Protocol categories for the optional in-test
 // performance trace (CAPTURE_TRACE=1). Matches what DevTools'

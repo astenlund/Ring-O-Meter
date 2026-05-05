@@ -1,7 +1,9 @@
 // Test-only bridge between VoiceChannel and out-of-process harnesses
 // (Playwright e2e, future vitest browser tests). Production never arms
 // the global, so publishChannel short-circuits and the helpers leave
-// no observable trace.
+// no observable trace. Lives alongside voiceChannel.ts (rather than
+// under __testing/) so production code never imports from a test path:
+// this module is a runtime no-op in production, not a test harness.
 //
 // REALM BOUNDARY NOTE: Playwright's `page.evaluate` and
 // `addInitScript` bodies are serialised into the browser realm and
@@ -12,7 +14,7 @@
 // threaded in as the addInitScript / page.evaluate arg, so at least
 // the global name is single-sourced.
 
-import type {FrameRingReader} from '../audio/frameRing';
+import type {FrameRingReader} from './frameRing';
 
 export const CHANNEL_BRIDGE_KEY = '__ringOMeterChannels';
 

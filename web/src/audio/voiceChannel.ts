@@ -7,7 +7,7 @@ import workletUrl from './worklets/pitchWorklet.ts?worker&url';
 import {PITCH_PROCESSOR_NAME} from './constants';
 import {FrameRingReader, createFrameRing, type FrameSource} from './frameRing';
 import {AudioContextEpoch} from './audioContextEpoch';
-import {publishChannel, revokeChannel} from '../__testing/channelBridge';
+import {publishChannel, revokeChannel} from './channelBridge';
 
 export interface VoiceChannelEvents {
     // A fresh ring is available. `source` is the cross-thread descriptor

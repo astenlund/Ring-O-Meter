@@ -17,7 +17,7 @@ import fanoutWorkletUrl from './fanoutWorklet.ts?worker&url';
 import {AudioContextEpoch} from '../audio/audioContextEpoch';
 import {createFrameRing, FrameRingReader, type FrameSource} from '../audio/frameRing';
 import type {VoiceChannelEvents} from '../audio/voiceChannel';
-import {publishChannel, revokeChannel} from './channelBridge';
+import {publishChannel, revokeChannel} from '../audio/channelBridge';
 import {PITCH_FANOUT_PROCESSOR_NAME} from './fanoutConstants';
 
 export interface FanoutVoiceChannelOptions extends VoiceChannelEvents {
