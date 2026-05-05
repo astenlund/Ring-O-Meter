@@ -73,23 +73,16 @@ export const FORMANT_ABSENT_SENTINEL = 0;
 // reordering at finer grain.
 export const RING_SAB_BYTES = F4_HZ_OFFSET + F4_HZ_BYTES;
 
-export interface UiFrame {
-    fundamentalHz: number;
-    confidence: number;
-}
-
 /**
- * Output shape for the SAB reader's formant accessor. Carries the four
+ * Output shape for the SAB reader's per-frame pull. Carries the four
  * formant frequencies plus everything `shouldDisplayFormants(hz, conf,
  * rmsDb)` needs - rmsDb, fundamentalHz, confidence - all from the same
  * slot. A single coherent read satisfies the full gate predicate
- * without a second `readLatest` call on a potentially-newer slot. Of
- * the fields beyond f1-f4, `fundamentalHz` and `confidence` overlap
- * with what `readLatest(out: UiFrame)` also exposes; `rmsDb` is
- * specific to this accessor (UiFrame doesn't carry it). Routing all
- * three through this interface keeps the vowel module's per-frame
- * call shape uniform (one out-param, one read) instead of needing
- * two interlocked reads.
+ * without a second slot read on a potentially-newer slot. Routing
+ * pitch + gate inputs together through this interface keeps the
+ * vowel module's per-frame call shape uniform (one out-param, one
+ * read) instead of needing two interlocked reads. Pitch-only
+ * consumers ignore the formant fields.
  */
 export interface FormantFrame {
     f1Hz: number;
@@ -103,10 +96,11 @@ export interface FormantFrame {
 
 /**
  * Writer-side input shape for FrameRingWriter.publish. One named
- * field per ring column. Mirror of the reader's `readLatest(out:
- * UiFrame)` pattern: the caller owns the struct's lifetime, hoists
- * one instance, mutates fields in place, and passes it by reference
- * each publish. That keeps the publish path zero-alloc in steady
+ * field per ring column. Mirror of the reader's
+ * `readLatestFormants(out: FormantFrame)` pattern: the caller owns
+ * the struct's lifetime, hoists one instance, mutates fields in
+ * place, and passes it by reference each publish. That keeps the
+ * publish path zero-alloc in steady
  * state while making column transposition (the failure mode of the
  * previous 5-positional-number signature) a TypeScript error rather
  * than a silent miswire that only the byte-offset test in
@@ -258,7 +252,7 @@ export class FrameRingWriter {
  * descriptor alongside the reader, not through it. This keeps the
  * reader interface implementable by future non-SAB-backed readers
  * (e.g., slice 1's SignalR DisplayClient). Public surface:
- * `published()`, `readLatest(out)`, `forEach(startMs, cb)`,
+ * `published()`, `readLatestFormants(out)`, `forEach(startMs, cb)`,
  * `setOffset(offsetMs)`.
  */
 export class FrameRingReader {
@@ -300,34 +294,14 @@ export class FrameRingReader {
     }
 
     /**
-     * Main-side pull. Writes the newest published frame's UI shape
-     * into the caller-supplied `out` and returns true; returns false
-     * (leaving `out` untouched) when no frame has been published yet.
-     * Out-param shape is what makes steady-state zero-alloc: the
-     * caller owns one UiFrame per registered reader, lifetime-bound
-     * to the reader entry.
-     */
-    public readLatest(out: UiFrame): boolean {
-        const pub = Atomics.load(this.header, 0);
-        if (pub === 0) {
-            return false;
-        }
-        const slot = (pub - 1) & CAP_MASK;
-        out.fundamentalHz = this.hz[slot];
-        out.confidence = this.conf[slot];
-
-        return true;
-    }
-
-    /**
      * Main + worker pull for the formant slot + everything the gate
-     * predicate needs from the same slot. Mirrors readLatest's out-param
-     * convention so per-voice consumers can hoist one FormantFrame and
-     * reuse it across calls. Writes f1-f4 plus rmsDb plus the fundamental
-     * + confidence atomically (single slot read) so the
-     * shouldDisplayFormants(hz, conf, rmsDb) predicate runs against one
-     * coherent frame. Returns true on success; false when no frame has
-     * been published yet (out untouched).
+     * predicate needs from the same slot. Per-voice consumers hoist
+     * one FormantFrame and reuse it across calls (out-param shape is
+     * what makes steady-state zero-alloc). Writes f1-f4 plus rmsDb
+     * plus the fundamental + confidence atomically (single slot
+     * read) so the shouldDisplayFormants(hz, conf, rmsDb) predicate
+     * runs against one coherent frame. Returns true on success;
+     * false when no frame has been published yet (out untouched).
      */
     public readLatestFormants(out: FormantFrame): boolean {
         const pub = Atomics.load(this.header, 0);

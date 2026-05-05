@@ -77,10 +77,9 @@ export interface FrameStateControl {
      * eagerly present with all-zero fields immediately after
      * `registerReader` — they do not wait for the first flush.
      * Consumers should use optional-chaining or `?? 0` rather than
-     * membership checks. The shape is FormantFrame (superset of
-     * the original UiFrame) so consumers can surface formants
-     * alongside pitch without a parallel hook; pitch-only consumers
-     * just ignore the formant fields.
+     * membership checks. The shape is FormantFrame so consumers
+     * can surface formants alongside pitch without a parallel
+     * hook; pitch-only consumers just ignore the formant fields.
      */
     latest: Record<string, FormantFrame>;
     registerReader(channelId: string, reader: FrameRingReader): void;

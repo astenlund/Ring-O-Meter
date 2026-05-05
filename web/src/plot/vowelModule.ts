@@ -333,9 +333,8 @@ export class OrderDebounce {
 //
 // The whole gate-relevant input (fundamentalHz, confidence, rmsDb)
 // rides inside FormantFrame from a single coherent SAB slot read, so
-// no second `readLatest` call is needed and the gate sees a frame's
-// hz + rms together (not hz from one slot and rms from a possibly
-// newer slot).
+// no second slot read is needed and the gate sees a frame's hz + rms
+// together (not hz from one slot and rms from a possibly newer slot).
 export function consumeLatestFrame(
     voice: VoicePoint,
     reader: FrameRingReader,
