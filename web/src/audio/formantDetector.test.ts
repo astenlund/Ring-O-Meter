@@ -1,58 +1,7 @@
 import {describe, expect, it} from 'vitest';
 
+import {synthesizeVowel} from '../__testing/testSignal';
 import {DEFAULT_FORMANT_SPEC, FormantDetector} from './formantDetector';
-
-// Helper: synthesize a vowel-like signal as random source filtered
-// through 4 conjugate-pair formants at known F1..F4. Returns enough
-// samples for the detector to ramp up.
-function synthesizeVowel(
-    sampleRate: number,
-    formants: {f: number; bw: number}[],
-    durationSec: number,
-): Float32Array {
-    const N = Math.floor(sampleRate * durationSec);
-    let samples = new Float32Array(N);
-    let seed = 42;
-    const rand = (): number => {
-        seed = (seed * 1103515245 + 12345) >>> 0;
-
-        return ((seed & 0x7fffffff) / 0x7fffffff) * 2 - 1;
-    };
-    for (let i = 0; i < N; i++) {
-        samples[i] = rand();
-    }
-    // Apply each formant as a 2-pole IIR filter at frequency f, bandwidth bw.
-    // Pole at r = exp(-pi * bw / fs), angle = 2 * pi * f / fs.
-    for (const formant of formants) {
-        const r = Math.exp(-Math.PI * formant.bw / sampleRate);
-        const theta = 2 * Math.PI * formant.f / sampleRate;
-        const a1 = -2 * r * Math.cos(theta);
-        const a2 = r * r;
-        const out = new Float32Array(N);
-        for (let n = 0; n < N; n++) {
-            const x = samples[n];
-            const y1 = n - 1 >= 0 ? out[n - 1] : 0;
-            const y2 = n - 2 >= 0 ? out[n - 2] : 0;
-            out[n] = x - a1 * y1 - a2 * y2;
-        }
-        samples = out;
-    }
-    // Normalize to max magnitude 0.7 so we don't clip downstream.
-    let maxAbs = 0;
-    for (let i = 0; i < N; i++) {
-        if (Math.abs(samples[i]) > maxAbs) {
-            maxAbs = Math.abs(samples[i]);
-        }
-    }
-    if (maxAbs > 0) {
-        const scale = 0.7 / maxAbs;
-        for (let i = 0; i < N; i++) {
-            samples[i] *= scale;
-        }
-    }
-
-    return samples;
-}
 
 // Helper: process the whole signal in 1024-sample chunks (matching the
 // worklet's FRAME_SIZE), record the detector's outputs across the run,
