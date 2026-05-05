@@ -56,7 +56,7 @@ export function VowelPlot({controller, useUnderlay = false, style}: VowelPlotPro
         if (!canvas) {
             return;
         }
-        controller.attachVowelCanvas(canvas, backing);
+        controller.attachVowelCanvas(canvas);
         attachedRef.current = true;
         // No teardown: VowelPlot does not own the controller. App owns
         // it via useState; controller.dispose() (which terminates the

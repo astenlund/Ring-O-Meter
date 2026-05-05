@@ -266,15 +266,11 @@ self.onmessage = (event: MessageEvent<PlotMessage>) => {
             }
             ctx = got;
             paintFrame.ctx = ctx;
-            backing.cssWidth = msg.backing.cssWidth;
-            backing.cssHeight = msg.backing.cssHeight;
-            backing.dpr = msg.backing.dpr;
             voices = msg.voices;
             range = {minHz: msg.minHz, maxHz: msg.maxHz};
             windowMs = msg.windowMs;
-            if (rafId === 0 && backing.cssHeight > 0) {
-                rafId = requestAnimationFrame(paint);
-            }
+            // rAF arms via the SetBacking handler that follows; no backing
+            // dims are known yet at Init.
 
             return;
         }
@@ -315,16 +311,9 @@ self.onmessage = (event: MessageEvent<PlotMessage>) => {
                 throw new Error('plotWorker2dCanvas: vowel canvas 2d context unavailable');
             }
             vowelCtx = got;
-            vowelBacking.cssWidth = msg.backing.cssWidth;
-            vowelBacking.cssHeight = msg.backing.cssHeight;
-            vowelBacking.dpr = msg.backing.dpr;
-            // Arm the rAF loop here too so a vowel-only mount (no
-            // PitchPlot) still paints. The trace's Init / SetBacking
-            // handlers also arm rAF; the guard ensures only one arming
-            // per worker lifetime.
-            if (rafId === 0 && vowelBacking.cssHeight > 0) {
-                rafId = requestAnimationFrame(paint);
-            }
+            // rAF arms via the SetVowelBacking (or trace's SetBacking)
+            // handler that follows; no backing dims are known yet at
+            // InitVowelCanvas.
 
             return;
         }

@@ -36,7 +36,6 @@ export interface InitMessage {
     type: typeof PlotMessageType.Init;
     canvas: OffscreenCanvas;
     voices: ReadonlyArray<VoiceEntry>;
-    backing: {cssWidth: number; cssHeight: number; dpr: number};
     windowMs: number;
     minHz: number;
     maxHz: number;
@@ -86,7 +85,6 @@ export interface RebaseChannelMessage {
 export interface InitVowelCanvasMessage {
     type: typeof PlotMessageType.InitVowelCanvas;
     canvas: OffscreenCanvas;
-    backing: {cssWidth: number; cssHeight: number; dpr: number};
 }
 
 export interface AttachVowelChannelMessage {

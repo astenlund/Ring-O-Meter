@@ -201,25 +201,15 @@ async function initVowelCanvas(msg: InitVowelCanvasMessage): Promise<void> {
         // seeding, vowelModule.voices stays empty and update() produces
         // zero points even when channels are attached.
         vowelModule.setRoster(lastVoices);
-        // applyVowelCanvasBacking handles canvas resize + context
-        // reconfigure when the initial backing has real CSS dims; with
-        // a 0x0 placeholder it just propagates dims to the module
-        // (which early-exits its update loop until real dims arrive
-        // via SetVowelBacking).
-        applyVowelCanvasBacking(msg.backing.cssWidth, msg.backing.cssHeight, msg.backing.dpr);
+        // Real backing dims arrive via SetVowelBacking, which
+        // calls applyVowelCanvasBacking and arms rAF. The module's
+        // update loop early-exits while cssHeight is 0.
         vowelInitialised = true;
 
         for (const queued of pendingVowelMessages) {
             applyMessage(queued);
         }
         pendingVowelMessages.length = 0;
-
-        // Arm rAF here so a vowel-only mount (no PitchPlot) still
-        // paints. The trace's Init handler also arms; the guard
-        // ensures only one arming per worker lifetime.
-        if (rafId === 0 && msg.backing.cssHeight > 0) {
-            rafId = requestAnimationFrame(frame);
-        }
     } catch (err) {
         self.postMessage({
             type: 'vowelInitError',
@@ -365,15 +355,14 @@ self.onmessage = async (event: MessageEvent<PlotMessage>) => {
 
             return;
         }
-        renderer.setBacking(msg.backing.cssWidth, msg.backing.cssHeight, msg.backing.dpr);
+        // Real backing dims arrive via SetBacking, which calls
+        // renderer.setBacking and arms rAF. The renderer's draw path
+        // early-exits while cssHeight is 0.
         initialised = true;
         for (const queued of pendingMessages) {
             applyMessage(queued);
         }
         pendingMessages.length = 0;
-        if (rafId === 0 && msg.backing.cssHeight > 0) {
-            rafId = requestAnimationFrame(frame);
-        }
 
         return;
     }
