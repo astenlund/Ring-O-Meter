@@ -16,7 +16,7 @@
 // VoiceChannel on main (before SAB frame transport). Display-gate
 // filtering and smoothing remain separate concerns.
 
-// heuristic: octave-correction tolerance - how close a frame's log2-ratio to
+// heuristic: octave-correction-tolerance - how close a frame's log2-ratio to
 // the last stable value must be to an integer power of two before we call it
 // a YIN octave error rather than a genuine pitch move. Wider tolerance
 // catches more YIN glitches but may misclassify real leaps; set by
