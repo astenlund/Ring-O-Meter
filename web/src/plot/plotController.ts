@@ -17,7 +17,6 @@ import {F1_MAX, F1_MIN, F2_MAX, F2_MIN} from './vowelModule';
 
 export interface PlotControllerOptions {
     voices: ReadonlyArray<VoiceEntry>;
-    backing: {cssWidth: number; cssHeight: number; dpr: number};
     windowMs: number;
     minHz: number;
     maxHz: number;
@@ -94,7 +93,6 @@ export class PlotController {
             type: PlotMessageType.Init,
             canvas: offscreen,
             voices: opts.voices,
-            backing: opts.backing,
             windowMs: opts.windowMs,
             minHz: opts.minHz,
             maxHz: opts.maxHz,
@@ -103,13 +101,12 @@ export class PlotController {
         worker.postMessage(init, [offscreen]);
     }
 
-    public attachVowelCanvas(canvas: HTMLCanvasElement, backing: CanvasBacking): void {
+    public attachVowelCanvas(canvas: HTMLCanvasElement): void {
         const worker = this.ensureWorker();
         const offscreen = canvas.transferControlToOffscreen();
         const msg: PlotMessage = {
             type: PlotMessageType.InitVowelCanvas,
             canvas: offscreen,
-            backing,
         };
         worker.postMessage(msg, [offscreen]);
     }

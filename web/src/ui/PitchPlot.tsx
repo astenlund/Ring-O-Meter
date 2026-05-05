@@ -105,7 +105,7 @@ export function PitchPlot({
                 controllerRef.current = fresh;
                 ownsControllerRef.current = true;
             }
-            controllerRef.current.attach(canvas, {voices, backing, windowMs, minHz, maxHz});
+            controllerRef.current.attach(canvas, {voices, windowMs, minHz, maxHz});
         }
         handleRef.current = controllerRef.current;
 
