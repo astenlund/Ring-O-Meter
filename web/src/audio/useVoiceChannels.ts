@@ -1,6 +1,7 @@
 import {useEffect, useRef} from 'react';
 import {TARGET_SAMPLE_RATE_HZ} from './constants';
 import {openInputStream} from './deviceManager';
+import type {FrameSourceRegistry} from './frameSourceRegistry';
 import {VoiceChannel, type VoiceChannelEvents} from './voiceChannel';
 // Cleanup: remove this import + FanoutGroup interface + fanoutGroup field on
 // VoiceChannelSlot + the realSlots filter + the FanoutVoiceChannel ternary
@@ -43,14 +44,23 @@ export interface VoiceChannelSlot {
 // forwards lifecycle events. Slice 1's SignalR DisplayClient will reuse
 // the same event shape with a different event source.
 //
-// `events` does NOT need to be referentially stable. Callers may pass an
-// inline object literal each render; latest callbacks are read through a
-// ref so a fresh `events` identity reroutes invocations rather than tearing
-// down the AudioContext + worklet + mic streams. Teardown is reserved for
+// `events` does NOT need to be referentially stable. Callers may pass a
+// fresh registry each render; latest callbacks are read through a ref so
+// a fresh identity reroutes invocations rather than tearing down the
+// AudioContext + worklet + mic streams. Teardown is reserved for
 // `slots` changes, which is the only structural shape change in scope.
+//
+// `events` is typed as `FrameSourceRegistry` (not the structural
+// `VoiceChannelEvents`) because the lifecycle-event sink in this app is
+// fundamentally a multicast registry: the App-level FrameSourceRegistry
+// owns the per-event subscriber list and the future SignalR DisplayClient
+// will subscribe through the same surface. An inline `VoiceChannelEvents`
+// object literal would compile but silently bypass the multicast (none of
+// the three subscribers would fire), which is the failure mode the type
+// narrow is closing.
 export function useVoiceChannels(
     slots: readonly VoiceChannelSlot[] | null,
-    events: VoiceChannelEvents,
+    events: FrameSourceRegistry,
 ): void {
     const eventsRef = useRef(events);
     eventsRef.current = events;
