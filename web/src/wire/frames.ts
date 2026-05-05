@@ -8,6 +8,10 @@
 // correction fired. Consumers default to fundamentalHz; the raw value is
 // preserved so logging / re-analysis / heuristic-introspection tooling can
 // audit the correction after the fact.
+//
+// f1Hz..f4Hz carry the FORMANT_ABSENT_SENTINEL = 0 contract from
+// audio/frameRing.ts: 0 means "no formant detected in this slot"
+// (detector NaN mapped before SAB transit). Consumers gate on `f*Hz > 0`.
 
 export interface AnalysisFrame {
     channelId: string;        // [Key(0)]

@@ -8,7 +8,7 @@ import {detectPitch} from '../pitchDetector';
 import {computeRmsDb} from '../rmsDb';
 import {OctaveStabilizer} from '../octaveStabilizer';
 import {ANALYSIS_WINDOW_SIZE, FRAME_SIZE, PITCH_PROCESSOR_NAME} from '../constants';
-import {FrameRingWriter, SAB_FORMANT_COLUMN_COUNT, type PublishFrame} from '../frameRing';
+import {FORMANT_ABSENT_SENTINEL, FrameRingWriter, SAB_FORMANT_COLUMN_COUNT, type PublishFrame} from '../frameRing';
 import {DEFAULT_FORMANT_SPEC, FormantDetector} from '../formantDetector';
 
 const PUBLISH_INTERVAL_FRAMES = 1; // every ~21 ms at 48 kHz -> ~47 Hz publish
@@ -162,15 +162,14 @@ class PitchProcessor extends AudioWorkletProcessor {
         this.scratch.confidence = result.confidence;
         this.scratch.rmsDb = rmsDb;
         this.scratch.fundamentalHzRaw = fundamentalHzRaw;
-        // Map detector NaN to 0 for SAB transit. Float32 NaN survives
-        // memory stores, but downstream consumers (TS gates, the polygon
-        // module's gating debounce) treat 0 as the "no formant in slot"
-        // sentinel; 0-as-sentinel keeps the contract uniform with the
-        // writer's existing "fundamentalHz === 0 means no pitch" idiom.
-        this.scratch.f1Hz = Number.isFinite(formants[0]) ? formants[0] : 0;
-        this.scratch.f2Hz = Number.isFinite(formants[1]) ? formants[1] : 0;
-        this.scratch.f3Hz = Number.isFinite(formants[2]) ? formants[2] : 0;
-        this.scratch.f4Hz = Number.isFinite(formants[3]) ? formants[3] : 0;
+        // Map detector NaN to FORMANT_ABSENT_SENTINEL for SAB transit.
+        // Float32 NaN survives memory stores, but downstream consumers
+        // (vowel module's gating debounce, AnalysisFrame on the wire)
+        // gate on the sentinel.
+        this.scratch.f1Hz = Number.isFinite(formants[0]) ? formants[0] : FORMANT_ABSENT_SENTINEL;
+        this.scratch.f2Hz = Number.isFinite(formants[1]) ? formants[1] : FORMANT_ABSENT_SENTINEL;
+        this.scratch.f3Hz = Number.isFinite(formants[2]) ? formants[2] : FORMANT_ABSENT_SENTINEL;
+        this.scratch.f4Hz = Number.isFinite(formants[3]) ? formants[3] : FORMANT_ABSENT_SENTINEL;
         this.writer.publish(this.scratch);
     }
 }

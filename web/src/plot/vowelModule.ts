@@ -11,7 +11,7 @@
 // channel. The main thread's lifecycle messages drive attach/detach;
 // the worker holds one VoicePoint per attached channelId.
 
-import type {FormantFrame, FrameRingReader} from '../audio/frameRing';
+import {FORMANT_ABSENT_SENTINEL, type FormantFrame, type FrameRingReader} from '../audio/frameRing';
 import {shouldDisplayFormants} from '../ui/displayGate';
 
 // heuristic: vowel-gate-debounce-ms - smoothing window on gate
@@ -353,9 +353,10 @@ export function consumeLatestFrame(
         formantsOut.rmsDb,
     );
     voice.isDimmed = debounce.update(rawDisplay, dtMs);
-    // Detector emits 0 when no formant in slot; hold the previous
-    // valid value visually rather than collapsing the vertex to (0,0).
-    if (formantsOut.f1Hz > 0 && formantsOut.f2Hz > 0) {
+    // FORMANT_ABSENT_SENTINEL marks "no formant in slot"; hold the
+    // previous valid value visually rather than collapsing the vertex
+    // to (0,0).
+    if (formantsOut.f1Hz > FORMANT_ABSENT_SENTINEL && formantsOut.f2Hz > FORMANT_ABSENT_SENTINEL) {
         voice.f1Hz = formantsOut.f1Hz;
         voice.f2Hz = formantsOut.f2Hz;
 

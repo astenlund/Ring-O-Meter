@@ -57,6 +57,16 @@ const F4_HZ_BYTES = CAPACITY * 4;
 // FrameRingReader binders, AnalysisFrame.cs Keys, frames.ts mirror,
 // and bump this constant.
 export const SAB_FORMANT_COLUMN_COUNT = 4;
+// Sentinel value for "no formant detected in this slot" across the
+// formant transport boundary. Worklet writers (pitchWorklet,
+// fanoutWorklet) map detector NaN to this value before the SAB write;
+// downstream consumers (vowel module's gating debounce, future SignalR
+// publish sink, AnalysisFrame on the wire) gate on `f*Hz >
+// FORMANT_ABSENT_SENTINEL`. 0 is physically nonsensical as a real
+// formant frequency and aligns with the writer's existing
+// "fundamentalHz === 0 means no pitch" idiom; cross-language consumers
+// (C# AnalysisFrame.cs) should follow the same contract.
+export const FORMANT_ABSENT_SENTINEL = 0;
 // Layout-drift tripwire: any column add/remove/resize updates this
 // total. createFrameRing's size-invariant test pins 8 + 40 * CAPACITY
 // = 40968; the trailing-column offset test then catches column
