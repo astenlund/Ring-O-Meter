@@ -24,7 +24,12 @@ import {FrameRingWriter, type PublishFrame} from '../audio/frameRing';
 import {PITCH_FANOUT_PROCESSOR_NAME} from './fanoutConstants';
 import {FormantDetector} from '../audio/formantDetector';
 
+// Buffer geometry mirrors pitchWorklet.ts: a 2048-sample rolling window
+// for YIN (low-freq reach to ~47 Hz, well below C2) with the latest
+// 1024 samples as the per-frame view for RMS + formants. See
+// pitchWorklet.ts for the full rationale.
 const FRAME_SIZE = 1024;
+const ANALYSIS_WINDOW_SIZE = FRAME_SIZE * 2;
 const PUBLISH_INTERVAL_FRAMES = 1;
 
 interface FanoutProcessorOptions {
@@ -33,8 +38,10 @@ interface FanoutProcessorOptions {
 }
 
 class FanoutPitchProcessor extends AudioWorkletProcessor {
-    private readonly buffer = new Float32Array(FRAME_SIZE);
-    private bufferIndex = 0;
+    private readonly buffer = new Float32Array(ANALYSIS_WINDOW_SIZE);
+    private readonly latestFrame = this.buffer.subarray(FRAME_SIZE, ANALYSIS_WINDOW_SIZE);
+    private blocksAccumulated = 0;
+    private bufferIndex = FRAME_SIZE;
     private framesSinceLastPublish = 0;
     private readonly writers: FrameRingWriter[];
     private readonly multipliers: readonly number[];
@@ -96,19 +103,23 @@ class FanoutPitchProcessor extends AudioWorkletProcessor {
         let inputOffset = 0;
         let remaining = channel.length;
         while (remaining > 0) {
-            const space = FRAME_SIZE - this.bufferIndex;
+            const space = ANALYSIS_WINDOW_SIZE - this.bufferIndex;
             const chunk = remaining < space ? remaining : space;
             this.buffer.set(channel.subarray(inputOffset, inputOffset + chunk), this.bufferIndex);
             this.bufferIndex += chunk;
             inputOffset += chunk;
             remaining -= chunk;
-            if (this.bufferIndex >= FRAME_SIZE) {
-                this.framesSinceLastPublish++;
-                if (this.framesSinceLastPublish >= PUBLISH_INTERVAL_FRAMES) {
-                    this.publish();
-                    this.framesSinceLastPublish = 0;
+            if (this.bufferIndex >= ANALYSIS_WINDOW_SIZE) {
+                this.blocksAccumulated++;
+                if (this.blocksAccumulated >= 2) {
+                    this.framesSinceLastPublish++;
+                    if (this.framesSinceLastPublish >= PUBLISH_INTERVAL_FRAMES) {
+                        this.publish();
+                        this.framesSinceLastPublish = 0;
+                    }
                 }
-                this.bufferIndex = 0;
+                this.buffer.copyWithin(0, FRAME_SIZE, ANALYSIS_WINDOW_SIZE);
+                this.bufferIndex = FRAME_SIZE;
             }
         }
 
@@ -120,7 +131,7 @@ class FanoutPitchProcessor extends AudioWorkletProcessor {
         if (!Number.isFinite(result.fundamentalHz)) {
             return;
         }
-        const rmsDb = computeRmsDb(this.buffer);
+        const rmsDb = computeRmsDb(this.latestFrame);
         const fundamentalHzRaw = result.fundamentalHz;
         const stabilized = this.stabilizer.apply(fundamentalHzRaw);
         // Fields shared across all N writers: captured once before the
@@ -134,7 +145,7 @@ class FanoutPitchProcessor extends AudioWorkletProcessor {
         // share one mic input (same vocal tract), so formants are
         // identical across rings. Computing per-ring would be wasteful
         // and still produce the same values.
-        this.formantDetector.process(this.buffer);
+        this.formantDetector.process(this.latestFrame);
         const formants = this.formantDetector.result.frequencies;
         this.scratch.f1Hz = Number.isFinite(formants[0]) ? formants[0] : 0;
         this.scratch.f2Hz = Number.isFinite(formants[1]) ? formants[1] : 0;

@@ -11,6 +11,15 @@ export type {VoiceEntry};
 // signature changes.
 export type PitchPlotHandle = Pick<PlotController, 'attachChannel' | 'detachChannel' | 'rebaseChannel'>;
 
+// Default plot range covers C2 (65.41 Hz) to C6 (1046.50 Hz): four full
+// octaves spanning the floor of barbershop bass (rarely below C2 even
+// on harmonic-7 chord roots) and well above any sung fundamental at the
+// top, leaving diagnostic headroom for transient octave-stabilizer
+// readings without losing readability of the typical ~80-600 Hz coaching
+// range.
+const DEFAULT_MIN_HZ = 65.41;
+const DEFAULT_MAX_HZ = 1046.50;
+
 export interface PitchPlotProps {
     voices: ReadonlyArray<VoiceEntry>;
     windowMs: number;
@@ -61,8 +70,8 @@ const canvasStyle: CSSProperties = {
 export function PitchPlot({
     voices,
     windowMs,
-    minHz = 80,
-    maxHz = 600,
+    minHz = DEFAULT_MIN_HZ,
+    maxHz = DEFAULT_MAX_HZ,
     handleRef,
     useUnderlay = false,
     rendererWorkerUrl,
