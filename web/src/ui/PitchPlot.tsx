@@ -156,6 +156,15 @@ export function PitchPlot({
     // setUnderlayBacking on roster + size changes. Skipped entirely on
     // the 2D arm (useUnderlay=false), where the top 2D worker paints
     // its own grid + legend each frame.
+    // Two-effect split mirrors VowelPlot.tsx: ctx + opts registration
+    // runs only when the registration shape changes; backing
+    // propagation runs on size changes. Fusing them into a single
+    // effect on `[useUnderlay, voices, minHz, maxHz, backing]` would
+    // call `setUnderlay(ctx, opts)` on every backing change, which
+    // immediately calls `repaintUnderlay()` against the still-stale
+    // `underlayBacking` (the next line then updates it and repaints
+    // again with correct dims). Result is two paints per resize, the
+    // first against stale dims.
     useEffect(() => {
         if (!useUnderlay) {
             return;
@@ -166,8 +175,14 @@ export function PitchPlot({
             return;
         }
         controllerRef.current.setUnderlay(ctx, {voices, minHz, maxHz});
+    }, [useUnderlay, voices, minHz, maxHz]);
+
+    useEffect(() => {
+        if (!useUnderlay || !controllerRef.current) {
+            return;
+        }
         controllerRef.current.setUnderlayBacking(backing.cssWidth, backing.cssHeight, backing.dpr);
-    }, [useUnderlay, voices, minHz, maxHz, backing]);
+    }, [useUnderlay, backing]);
 
     return (
         <div style={{position: 'relative', width: '100%', height: '100%', ...style}}>

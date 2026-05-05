@@ -8,7 +8,7 @@ import {detectPitch} from '../pitchDetector';
 import {computeRmsDb} from '../rmsDb';
 import {OctaveStabilizer} from '../octaveStabilizer';
 import {PITCH_PROCESSOR_NAME} from '../constants';
-import {FrameRingWriter, type PublishFrame} from '../frameRing';
+import {FrameRingWriter, SAB_FORMANT_COLUMN_COUNT, type PublishFrame} from '../frameRing';
 import {DEFAULT_FORMANT_SPEC, FormantDetector} from '../formantDetector';
 
 // FRAME_SIZE is the publish-frame unit (~21 ms at 48 kHz): how often
@@ -79,15 +79,15 @@ class PitchProcessor extends AudioWorkletProcessor {
             ...DEFAULT_FORMANT_SPEC,
             inputRate: sampleRate,
         });
-        // The publish() loop below hardcodes formants[0..3] -> f1Hz..f4Hz.
-        // The SAB ring schema (FormantFrame, AnalysisFrame Keys 6-9) is
-        // also fixed at four columns, so formantCount cannot vary today.
-        // Guard at construction so a future tuning of DEFAULT_FORMANT_SPEC
-        // (which the const's comment invites) cannot silently zero-pad
-        // or drop slots when it changes formantCount.
-        if (this.formantDetector.spec.formantCount !== 4) {
+        // The publish() loop below hardcodes formants[0..N-1] -> f1Hz..fNHz.
+        // SAB_FORMANT_COLUMN_COUNT is the schema authority; bind the
+        // assertion to it so a future ring-schema change (the only
+        // place the column count actually lives) is the single edit
+        // that this guard tracks. A tuning of DEFAULT_FORMANT_SPEC
+        // alone cannot silently zero-pad or drop slots.
+        if (this.formantDetector.spec.formantCount !== SAB_FORMANT_COLUMN_COUNT) {
             throw new Error(
-                `pitchWorklet: formantCount must be 4 to match the SAB ring schema (got ${this.formantDetector.spec.formantCount})`,
+                `pitchWorklet: formantCount must be ${SAB_FORMANT_COLUMN_COUNT} to match the SAB ring schema (got ${this.formantDetector.spec.formantCount})`,
             );
         }
     }

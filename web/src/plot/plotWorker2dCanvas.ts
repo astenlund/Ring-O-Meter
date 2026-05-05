@@ -89,10 +89,20 @@ const vowelFormantsOut: FormantFrame = {
 // high-water mark so push never reallocates.
 const vowelPointsScratch: VoicePoint[] = [];
 // Pre-allocated VowelPoint2d objects passed to the paint helpers. One
-// per voice slot up to MAX_VOICES; the helpers iterate the first N
-// based on the length tracked separately.
+// per voice slot up to MAX_VOICES; the per-frame paint loop mutates
+// these slots IN PLACE (`vowelDrawPoints[i].x = ...`) and then sets
+// `length = voiceCount` to bound the helpers' iteration. The module-
+// init priming below populates all MAX_VOICES slots and leaves
+// `length = MAX_VOICES`. Do NOT reset the length to 0 here -- that
+// would destroy the pre-allocated objects, and the first per-frame
+// `vowelDrawPoints[i].x = ...` would throw on `undefined.x`. The
+// per-frame `length = voiceCount` line in paintVowel handles the
+// runtime-visible length.
 const vowelDrawPoints: VowelPoint2d[] = [];
-// Initial priming so push() never grows the arrays beyond MAX_VOICES.
+// Initial priming. vowelPointsScratch + vowelOrderingForPaint use the
+// push-per-frame pattern (length=0 at module init is correct, push
+// re-grows up to MAX_VOICES); vowelDrawPoints uses index-assignment
+// per frame so its length must stay at MAX_VOICES post-priming.
 for (let i = 0; i < MAX_VOICES; i++) {
     vowelPointsScratch.push({
         channelId: '',
@@ -111,7 +121,7 @@ for (let i = 0; i < MAX_VOICES; i++) {
     });
 }
 vowelPointsScratch.length = 0;
-vowelDrawPoints.length = 0;
+// vowelDrawPoints.length intentionally stays at MAX_VOICES; see comment above.
 
 // Pre-allocated number[] used to expose a length-bounded view of
 // `applied` (Int32Array, full MAX_VOICES capacity) to the paint
@@ -200,7 +210,11 @@ function paintVowel(): void {
         slot.dimColor = state.dimColor;
         slot.isDimmed = pt.isDimmed;
     }
-    vowelDrawPoints.length = voiceCount;
+    // vowelDrawPoints.length intentionally stays at MAX_VOICES; the
+    // paint helpers below take an explicit voiceCount/appliedLen rather
+    // than relying on the array's length. Truncating here would delete
+    // the slots beyond voiceCount per JS semantics, and the next frame
+    // with a larger voiceCount would read undefined at those indices.
 
     const dotSizeDevicePx = Math.round(VOWEL_DOT_CSS_SIZE * vowelBacking.dpr);
     const strokeWidthDevicePx = Math.max(1, Math.round(1.5 * vowelBacking.dpr));
@@ -214,7 +228,7 @@ function paintVowel(): void {
     }
 
     drawVowelPolygon(vowelCtx, vowelDrawPoints, vowelOrderingForPaint, strokeWidthDevicePx);
-    drawVowelDots(vowelCtx, vowelDrawPoints, dotSizeDevicePx);
+    drawVowelDots(vowelCtx, vowelDrawPoints, voiceCount, dotSizeDevicePx);
 }
 
 function paint(): void {

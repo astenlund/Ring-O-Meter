@@ -20,7 +20,7 @@
 import {detectPitch} from '../audio/pitchDetector';
 import {computeRmsDb} from '../audio/rmsDb';
 import {OctaveStabilizer} from '../audio/octaveStabilizer';
-import {FrameRingWriter, type PublishFrame} from '../audio/frameRing';
+import {FrameRingWriter, SAB_FORMANT_COLUMN_COUNT, type PublishFrame} from '../audio/frameRing';
 import {PITCH_FANOUT_PROCESSOR_NAME} from './fanoutConstants';
 import {DEFAULT_FORMANT_SPEC, FormantDetector} from '../audio/formantDetector';
 
@@ -87,10 +87,10 @@ class FanoutPitchProcessor extends AudioWorkletProcessor {
             inputRate: sampleRate,
         });
         // Same SAB schema constraint as pitchWorklet.ts: publish()
-        // hardcodes formants[0..3] -> f1Hz..f4Hz.
-        if (this.formantDetector.spec.formantCount !== 4) {
+        // hardcodes formants[0..N-1] -> f1Hz..fNHz.
+        if (this.formantDetector.spec.formantCount !== SAB_FORMANT_COLUMN_COUNT) {
             throw new Error(
-                `fanoutWorklet: formantCount must be 4 to match the SAB ring schema (got ${this.formantDetector.spec.formantCount})`,
+                `fanoutWorklet: formantCount must be ${SAB_FORMANT_COLUMN_COUNT} to match the SAB ring schema (got ${this.formantDetector.spec.formantCount})`,
             );
         }
     }
