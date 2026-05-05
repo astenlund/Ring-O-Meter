@@ -26,10 +26,18 @@
 // per frame but their workspaces are pre-allocated to keep the
 // per-frame call zero-alloc in steady state.
 
+import {FRAME_SIZE} from './constants';
 import {Decimator} from './decimator';
 import {LpcBurg} from './lpc';
 import {PolyRoots, factorToPole} from './polyRoots';
 import {PreEmphasis} from './preEmphasis';
+
+// Upper bound on the input frame size this detector can process. The
+// worklet currently calls process() with a 1024-sample view, but the
+// scratch buffers carry 8x headroom so a future window-size retune is
+// covered without re-tuning every consumer. Bound the propagation to
+// FRAME_SIZE so a static change at the source is visible here.
+export const MAX_INPUT_FRAME_SIZE = FRAME_SIZE * 8;
 
 export interface FormantDetectorSpec {
     inputRate: number;
@@ -100,17 +108,15 @@ export class FormantDetector {
             outputRate: spec.decimatedRate,
             cutoffHz: spec.decimatorCutoffHz,
         });
-        // Sized for ceil(8192 / decimationFactor) decimated samples - the
-        // worklet's actual input frame is FRAME_SIZE = 1024, but 8192 is
-        // the upper bound this detector accepts (matches preEmphasisScratch
-        // below).
-        const decimatedCapacity = Math.ceil(8192 / this.decimator.decimationFactor);
+        // Sized for ceil(MAX_INPUT_FRAME_SIZE / decimationFactor) decimated
+        // samples. The worklet's actual input frame is FRAME_SIZE = 1024;
+        // MAX_INPUT_FRAME_SIZE = FRAME_SIZE * 8 carries headroom so a
+        // future window-size retune is covered without re-tuning here.
+        const decimatedCapacity = Math.ceil(MAX_INPUT_FRAME_SIZE / this.decimator.decimationFactor);
         this.decimatedScratch = new Float32Array(decimatedCapacity);
         // Distinct from decimatedScratch: pre-emphasis runs at input rate
         // and writes a same-length buffer that the decimator then reads.
-        // Sized for the largest reasonable input frame (8192) since the
-        // worklet's actual frame is FRAME_SIZE = 1024.
-        this.preEmphasisScratch = new Float32Array(8192);
+        this.preEmphasisScratch = new Float32Array(MAX_INPUT_FRAME_SIZE);
 
         this.lpc = new LpcBurg(spec.lpcOrder, decimatedCapacity);
         this.poly = new PolyRoots(spec.lpcOrder);

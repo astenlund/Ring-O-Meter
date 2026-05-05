@@ -7,23 +7,10 @@
 import {detectPitch} from '../pitchDetector';
 import {computeRmsDb} from '../rmsDb';
 import {OctaveStabilizer} from '../octaveStabilizer';
-import {PITCH_PROCESSOR_NAME} from '../constants';
+import {ANALYSIS_WINDOW_SIZE, FRAME_SIZE, PITCH_PROCESSOR_NAME} from '../constants';
 import {FrameRingWriter, SAB_FORMANT_COLUMN_COUNT, type PublishFrame} from '../frameRing';
 import {DEFAULT_FORMANT_SPEC, FormantDetector} from '../formantDetector';
 
-// FRAME_SIZE is the publish-frame unit (~21 ms at 48 kHz): how often
-// publish() runs, and the window size that RMS + formants analyse.
-// ANALYSIS_WINDOW_SIZE is the YIN-only window (2 * FRAME_SIZE): YIN
-// needs at least 2 cycles of the lowest detectable frequency to find
-// a clean autocorrelation lag, and 1024 samples bottoms out at
-// ~94 Hz - just above F#2, leaving E2/F2 (real bass-singer notes,
-// 82-87 Hz) in a detection-blind zone. Doubling the YIN window pushes
-// the floor below C2 (~47 Hz) without changing the publish rate, at
-// the cost of ~4x YIN compute per publish (still well within the
-// 21 ms worklet budget). RMS and formants stay on the 1024-sample
-// latest-frame view because more history doesn't help those analyses.
-const FRAME_SIZE = 1024;
-const ANALYSIS_WINDOW_SIZE = FRAME_SIZE * 2;
 const PUBLISH_INTERVAL_FRAMES = 1; // every ~21 ms at 48 kHz -> ~47 Hz publish
 
 interface PitchProcessorOptions {
