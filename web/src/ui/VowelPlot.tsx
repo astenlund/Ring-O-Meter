@@ -5,7 +5,8 @@ import {useCanvasBacking} from './useCanvasBacking';
 export interface VowelPlotProps {
     // App-level shared PlotController. Unlike PitchPlot, VowelPlot does
     // NOT have a self-construct fallback: this component shipped after
-    // the Task 14 controller-hoist and there is no legacy consumer that
+    // the controller-hoist that lifted PlotController to App so it can
+    // be shared with PitchPlot, and there is no legacy consumer that
     // needs the back-compat shape. Required so the inter-singer F1/F2
     // polygon is always wired into the same render worker as the trace
     // (one device, one queue, one submit per frame).
