@@ -4,7 +4,7 @@
 // confidence input, so it guards only on the hz-sanity portion
 // independently — that's a legitimate split, not a missed consumer.
 
-// heuristic: display-gate confidence floor - below this, the readout dims and the plot breaks its trace.
+// heuristic: display-gate-confidence-floor - below this, the readout dims and the plot breaks its trace.
 export const MIN_DISPLAY_CONFIDENCE = 0.6;
 
 // heuristic: min-formant-rms-db - sustained-voice rms floor below which
