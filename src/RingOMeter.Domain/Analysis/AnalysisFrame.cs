@@ -12,12 +12,11 @@ namespace RingOMeter.Domain.Analysis;
 // on the wire so logging, re-analysis, and heuristic-introspection tooling
 // can audit the correction after the fact.
 //
-// F1Hz..F4Hz: 0 is the FORMANT_ABSENT_SENTINEL meaning "no formant detected
-// in this slot" (mirror of FORMANT_ABSENT_SENTINEL in
-// web/src/audio/frameRing.ts). Detector NaN is mapped to 0 before SAB
-// transit; consumers gate on `f*Hz > 0`. 0 is physically nonsensical as a
-// real formant frequency and aligns with FundamentalHz's "0 means no
-// pitch" convention.
+// Formants is a nested FormantTuple (its own [MessagePackObject] with Keys
+// 0-3 for F1-F4). Carrying the four formant slots through one Key(6) slot
+// keeps "the formants" addressable as a single value at every layer that
+// hands them around (publish sinks, aggregators, future per-formant
+// confidence/bandwidth additions append inside the tuple, not on the frame).
 [MessagePackObject]
 public sealed record AnalysisFrame(
     [property: Key(0)] string ChannelId,
@@ -26,7 +25,4 @@ public sealed record AnalysisFrame(
     [property: Key(3)] float Confidence,
     [property: Key(4)] float RmsDb,
     [property: Key(5)] float FundamentalHzRaw,
-    [property: Key(6)] float F1Hz,
-    [property: Key(7)] float F2Hz,
-    [property: Key(8)] float F3Hz,
-    [property: Key(9)] float F4Hz);
+    [property: Key(6)] FormantTuple Formants);
