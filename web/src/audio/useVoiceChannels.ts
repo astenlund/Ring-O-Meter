@@ -1,8 +1,9 @@
-import {useEffect, useRef} from 'react';
+import {useEffect} from 'react';
 import {TARGET_SAMPLE_RATE_HZ} from './constants';
 import {openInputStream} from './deviceManager';
 import type {FrameSourceRegistry} from './frameSourceRegistry';
 import {VoiceChannel, type VoiceChannelEvents} from './voiceChannel';
+import {useLatestRef} from '../util/useLatestRef';
 // Cleanup: remove this import + FanoutGroup interface + fanoutGroup field on
 // VoiceChannelSlot + the realSlots filter + the FanoutVoiceChannel ternary
 // branch when the fanout test mode is retired (also remove parseFanoutFlag
@@ -62,8 +63,7 @@ export function useVoiceChannels(
     slots: readonly VoiceChannelSlot[] | null,
     events: FrameSourceRegistry,
 ): void {
-    const eventsRef = useRef(events);
-    eventsRef.current = events;
+    const eventsRef = useLatestRef(events);
 
     useEffect(() => {
         if (!slots) {
@@ -169,5 +169,5 @@ export function useVoiceChannels(
             cancelled = true;
             teardown();
         };
-    }, [slots]);
+    }, [slots, eventsRef]);
 }

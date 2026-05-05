@@ -9,6 +9,7 @@ import {useInputDevices} from './audio/useInputDevices';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
 import {FrameSourceRegistry} from './audio/frameSourceRegistry';
 import {PlotController} from './plot/plotController';
+import {useLatestRef} from './util/useLatestRef';
 // Cleanup: remove this import + fanoutConfig state + fanout branch in
 // the slot-build effect + trim SLOT_COLORS back to ['#5cf', '#fc5'] when
 // the fanout test mode is retired (also remove FanoutGroup + fanoutGroup
@@ -226,11 +227,8 @@ export function App() {
     // device-switches. Listing `slots` directly would tear down and
     // re-subscribe on every roster change, racing against `onReady`
     // events fired during the same React commit (the new subscriber
-    // would miss the attach for the freshly-built slot). Idempotent
-    // render-time mutation matches NoteReadout's cached-last-valid-text
-    // pattern; the ref reads always see the latest committed slots.
-    const slotsRef = useRef<Slot[] | null>(null);
-    slotsRef.current = slots;
+    // would miss the attach for the freshly-built slot).
+    const slotsRef = useLatestRef(slots);
     useEffect(() => {
         return registry.subscribe({
             onReady: (channelId, source, _reader) => {
@@ -243,7 +241,7 @@ export function App() {
                 controller.rebaseVowelChannel(channelId, epochOffsetMs),
             onGone: (channelId) => controller.detachVowelChannel(channelId),
         });
-    }, [registry, controller]);
+    }, [registry, controller, slotsRef]);
 
     const voices = useMemo(() => slotsToVoices(slots ?? []), [slots]);
 
