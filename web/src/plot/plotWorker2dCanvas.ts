@@ -29,6 +29,7 @@ import {
     MAX_VOICES,
     OrderDebounce,
     VOWEL_DIM_BRIGHTNESS,
+    VOWEL_DOT_CSS_SIZE,
     consumeLatestFrame,
     polarAngleSortInto,
     type VoicePoint,
@@ -62,9 +63,6 @@ const paintFrame: PaintFrame = {
 // Vowel-side state. Mirrors the WebGPU worker's vowel module structure
 // but uses paint.ts helpers + vowelModule.ts state machines directly,
 // since the 2D arm has no RenderModule abstraction.
-//
-// heuristic: vowel-dot-css-size - dot side length in CSS pixels.
-const VOWEL_DOT_CSS_SIZE = 4;
 
 interface VowelChannelState {
     reader: FrameRingReader;
@@ -115,9 +113,15 @@ for (let i = 0; i < MAX_VOICES; i++) {
 vowelPointsScratch.length = 0;
 vowelDrawPoints.length = 0;
 
-// Pre-allocated number[] used to slice `applied` (Int32Array) into a
-// length-bounded ReadonlyArray<number> for the paint helpers. Primed
-// to MAX_VOICES so per-frame push never grows the internal array.
+// Pre-allocated number[] used to expose a length-bounded view of
+// `applied` (Int32Array, full MAX_VOICES capacity) to the paint
+// helpers. drawVowelPolygon accepts ArrayLike<number> so it could
+// take an Int32Array directly, but the only length-bounded handle
+// the Int32Array offers is `subarray(0, appliedLen)` which allocates
+// a fresh view object per frame (~100 B × 60 fps × 60 s blows the
+// vowel-module alloc-test budget). Push-into-primed-array stays
+// zero-alloc in steady state because V8 keeps the internal capacity
+// at the high-water mark after `length = 0`.
 const vowelOrderingForPaint: number[] = [];
 for (let i = 0; i < MAX_VOICES; i++) {
     vowelOrderingForPaint.push(0);
@@ -180,28 +184,30 @@ function paintVowel(): void {
     // canvas x grows left-to-right; F1 does NOT need the (1 - yNorm)
     // inversion because canvas y already grows top-to-bottom, so plain
     // yNorm puts low F1 (small numerator) near the top automatically.
-    vowelDrawPoints.length = 0;
+    //
+    // Mutate pre-allocated slots in place (do NOT push fresh objects):
+    // vowelDrawPoints was primed with MAX_VOICES placeholders at module
+    // load so per-frame writes only update field values, keeping the
+    // per-frame paint zero-alloc per the hot-path-allocation-discipline
+    // pattern.
     for (let i = 0; i < voiceCount; i++) {
         const pt = vowelPointsScratch[i];
         const state = vowelChannels.get(pt.channelId)!;
-        const x = vowelSize.width * (1 - (pt.f2Hz - F2_MIN) / F2_SPAN);
-        const y = vowelSize.height * ((pt.f1Hz - F1_MIN) / F1_SPAN);
-        vowelDrawPoints.push({
-            x,
-            y,
-            color: state.color,
-            dimColor: state.dimColor,
-            isDimmed: pt.isDimmed,
-        });
+        const slot = vowelDrawPoints[i];
+        slot.x = vowelSize.width * (1 - (pt.f2Hz - F2_MIN) / F2_SPAN);
+        slot.y = vowelSize.height * ((pt.f1Hz - F1_MIN) / F1_SPAN);
+        slot.color = state.color;
+        slot.dimColor = state.dimColor;
+        slot.isDimmed = pt.isDimmed;
     }
+    vowelDrawPoints.length = voiceCount;
 
     const dotSizeDevicePx = Math.round(VOWEL_DOT_CSS_SIZE * vowelBacking.dpr);
     const strokeWidthDevicePx = Math.max(1, Math.round(1.5 * vowelBacking.dpr));
 
-    // Build a contiguous number[] slice of `applied` for the paint helpers
-    // (they take ReadonlyArray<number>). Uses the pre-allocated
-    // vowelOrderingForPaint to stay zero-alloc; length is reset to 0 then
-    // pushed up to appliedLen, keeping it in the high-water-mark region.
+    // Push the first appliedLen entries from `applied` (Int32Array,
+    // capacity MAX_VOICES) into the primed number[] buffer. See
+    // declaration comment for why subarray is the wrong choice here.
     vowelOrderingForPaint.length = 0;
     for (let i = 0; i < appliedLen; i++) {
         vowelOrderingForPaint.push(applied[i]);

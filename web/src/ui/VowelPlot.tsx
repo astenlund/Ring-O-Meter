@@ -71,6 +71,12 @@ export function VowelPlot({controller, useUnderlay = false, style}: VowelPlotPro
         controller.setVowelBacking(backing.cssWidth, backing.cssHeight, backing.dpr);
     }, [backing, controller]);
 
+    // One-shot ctx registration: setVowelUnderlay sets the controller's
+    // ctx ref, which is stable for the underlay canvas's lifetime. This
+    // effect runs only on mount + useUnderlay-toggle, NOT on every
+    // backing change - registering the same ctx repeatedly would trigger
+    // a paint with stale dims (because vowelUnderlayBacking still holds
+    // the previous frame's values until the second effect updates it).
     useEffect(() => {
         if (!useUnderlay) {
             return;
@@ -81,6 +87,14 @@ export function VowelPlot({controller, useUnderlay = false, style}: VowelPlotPro
             return;
         }
         controller.setVowelUnderlay(ctx);
+    }, [useUnderlay, controller]);
+
+    // Backing propagation: separate from the ctx registration so backing
+    // changes paint exactly once with the correct dims.
+    useEffect(() => {
+        if (!useUnderlay) {
+            return;
+        }
         controller.setVowelUnderlayBacking(backing.cssWidth, backing.cssHeight, backing.dpr);
     }, [useUnderlay, backing, controller]);
 

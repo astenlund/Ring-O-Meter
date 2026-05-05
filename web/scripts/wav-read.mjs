@@ -22,7 +22,9 @@
 //   44+ samples
 import {readFileSync} from 'node:fs';
 
-export const WAV_HEADER_BYTES = 44;
+import {WAV_HEADER_BYTES} from './wav-utils.mjs';
+
+export {WAV_HEADER_BYTES};
 
 export function readWavFile(path) {
     const raw = readFileSync(path);
@@ -50,7 +52,11 @@ export function readWavFile(path) {
         throw new Error(`Missing 'data' chunk: ${path}`);
     }
     const dataByteLength = buf.readUInt32LE(40);
-    const sampleCount = dataByteLength / (channels * bitsPerSample / 8);
+    // Math.floor: defensive against a malformed dataByteLength that does
+    // not perfectly divide. The codebase's own writers always emit
+    // valid 16-bit PCM, but a stray non-integer would propagate as an
+    // out-of-range Buffer read in the read loop below; floor first.
+    const sampleCount = Math.floor(dataByteLength / (channels * bitsPerSample / 8));
 
     const samples = new Float32Array(sampleCount);
     if (bitsPerSample === 16) {

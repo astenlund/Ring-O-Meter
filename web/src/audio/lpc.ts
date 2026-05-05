@@ -98,7 +98,12 @@ export class LpcBurg {
                 den += fn * fn + bn * bn;
             }
             if (den === 0) {
-                // Degenerate; remaining reflections stay 0.
+                // Degenerate; clear remaining reflections from prior calls
+                // so the public `reflections` field doesn't carry stale
+                // values past index i-1. The LPC coefficients `a` are
+                // already correctly populated at the partial order; only
+                // the reflection sequence needs zeroing here.
+                k.fill(0, i - 1);
                 this.error = E;
 
                 return;

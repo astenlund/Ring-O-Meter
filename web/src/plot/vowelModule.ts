@@ -68,6 +68,13 @@ export const F2_MAX = 3300;
 export const F1_SPAN = F1_MAX - F1_MIN;
 export const F2_SPAN = F2_MAX - F2_MIN;
 
+// heuristic: vowel-dot-css-size - dot side length in CSS pixels; both
+// renderers compute device-pixel size as round(N * dpr). 4 reads as a
+// crisp pixel marker at typical DPRs (4, 8, 10 device px); larger
+// values feel "bubbly", smaller values disappear at high DPR. Single
+// source of truth so the WebGPU and 2D renderers cannot drift.
+export const VOWEL_DOT_CSS_SIZE = 4;
+
 export interface VoicePoint {
     channelId: string;
     color: string;          // 3- or 6-digit hex from SLOT_COLORS
@@ -164,9 +171,20 @@ export function polarAngleSort(points: ReadonlyArray<VoicePoint>): number[] {
 // formula on the points in the supplied ordering. For N = 2, returns
 // the squared edge length (the polygon degenerates to a single
 // segment). For N = 0 or 1, returns NaN (no inter-voice spread).
+//
+// Currently consumed only by `vowelModule.test.ts`; the production
+// paint paths build the polygon shape directly without computing the
+// metric. Reserved for the future ring-score readout, mastery-history
+// logging, and the Heuristic Introspection panel; do not delete as
+// dead code.
+//
+// `ordering` is `ArrayLike<number>` (not `ReadonlyArray<number>`) so
+// callers can pass either a `number[]` or a typed `Int32Array` view
+// from a debounce buffer without a copy. Both shapes index identically;
+// the wider type captures both.
 export function polygonAreaMetric(
     points: ReadonlyArray<VoicePoint>,
-    ordering: ReadonlyArray<number>,
+    ordering: ArrayLike<number>,
 ): number {
     if (points.length < 2) {
         return Number.NaN;

@@ -2,15 +2,15 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import type {FormantFrame, FrameRingReader} from './frameRing';
 
 // Polls each registered reader on an rAF-paced schedule (capped at
-// ~15 Hz) and swaps a 2-buffer pool of `Record<string, UiFrame>` into
-// React state. Each buffer owns its own UiFrame instances per
-// channelId, so the buffer React is currently rendering with is never
-// mutated; mutations land in scratch only, then the active index
-// flips and React sees a fresh reference. Stalled channels retain
-// their prior UiFrame values via field-by-field carry-over from
-// active to scratch, so a momentarily-silent voice's NoteReadout
-// keeps rendering its last-known pitch rather than blanking. Entries
-// are removed only on explicit unregisterReader.
+// ~15 Hz) and swaps a 2-buffer pool of `Record<string, FormantFrame>`
+// into React state. Each buffer owns its own FormantFrame instances
+// per channelId, so the buffer React is currently rendering with is
+// never mutated; mutations land in scratch only, then the active
+// index flips and React sees a fresh reference. Stalled channels
+// retain their prior FormantFrame values via field-by-field carry-
+// over from active to scratch, so a momentarily-silent voice's
+// NoteReadout keeps rendering its last-known pitch rather than
+// blanking. Entries are removed only on explicit unregisterReader.
 //
 // Concurrent-rendering: the 2-buffer design assumes at most one
 // render in flight per state value at any moment. App.tsx renders

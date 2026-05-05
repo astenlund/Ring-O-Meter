@@ -9,7 +9,7 @@ import {computeRmsDb} from '../rmsDb';
 import {OctaveStabilizer} from '../octaveStabilizer';
 import {PITCH_PROCESSOR_NAME} from '../constants';
 import {FrameRingWriter, type PublishFrame} from '../frameRing';
-import {FormantDetector} from '../formantDetector';
+import {DEFAULT_FORMANT_SPEC, FormantDetector} from '../formantDetector';
 
 // FRAME_SIZE is the publish-frame unit (~21 ms at 48 kHz): how often
 // publish() runs, and the window size that RMS + formants analyse.
@@ -76,12 +76,20 @@ class PitchProcessor extends AudioWorkletProcessor {
         }
         this.writer = new FrameRingWriter(opts.frameRingSab);
         this.formantDetector = new FormantDetector({
+            ...DEFAULT_FORMANT_SPEC,
             inputRate: sampleRate,
-            decimatedRate: 12000,
-            decimatorCutoffHz: 5500,
-            lpcOrder: 14,
-            formantCount: 4,
         });
+        // The publish() loop below hardcodes formants[0..3] -> f1Hz..f4Hz.
+        // The SAB ring schema (FormantFrame, AnalysisFrame Keys 6-9) is
+        // also fixed at four columns, so formantCount cannot vary today.
+        // Guard at construction so a future tuning of DEFAULT_FORMANT_SPEC
+        // (which the const's comment invites) cannot silently zero-pad
+        // or drop slots when it changes formantCount.
+        if (this.formantDetector.spec.formantCount !== 4) {
+            throw new Error(
+                `pitchWorklet: formantCount must be 4 to match the SAB ring schema (got ${this.formantDetector.spec.formantCount})`,
+            );
+        }
     }
 
     public process(

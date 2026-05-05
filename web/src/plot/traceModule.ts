@@ -305,10 +305,14 @@ export class TraceModule {
         );
     }
 
-    // Host accesses these to manage encoder + render pass + submit
-    // lifecycle; Task 12 will lift device acquisition fully to the host
-    // and these getters retire. Marked readonly so the host cannot
-    // accidentally reassign module-internal state.
+    // The worker host (plotWorkerWebgpu.ts) accesses these to build the
+    // shared command encoder + render passes for both modules' draws,
+    // then submits once per frame. The getters retire when the worker
+    // host owns its own GPUDevice / GPUCanvasContext lifecycle directly
+    // (today the trace module owns them and the host inspects them; a
+    // follow-up will invert that ownership so the host registers
+    // canvases and modules separately). Marked readonly so the host
+    // cannot accidentally reassign module-internal state.
     public get gpuDevice(): GPUDevice | null {
         return this.device;
     }
@@ -418,7 +422,12 @@ export class TraceModule {
     }
 
     public dispose(): void {
-        this.device?.destroy();
+        // Do NOT destroy the device here; it is shared with the vowel
+        // module via the worker's `devicePromise`. Device lifetime is
+        // owned by the worker host (plotWorkerWebgpu.ts), which calls
+        // device.destroy() only when the worker itself terminates.
+        // Module dispose only releases module-owned GPU resources
+        // (per-channel buffers + bind groups, cleared via channels).
         this.device = null;
         this.channels.clear();
         this.configured = false;

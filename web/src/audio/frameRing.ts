@@ -15,17 +15,18 @@ const CAP_MASK = CAPACITY - 1;
 
 // Byte layout inside one ring's SAB. Int32 header first (natural
 // alignment for Atomics), then 8-byte-aligned Float64 for
-// captureContextMs, then four Float32 columns. The trailing two
-// (rmsDb, hzRaw) are written by the worklet but not yet surfaced by
-// the FrameRingReader API; they will gain reader-side accessors when
-// the first reader-side consumer lands. Slice 1's SignalR publish
-// sink is the proximate driver (it forwards every column on the
-// wire, where AnalysisFrame already carries them at [Key(4)]/[Key(5)]);
-// downstream analytical consumers include vowel-matching mic
-// calibration, chop-cop amplitude envelope, and heuristic-introspection
-// raw-YIN audit. RMS_DB_OFFSET and HZ_RAW_OFFSET are exported so
-// frameRing.test.ts can read these columns directly via raw typed
-// views until that reader API lands.
+// captureContextMs, then eight Float32 columns. `rmsDb` is surfaced
+// to readers via FormantFrame + readLatestFormants (consumed by the
+// vowel module's gate predicate). `hzRaw` is written by the worklet
+// but not yet surfaced through any reader API; it will gain a
+// reader-side accessor when the first reader-side consumer lands -
+// Slice 1's SignalR publish sink is the proximate driver (it forwards
+// every column on the wire, where AnalysisFrame already carries
+// hzRaw at [Key(5)]); downstream analytical consumers include vowel-
+// matching mic calibration, chop-cop amplitude envelope, and
+// heuristic-introspection raw-YIN audit. RMS_DB_OFFSET and
+// HZ_RAW_OFFSET are exported so frameRing.test.ts can read these
+// columns directly via raw typed views.
 const HEADER_OFFSET = 0;
 const HEADER_BYTES = 8;  // 4 bytes header + 4 bytes pad for Float64 alignment
 const CTX_MS_OFFSET = HEADER_BYTES;

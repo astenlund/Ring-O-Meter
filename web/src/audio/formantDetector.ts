@@ -39,8 +39,21 @@ export interface FormantDetectorSpec {
     formantCount: number; // how many formants to surface (e.g., 2 or 4)
     // Filtering thresholds for which LPC roots count as formants.
     minFormantHz?: number;     // default 50: discards low-frequency artefact roots
-    maxFormantBandwidthHz?: number; // default 600: anything wider is not a formant
+    maxFormantBandwidthHz?: number; // default 400: anything wider is not a formant
 }
+
+// Default `FormantDetectorSpec` values used by both production
+// (`pitchWorklet.ts`) and test-mode (`fanoutWorklet.ts`) worklets. A
+// future tuning pass to `lpcOrder` or `decimatedRate` should change
+// the values here once, not at every call site. `inputRate` stays
+// per-call because it is `sampleRate` from the AudioWorkletGlobalScope
+// (not knowable at module load).
+export const DEFAULT_FORMANT_SPEC: Omit<FormantDetectorSpec, 'inputRate'> = {
+    decimatedRate: 12000,
+    decimatorCutoffHz: 5500,
+    lpcOrder: 14,
+    formantCount: 4,
+};
 
 // heuristic: min-formant-hz - lower bound on what counts as a formant; LPC
 // roots below this frequency are discarded as low-frequency spectral-shape
@@ -53,8 +66,9 @@ const DEFAULT_MIN_FORMANT_HZ = 50;
 // smoothing or LPC over-fit artefacts rather than real formants. Praat's
 // default uses ~400 Hz for the same reason; this is the load-bearing
 // detection tiebreak that decides whether a true formant or a spurious
-// wide-band root takes a slot in the top-N output. Empirically validated
-// during the spike that 600 Hz let spurious roots crowd out true F2.
+// wide-band root takes a slot in the top-N output. Settled on 400 after
+// the spike found that 600 admitted spurious wide-band roots that
+// crowded out true F2.
 const DEFAULT_MAX_FORMANT_BW_HZ = 400;
 
 export interface FormantResult {
@@ -212,6 +226,16 @@ function validateSpec(spec: FormantDetectorSpec): void {
     if (spec.decimatorCutoffHz <= 0 || spec.decimatorCutoffHz >= spec.decimatedRate / 2) {
         throw new Error(
             `FormantDetector: decimatorCutoffHz ${spec.decimatorCutoffHz} must be in (0, ${spec.decimatedRate / 2})`,
+        );
+    }
+    // An LPC polynomial of order p has at most p/2 conjugate-pair roots,
+    // so requesting more formants than possible roots is unfulfillable.
+    // Validate at construction so downstream (paint, gating) does not
+    // silently see permanently-NaN trailing slots.
+    const maxFormants = Math.floor(spec.lpcOrder / 2);
+    if (spec.formantCount > maxFormants) {
+        throw new Error(
+            `FormantDetector: formantCount ${spec.formantCount} exceeds the ${maxFormants} max possible from lpcOrder ${spec.lpcOrder}`,
         );
     }
 }

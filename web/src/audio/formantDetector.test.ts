@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 
-import {FormantDetector} from './formantDetector';
+import {DEFAULT_FORMANT_SPEC, FormantDetector} from './formantDetector';
 
 // Helper: synthesize a vowel-like signal as random source filtered
 // through 4 conjugate-pair formants at known F1..F4. Returns enough
@@ -107,12 +107,13 @@ describe('FormantDetector', () => {
             {f: 3500, bw: 150},
         ];
         const signal = synthesizeVowel(48000, formants, 1.0);
+        // Spread DEFAULT_FORMANT_SPEC (rather than inlining its values)
+        // so a future tuning pass tracks production automatically. The
+        // override-after-spread shape is the convention; here it just
+        // adds inputRate.
         const detector = new FormantDetector({
+            ...DEFAULT_FORMANT_SPEC,
             inputRate: 48000,
-            decimatedRate: 12000,
-            decimatorCutoffHz: 5500,
-            lpcOrder: 14,
-            formantCount: 4,
         });
 
         // Act
@@ -133,11 +134,8 @@ describe('FormantDetector', () => {
         // Arrange
         const silence = new Float32Array(1024);
         const detector = new FormantDetector({
+            ...DEFAULT_FORMANT_SPEC,
             inputRate: 48000,
-            decimatedRate: 12000,
-            decimatorCutoffHz: 5500,
-            lpcOrder: 14,
-            formantCount: 4,
         });
 
         // Act: prime decimator with a few frames of silence.
@@ -163,5 +161,19 @@ describe('FormantDetector', () => {
             lpcOrder: 10,
             formantCount: 2,
         })).toThrow();
+    });
+
+    it('rejects formantCount above lpcOrder/2 at construction', () => {
+        // Arrange + Act + Assert: at lpcOrder=4, max possible formants
+        // is floor(4/2)=2, so formantCount=3 must throw. Guards against
+        // permanently-NaN trailing slots reaching the gating + paint
+        // path with no upstream warning.
+        expect(() => new FormantDetector({
+            inputRate: 48000,
+            decimatedRate: 12000,
+            decimatorCutoffHz: 5500,
+            lpcOrder: 4,
+            formantCount: 3,
+        })).toThrow(/formantCount 3 exceeds the 2 max/);
     });
 });

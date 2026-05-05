@@ -22,7 +22,7 @@ import {computeRmsDb} from '../audio/rmsDb';
 import {OctaveStabilizer} from '../audio/octaveStabilizer';
 import {FrameRingWriter, type PublishFrame} from '../audio/frameRing';
 import {PITCH_FANOUT_PROCESSOR_NAME} from './fanoutConstants';
-import {FormantDetector} from '../audio/formantDetector';
+import {DEFAULT_FORMANT_SPEC, FormantDetector} from '../audio/formantDetector';
 
 // Buffer geometry mirrors pitchWorklet.ts: a 2048-sample rolling window
 // for YIN (low-freq reach to ~47 Hz, well below C2) with the latest
@@ -83,12 +83,16 @@ class FanoutPitchProcessor extends AudioWorkletProcessor {
         this.writers = sabs.map((s) => new FrameRingWriter(s));
         this.multipliers = multipliers;
         this.formantDetector = new FormantDetector({
+            ...DEFAULT_FORMANT_SPEC,
             inputRate: sampleRate,
-            decimatedRate: 12000,
-            decimatorCutoffHz: 5500,
-            lpcOrder: 14,
-            formantCount: 4,
         });
+        // Same SAB schema constraint as pitchWorklet.ts: publish()
+        // hardcodes formants[0..3] -> f1Hz..f4Hz.
+        if (this.formantDetector.spec.formantCount !== 4) {
+            throw new Error(
+                `fanoutWorklet: formantCount must be 4 to match the SAB ring schema (got ${this.formantDetector.spec.formantCount})`,
+            );
+        }
     }
 
     public process(

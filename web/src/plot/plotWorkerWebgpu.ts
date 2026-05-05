@@ -73,27 +73,41 @@ let lastVoices: ReadonlyArray<VoiceEntry> = [];
 // to real CSS dimensions). Cross-platform-parity rationale matches
 // TraceModule.setBacking: reconfigure unconditionally on every actual
 // resize so Safari/iPadOS WebKit doesn't paint to a stale swap-chain.
-function applyVowelCanvasBacking(cssWidth: number, cssHeight: number, dpr: number): void {
-    if (!vowelModule) {
-        return;
-    }
-    vowelModule.setBacking(cssWidth, cssHeight, dpr);
-    if (cssWidth === 0 || cssHeight === 0 || !vowelCanvasContext || !resolvedVowelDevice || !resolvedVowelFormat) {
-        return;
-    }
-    const canvas = vowelCanvasContext.canvas as OffscreenCanvas;
-    const w = Math.round(cssWidth * dpr);
-    const h = Math.round(cssHeight * dpr);
-    if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
-        vowelCanvasContext.configure({
-            device: resolvedVowelDevice,
-            format: resolvedVowelFormat,
-            alphaMode: 'premultiplied',
-        });
-    }
-}
+// Tracks the most-recent applied dpr so a DPR-only change (same CSS
+// dimensions, different device-pixel-ratio - hot-plugging a HiDPI
+// monitor, OS scale change) still triggers a swap-chain reconfigure.
+// The pixel-dimension guard alone would skip that case, leaving the
+// vowel canvas painting to a stale-DPR backing while the trace canvas
+// (TraceModule.setBacking reconfigures unconditionally) updates.
+// `lastDpr` lives in the function's closure so it cannot accidentally
+// be touched by sibling message handlers; only this function reads
+// and writes it.
+const applyVowelCanvasBacking = ((): (cssWidth: number, cssHeight: number, dpr: number) => void => {
+    let lastDpr = 0;
+
+    return (cssWidth: number, cssHeight: number, dpr: number): void => {
+        if (!vowelModule) {
+            return;
+        }
+        vowelModule.setBacking(cssWidth, cssHeight, dpr);
+        if (cssWidth === 0 || cssHeight === 0 || !vowelCanvasContext || !resolvedVowelDevice || !resolvedVowelFormat) {
+            return;
+        }
+        const canvas = vowelCanvasContext.canvas as OffscreenCanvas;
+        const w = Math.round(cssWidth * dpr);
+        const h = Math.round(cssHeight * dpr);
+        if (canvas.width !== w || canvas.height !== h || dpr !== lastDpr) {
+            canvas.width = w;
+            canvas.height = h;
+            vowelCanvasContext.configure({
+                device: resolvedVowelDevice,
+                format: resolvedVowelFormat,
+                alphaMode: 'premultiplied',
+            });
+            lastDpr = dpr;
+        }
+    };
+})();
 
 // Initialised lazily on the first frame: a literal 0 baseline would
 // produce a multi-million-ms first-frame dt (rAF stamps wall-clock

@@ -226,7 +226,13 @@ export interface VowelPoint2d {
 export function drawVowelPolygon(
     ctx: AnyCanvasCtx,
     points: ReadonlyArray<VowelPoint2d>,
-    ordering: ReadonlyArray<number>,
+    // ArrayLike (not ReadonlyArray) so callers can pass either a
+    // number[] or an Int32Array view directly. The 2D worker reads
+    // ordering from OrderDebounce's Int32Array; without this widening
+    // it had to maintain a parallel number[] copy and a per-frame copy
+    // loop solely to satisfy the type. Both shapes support
+    // ordering[i] and ordering.length identically.
+    ordering: ArrayLike<number>,
     strokeWidthDevicePx: number,
 ): void {
     if (ordering.length < 2) {
