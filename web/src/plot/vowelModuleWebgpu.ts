@@ -40,8 +40,6 @@ const DOT_TOTAL_VERTICES = MAX_VOICES * DOT_VERTICES_PER_VOICE;
 const VIEWPORT_UNIFORM_BYTES = 16;
 
 interface VoiceState {
-    channelId: string;
-    color: string;
     reader: FrameRingReader;
     point: VoicePoint;
     debounce: GateDebounce;
@@ -117,7 +115,6 @@ export class VowelModuleWebgpu implements RenderModule {
         for (let i = 0; i < MAX_VOICES; i++) {
             this.pointsScratch.push({
                 channelId: '',
-                color: '',
                 f1Hz: 0,
                 f2Hz: 0,
                 isDimmed: true,
@@ -330,7 +327,7 @@ export class VowelModuleWebgpu implements RenderModule {
         );
         // WebGPU requires writeBuffer size to be a multiple of 4.
         // Round up the Uint16 index count to the nearest 4-byte boundary.
-        const indexWriteBytes = Math.ceil(((appliedLen + 1) * 2) / 4) * 4;
+        const indexWriteBytes = ((appliedLen + 1) * 2 + 3) & ~3;
         this.queue.writeBuffer(
             this.polygonIndexBuffer!,
             0,
@@ -457,7 +454,6 @@ export class VowelModuleWebgpu implements RenderModule {
             if (!state) {
                 continue;
             }
-            state.color = voice.color;
             hexToRgba(voice.color, state.fullColor);
             for (let i = 0; i < 3; i++) {
                 state.dimColor[i] = state.fullColor[i] * VOWEL_DIM_BRIGHTNESS;
@@ -487,12 +483,9 @@ export class VowelModuleWebgpu implements RenderModule {
         dimColor[3] = 1;
 
         this.channels.set(channelId, {
-            channelId,
-            color,
             reader,
             point: {
                 channelId,
-                color,
                 f1Hz: 0,
                 f2Hz: 0,
                 isDimmed: true,
