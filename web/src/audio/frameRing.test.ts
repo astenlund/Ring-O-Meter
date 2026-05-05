@@ -76,9 +76,11 @@ describe('FrameRingReader.readLatest', () => {
         r.readLatest(out);
 
         // Assert: no tsMs field; offset does not leak through readLatest.
-        // rmsDb and fundamentalHzRaw are written into the SAB but
-        // intentionally not exposed by the reader yet; they grow
-        // on-demand when the first consumer lands.
+        // rmsDb and fundamentalHzRaw are NOT part of UiFrame (the narrow
+        // pitch-only shape); rmsDb is exposed via readLatestFormants
+        // instead (see the FormantFrame round-trip test below).
+        // fundamentalHzRaw has no reader-side accessor yet (hzRaw column
+        // is written but unbound in the FrameRingReader constructor).
         expect(Object.keys(out).sort()).toEqual(['confidence', 'fundamentalHz']);
     });
 

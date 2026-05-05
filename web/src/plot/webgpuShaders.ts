@@ -7,7 +7,8 @@
 // IMPORTANT: vertices store `tsMs - startMs` (the per-paint window
 // offset), NOT absolute `tsMs`. f32 has ~7 decimal digits of mantissa
 // precision; absolute paint-epoch milliseconds reach 10^6-10^8 over a
-// long session (Task 13's 30-min arm crosses 1.8M ms), where f32
+// long session (the smoothness e2e's 30-min long-window arm crosses
+// 1.8M ms), where f32
 // spacing is 0.125-8 ms. Subtracting startMs in the shader against
 // near-equal large f32 operands produces catastrophic cancellation
 // and visible vertex jitter. By subtracting on the CPU before the

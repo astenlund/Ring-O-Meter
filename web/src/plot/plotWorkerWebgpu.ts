@@ -183,8 +183,9 @@ async function initVowelCanvas(msg: InitVowelCanvasMessage): Promise<void> {
             throw new Error('plotWorkerWebgpu: webgpu context unavailable for vowel canvas');
         }
         // alphaMode: 'premultiplied' so the vowel chrome (painted on a
-        // sibling main-thread underlay canvas in Task 14) shows through
-        // pixels the polygon/dot fragment shader does not write.
+        // sibling main-thread underlay canvas managed by PlotController)
+        // shows through pixels the polygon/dot fragment shader does not
+        // write.
         ctx.configure({device, format, alphaMode: 'premultiplied'});
         vowelCanvasContext = ctx;
         resolvedVowelDevice = device;

@@ -90,14 +90,15 @@ const vowelFormantsOut: FormantFrame = {
 const vowelPointsScratch: VoicePoint[] = [];
 // Pre-allocated VowelPoint2d objects passed to the paint helpers. One
 // per voice slot up to MAX_VOICES; the per-frame paint loop mutates
-// these slots IN PLACE (`vowelDrawPoints[i].x = ...`) and then sets
-// `length = voiceCount` to bound the helpers' iteration. The module-
-// init priming below populates all MAX_VOICES slots and leaves
-// `length = MAX_VOICES`. Do NOT reset the length to 0 here -- that
-// would destroy the pre-allocated objects, and the first per-frame
-// `vowelDrawPoints[i].x = ...` would throw on `undefined.x`. The
-// per-frame `length = voiceCount` line in paintVowel handles the
-// runtime-visible length.
+// these slots IN PLACE (`vowelDrawPoints[i].x = ...`) and the helpers
+// receive an explicit voiceCount (drawVowelDots) or read appliedLen
+// from the ordering buffer (drawVowelPolygon). The array's `.length`
+// is NEVER mutated after module init: setting `length = voiceCount`
+// per frame would delete pre-allocated slots beyond voiceCount per JS
+// semantics, and a subsequent frame with a larger voiceCount would
+// read undefined at those indices. Module-init priming below
+// populates all MAX_VOICES slots and leaves `length = MAX_VOICES`,
+// where it stays for the worker's lifetime.
 const vowelDrawPoints: VowelPoint2d[] = [];
 // Initial priming. vowelPointsScratch + vowelOrderingForPaint use the
 // push-per-frame pattern (length=0 at module init is correct, push
@@ -175,7 +176,7 @@ function paintVowel(): void {
 
     // Always paint chrome (background + gridlines + axis labels). On
     // the 2D arm chrome is painted per frame inline; the WebGPU arm
-    // uses a main-thread underlay (Task 14).
+    // uses a main-thread underlay canvas managed by PlotController.
     drawVowelChrome(vowelCtx, vowelSize, {min: F1_MIN, max: F1_MAX}, {min: F2_MIN, max: F2_MAX});
 
     const voiceCount = vowelPointsScratch.length;

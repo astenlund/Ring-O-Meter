@@ -30,13 +30,13 @@ export interface PitchPlotProps {
     rendererWorkerUrl?: string;
     // Caller-driven sizing. The outer container fills 100% of whatever
     // the parent allocates by default; pass style={{height: 360}} (or
-    // any flex shape) to override. The pre-Task-13 component baked
-    // height: 360 into the outer div which prevented the parent from
+    // any flex shape) to override. An earlier version of the component
+    // baked height: 360 into the outer div which prevented the parent from
     // sizing it via flex / aspect-ratio / explicit pixels.
     style?: CSSProperties;
     // Optional pre-constructed controller. When supplied, this component
     // does NOT construct or dispose its own; the caller owns the
-    // lifecycle. Used by Task 14's lifted PlotController so VowelPlot
+    // lifecycle. Used by App's lifted PlotController so VowelPlot
     // and PitchPlot share the same render worker (one device, one
     // submit per frame). When omitted, we fall back to the historical
     // self-construct shape so consumers that haven't migrated stay
@@ -83,8 +83,8 @@ export function PitchPlot({
     const controllerRef = useRef<PlotController | null>(null);
     // Tracks whether THIS component constructed the controller or
     // received it via prop. Disposal is gated on ownership: a caller-
-    // supplied controller's lifecycle belongs to the caller (Task 14's
-    // App-level PlotController is shared with VowelPlot, so disposing
+    // supplied controller's lifecycle belongs to the caller (App-level
+    // PlotController is shared with VowelPlot, so disposing
     // here would tear down VowelPlot's render path too).
     const ownsControllerRef = useRef(false);
     const pendingUnmountRef = useRef(false);
