@@ -8,8 +8,8 @@ import {
     type VoicePoint,
 } from './vowelModule';
 
-function makePoint(channelId: string, f1: number, f2: number, color = '#5cf'): VoicePoint {
-    return {channelId, color, f1Hz: f1, f2Hz: f2, isDimmed: false, hasEverPublished: true};
+function makePoint(channelId: string, f1: number, f2: number): VoicePoint {
+    return {channelId, f1Hz: f1, f2Hz: f2, isDimmed: false, hasEverPublished: true};
 }
 
 describe('polarAngleSort', () => {

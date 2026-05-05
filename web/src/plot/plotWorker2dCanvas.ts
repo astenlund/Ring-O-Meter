@@ -107,7 +107,6 @@ const vowelDrawPoints: VowelPoint2d[] = [];
 for (let i = 0; i < MAX_VOICES; i++) {
     vowelPointsScratch.push({
         channelId: '',
-        color: '',
         f1Hz: 0,
         f2Hz: 0,
         isDimmed: true,
@@ -334,7 +333,6 @@ self.onmessage = (event: MessageEvent<PlotMessage>) => {
                 reader: new FrameRingReader(msg.source.sab, msg.source.epochOffsetMs),
                 point: {
                     channelId: msg.channelId,
-                    color: msg.color,
                     f1Hz: 0,
                     f2Hz: 0,
                     isDimmed: true,

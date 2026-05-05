@@ -77,7 +77,6 @@ export const VOWEL_DOT_CSS_SIZE = 4;
 
 export interface VoicePoint {
     channelId: string;
-    color: string;          // 3- or 6-digit hex from SLOT_COLORS
     f1Hz: number;           // last-known F1 (held when gate fails)
     f2Hz: number;           // last-known F2 (held when gate fails)
     isDimmed: boolean;      // post-debounce gate state
