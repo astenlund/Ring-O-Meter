@@ -229,11 +229,11 @@ export function withChordFanout(armQuerystring: string): string {
 }
 
 // beforeEach shim that arms the channel test bridge and mocks the
-// media-device surface so single-fake-audio-input Chromium presents
-// as two synthetic audioinputs (the test exercises the two-slot
-// rendering path) and getUserMedia resolves regardless of which
-// synthetic deviceId the app picks. Call once at the top of each
-// spec file that uses run60sSmoothnessProbe.
+// media-device surface so the app sees exactly two synthetic
+// audioinputs (the test exercises the two-slot rendering path) and
+// getUserMedia resolves regardless of which synthetic deviceId the
+// app picks. Call once at the top of each spec file that uses
+// run60sSmoothnessProbe.
 export function registerFakeAudioBeforeEach(): void {
     test.beforeEach(async ({context}) => {
         await context.addInitScript((bridgeKey: string) => {
@@ -243,10 +243,6 @@ export function registerFakeAudioBeforeEach(): void {
             const originalEnumerate = md.enumerateDevices.bind(md);
             md.enumerateDevices = async function () {
                 const real = await originalEnumerate();
-                const audioInputCount = real.filter((d) => d.kind === 'audioinput').length;
-                if (audioInputCount >= 2) {
-                    return real;
-                }
                 const makeFake = (deviceId: string, label: string): MediaDeviceInfo => ({
                     deviceId,
                     groupId: 'fake-group',
@@ -256,6 +252,17 @@ export function registerFakeAudioBeforeEach(): void {
                         return this;
                     },
                 }) as MediaDeviceInfo;
+                // Always present exactly the two synthetic audioinputs
+                // regardless of host real-device count. A prior count-based
+                // branch (return real when audioInputCount >= 2) made the
+                // shim sensitive to whether the dev machine had a real mic
+                // alongside Chromium's --use-fake-device-for-media-stream:
+                // count=2 (real + fake) routed through the real branch and
+                // surfaced the host mic; count=1 (fake-only) replaced the
+                // single fake with two synthetic entries pointing at
+                // deviceIds the app picks deterministically. Discarding
+                // real audioinputs unconditionally makes the test behave
+                // identically on CI runners and on dev machines.
                 const others = real.filter((d) => d.kind !== 'audioinput');
 
                 return [...others, makeFake('fake-audio-1', 'Fake Mic 1'), makeFake('fake-audio-2', 'Fake Mic 2')];
