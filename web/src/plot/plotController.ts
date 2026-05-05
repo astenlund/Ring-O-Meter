@@ -51,7 +51,6 @@ export class PlotController {
     private underlaySize: CanvasSize = {width: 0, height: 0};
 
     private vowelUnderlayCtx: CanvasRenderingContext2D | null = null;
-    private vowelUnderlayActive = false;
     private vowelUnderlayBacking: CanvasBacking = {cssWidth: 0, cssHeight: 0, dpr: 1};
     private vowelUnderlaySize: CanvasSize = {width: 0, height: 0};
 
@@ -139,7 +138,6 @@ export class PlotController {
      */
     public setVowelUnderlay(ctx: CanvasRenderingContext2D): void {
         this.vowelUnderlayCtx = ctx;
-        this.vowelUnderlayActive = true;
         this.repaintVowelUnderlay();
     }
 
@@ -152,7 +150,7 @@ export class PlotController {
 
     private repaintVowelUnderlay(): void {
         const ctx = this.vowelUnderlayCtx;
-        if (!ctx || !this.vowelUnderlayActive || this.vowelUnderlayBacking.cssHeight === 0) {
+        if (!ctx || this.vowelUnderlayBacking.cssHeight === 0) {
             return;
         }
         const canvas = ctx.canvas;
@@ -253,7 +251,6 @@ export class PlotController {
         this.underlayCtx = null;
         this.underlayOpts = null;
         this.vowelUnderlayCtx = null;
-        this.vowelUnderlayActive = false;
     }
 
     private post(msg: PlotMessage): void {

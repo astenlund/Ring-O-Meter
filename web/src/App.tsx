@@ -145,6 +145,16 @@ export function App() {
     // rings from the still-arriving frames. The effect runs whenever the
     // selected device changes; useVoiceChannels then tears down the old
     // channel and constructs a new one keyed on the fresh channelId.
+    //
+    // Dep is `selectedDeviceId` (the stable string), NOT `selectedDevice`
+    // (the object reference). `selectedDevice` is recomputed by useMemo
+    // on every `devices` array change - including unrelated device
+    // changes (USB plug/unplug of a non-mic device that triggers
+    // devicechange and produces a fresh `devices` array). With
+    // `selectedDevice` as dep, that benign event would tear down the
+    // AudioContext + worklet for no functional reason. The effect reads
+    // `selectedDevice.label` via the latest memo's stable result (the
+    // memo is recomputed before the effect runs each commit).
     const [slots, setSlots] = useState<Slot[] | null>(null);
     useEffect(() => {
         if (!started || !selectedDevice) {
@@ -185,7 +195,10 @@ export function App() {
             deviceLabel: selectedDevice.label,
             color: SLOT_COLORS[0],
         }]);
-    }, [started, selectedDevice, fanoutConfig]);
+        // selectedDeviceId-only dep + selectedDevice read via memo:
+        // see comment block above.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [started, selectedDeviceId, fanoutConfig]);
 
     useVoiceChannels(slots, registry);
 
@@ -211,10 +224,20 @@ export function App() {
         });
     }, [registry]);
 
+    // Mirror of the trace subscriber's ref-at-event-time pattern: read
+    // slots through a ref so this effect's deps stay stable across
+    // device-switches. Listing `slots` directly would tear down and
+    // re-subscribe on every roster change, racing against `onReady`
+    // events fired during the same React commit (the new subscriber
+    // would miss the attach for the freshly-built slot). Idempotent
+    // render-time mutation matches NoteReadout's cached-last-valid-text
+    // pattern; the ref reads always see the latest committed slots.
+    const slotsRef = useRef<Slot[] | null>(null);
+    slotsRef.current = slots;
     useEffect(() => {
         return registry.subscribe({
             onReady: (channelId, source, _reader) => {
-                const slot = slots?.find((s) => s.channelId === channelId);
+                const slot = slotsRef.current?.find((s) => s.channelId === channelId);
                 // Default fallback to white if the slot is somehow missing.
                 const color = slot?.color ?? '#ffffff';
                 controller.attachVowelChannel(channelId, color, source);
@@ -223,7 +246,7 @@ export function App() {
                 controller.rebaseVowelChannel(channelId, epochOffsetMs),
             onGone: (channelId) => controller.detachVowelChannel(channelId),
         });
-    }, [registry, controller, slots]);
+    }, [registry, controller]);
 
     const voices = useMemo(() => slotsToVoices(slots ?? []), [slots]);
 

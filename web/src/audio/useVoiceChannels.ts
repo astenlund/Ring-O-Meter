@@ -5,7 +5,7 @@ import {VoiceChannel, type VoiceChannelEvents} from './voiceChannel';
 // Cleanup: remove this import + FanoutGroup interface + fanoutGroup field on
 // VoiceChannelSlot + the realSlots filter + the FanoutVoiceChannel ternary
 // branch when the fanout test mode is retired (also remove parseFanoutFlag
-// import + fanoutConfig state + fanout branch in handleDeviceConfirm +
+// import + fanoutConfig state + fanout branch in the slot-build effect +
 // SLOT_COLORS trim in App.tsx; also rm __testing/fanoutFlag.ts,
 // fanoutVoiceChannel.ts, fanoutWorklet.ts, fanoutConstants.ts).
 import {FanoutVoiceChannel} from '../__testing/fanoutVoiceChannel';

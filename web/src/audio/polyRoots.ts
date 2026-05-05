@@ -22,6 +22,19 @@
 const MAX_LAGUERRE_ITERATIONS = 80;
 const ROOT_TOL = 1e-12;
 const STEP_TOL = 1e-12;
+// heuristic: laguerre-denom-tol2 - below this |denom|^2 the Laguerre
+// step's denominator is numerically degenerate; nudge the iterate and
+// retry. Affects formant-root convergence: too lenient and we accept a
+// noisy root; too strict and we waste iterations on near-singular
+// configurations that are recoverable by a tiny perturbation.
+const LAGUERRE_DENOM_TOL2 = 1e-30;
+// heuristic: laguerre-nudge - displacement applied to the iterate when
+// the Laguerre denominator hits LAGUERRE_DENOM_TOL2. Must be large
+// enough to escape the singularity neighbourhood, small enough not to
+// leap over a nearby root. 0.1 in the unit-disc-bounded LPC root space
+// is two orders of magnitude above the typical step size at convergence
+// (~1e-3) and well below the inter-root spacing for separable formants.
+const LAGUERRE_NUDGE = 0.1;
 // When the imaginary part of a found root is below this absolute
 // threshold, treat it as a real root and deflate by a linear factor.
 const REAL_ROOT_THRESHOLD = 1e-8;
@@ -223,10 +236,10 @@ export class PolyRoots {
             }
 
             const denomMag2 = denomRe * denomRe + denomIm * denomIm;
-            if (denomMag2 < 1e-30) {
+            if (denomMag2 < LAGUERRE_DENOM_TOL2) {
                 // Both denominators tiny: nudge z and retry.
-                zRe += 0.1;
-                zIm += 0.1;
+                zRe += LAGUERRE_NUDGE;
+                zIm += LAGUERRE_NUDGE;
                 continue;
             }
 
@@ -294,6 +307,15 @@ export interface PoleInfo {
     real2: number; // valid only when isComplex === false
 }
 
+// Module-scope scratch returned by reference from `factorToPole`. Each
+// call overwrites the same instance; callers must read its fields
+// inside the same loop iteration before invoking `factorToPole` again.
+// Any code that needs to retain pole info across iterations must copy
+// out the fields it cares about (e.g., `formantDetector.ts` does this
+// implicitly by computing freq/bw from the fields immediately on
+// return). The not-thread-safe note on the file header applies here
+// too; this single-writer assumption holds because the AudioWorklet
+// global scope is single-threaded.
 const tmpPoleInfo: PoleInfo = {
     isComplex: false,
     magnitude: 0,

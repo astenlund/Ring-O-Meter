@@ -19,16 +19,11 @@ import {
     MAX_VOICES,
     OrderDebounce,
     VOWEL_DIM_BRIGHTNESS,
+    VOWEL_DOT_CSS_SIZE,
     consumeLatestFrame,
     polarAngleSortInto,
     type VoicePoint,
 } from './vowelModule';
-
-// heuristic: vowel-dot-css-size - dot side length in CSS pixels; the
-// GPU computes device-pixel size as round(N * dpr). 4 reads as a
-// crisp pixel marker at typical DPRs (4, 8, 10 device px); larger
-// values feel "bubbly", smaller values disappear at high DPR.
-const VOWEL_DOT_CSS_SIZE = 4;
 
 // Polygon vertex buffer: MAX_VOICES + 1 for the closed-loop indexed
 // draw (last index = first vertex re-referenced). Each vertex is
@@ -104,6 +99,10 @@ export class VowelModuleWebgpu implements RenderModule {
     private cssWidth = 0;
     private cssHeight = 0;
     private dpr = 1;
+    // Set whenever cssWidth/cssHeight/dpr changes; cleared after the
+    // first writeBuffer that follows. Skipping the per-frame uniform
+    // upload when nothing changed saves one GPU command per frame.
+    private viewportDirty = true;
     // Count of voices with hasEverPublished=true on the most recent
     // update(). Controls draw() early-exit and indexed draw count.
     private currentVoiceCount = 0;
@@ -245,12 +244,18 @@ export class VowelModuleWebgpu implements RenderModule {
             return;
         }
 
-        // Update viewport uniform (width, height, dpr, pad).
-        this.viewportData[0] = this.cssWidth;
-        this.viewportData[1] = this.cssHeight;
-        this.viewportData[2] = this.dpr;
-        this.viewportData[3] = 0;
-        this.queue.writeBuffer(this.viewportUniform!, 0, this.viewportData);
+        // Update viewport uniform (width, height, dpr, pad). Dirty-only
+        // upload: backing changes are rare (mount, resize, DPR change)
+        // while this method runs on every rAF, so writing the same
+        // 16 bytes ~60 Hz to the GPU is wasted command-buffer space.
+        if (this.viewportDirty) {
+            this.viewportData[0] = this.cssWidth;
+            this.viewportData[1] = this.cssHeight;
+            this.viewportData[2] = this.dpr;
+            this.viewportData[3] = 0;
+            this.queue.writeBuffer(this.viewportUniform!, 0, this.viewportData);
+            this.viewportDirty = false;
+        }
 
         // Collect published voice points. pointsScratch is pre-allocated;
         // reset to length 0 each frame then push up to MAX_VOICES entries.
@@ -434,12 +439,15 @@ export class VowelModuleWebgpu implements RenderModule {
         this.currentVoiceCount = 0;
     }
 
-    // Lifecycle methods called by Task 12's worker dispatch.
+    // Worker-dispatch lifecycle surface (called by plotWorkerWebgpu.ts).
 
     public setBacking(cssWidth: number, cssHeight: number, dpr: number): void {
-        this.cssWidth = cssWidth;
-        this.cssHeight = cssHeight;
-        this.dpr = dpr;
+        if (this.cssWidth !== cssWidth || this.cssHeight !== cssHeight || this.dpr !== dpr) {
+            this.cssWidth = cssWidth;
+            this.cssHeight = cssHeight;
+            this.dpr = dpr;
+            this.viewportDirty = true;
+        }
     }
 
     public setRoster(voices: ReadonlyArray<VoiceEntry>): void {

@@ -147,8 +147,8 @@ export const LONGTASK_BUDGET = 0;
 // 600 KB = measured_clean_run * ~1.6 (two local runs at ~370 KB,
 // ~1% variance). This e2e delta measures the whole app's 60 s
 // churn - React reconciles from useFrameState flushes, rAF closures,
-// V8 heap-ratchet slack, FrameRingReader.readLatest's UiFrame
-// literal - NOT just the per-frame pipeline that the per-module
+// V8 heap-ratchet slack, FrameRingReader.readLatestFormants's
+// FormantFrame writes - NOT just the per-frame pipeline that the per-module
 // alloc tests cover in isolation. Do not calibrate this by summing
 // the per-module budgets; those answer a narrower question. Target
 // per the hot-path-allocation-discipline pattern:

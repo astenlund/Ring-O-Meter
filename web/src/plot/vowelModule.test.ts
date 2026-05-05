@@ -189,4 +189,19 @@ describe('GateDebounce', () => {
         // Assert: the single 10 ms blip did not trigger a transition.
         expect(blipDimmed).toBe(false);
     });
+
+    it('re-dims after sustained-false matches the debounce window', () => {
+        // Arrange: bring the gate to the undimmed state first.
+        const g = new GateDebounce();
+        g.update(true, GATE_DEBOUNCE_MS);
+        expect(g.isDimmed()).toBe(false);
+
+        // Act: sustained "no display" for the full debounce window.
+        g.update(false, 50);
+        expect(g.isDimmed()).toBe(false);
+        g.update(false, 50);
+
+        // Assert: re-dim transition fires symmetric to the un-dim transition.
+        expect(g.isDimmed()).toBe(true);
+    });
 });
