@@ -1,5 +1,5 @@
 import {test, expect} from '@playwright/test';
-import {CHANNEL_BRIDGE_KEY} from '../src/__testing/channelBridge';
+import {CHANNEL_BRIDGE_KEY} from '../src/audio/channelBridge';
 import {
     RENDERER_ARMS,
     registerFakeAudioBeforeEach,
@@ -102,7 +102,7 @@ test('pitch plot stays in sync across suspend/resume rebase', async ({page}) => 
     const result = await page.evaluate(
         async ({longGapMs, postResumeGuardMs, bridgeKey}) => {
             // Realm-boundary mirror of ChannelTestBridge / FrameRingReader
-            // from web/src/__testing/channelBridge.ts. This evaluate body is
+            // from web/src/audio/channelBridge.ts. This evaluate body is
             // serialised into the browser realm and cannot import; the two
             // shapes must be kept in sync by hand. TestReader is the subset
             // of FrameRingReader this test actually consumes.
