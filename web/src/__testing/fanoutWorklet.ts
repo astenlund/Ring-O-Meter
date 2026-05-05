@@ -20,16 +20,11 @@
 import {detectPitch} from '../audio/pitchDetector';
 import {computeRmsDb} from '../audio/rmsDb';
 import {OctaveStabilizer} from '../audio/octaveStabilizer';
+import {ANALYSIS_WINDOW_SIZE, FRAME_SIZE} from '../audio/constants';
 import {FrameRingWriter, SAB_FORMANT_COLUMN_COUNT, type PublishFrame} from '../audio/frameRing';
 import {PITCH_FANOUT_PROCESSOR_NAME} from './fanoutConstants';
 import {DEFAULT_FORMANT_SPEC, FormantDetector} from '../audio/formantDetector';
 
-// Buffer geometry mirrors pitchWorklet.ts: a 2048-sample rolling window
-// for YIN (low-freq reach to ~47 Hz, well below C2) with the latest
-// 1024 samples as the per-frame view for RMS + formants. See
-// pitchWorklet.ts for the full rationale.
-const FRAME_SIZE = 1024;
-const ANALYSIS_WINDOW_SIZE = FRAME_SIZE * 2;
 const PUBLISH_INTERVAL_FRAMES = 1;
 
 interface FanoutProcessorOptions {
