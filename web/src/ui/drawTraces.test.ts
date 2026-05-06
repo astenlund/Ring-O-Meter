@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {drawTraces, type PaintFrame, type RingsRecord, type VoiceEntry} from '../plot/paint';
 import {createFrameRing, FrameRingReader, FrameRingWriter} from '../audio/frameRing';
+import {publishUiOnly} from '../__tests__/allocHarness';
 
 // Minimal stub of CanvasRenderingContext2D that records only the path
 // operations drawTraces invokes. Cast to the full type at the boundary so
@@ -59,9 +60,10 @@ function singleRing(samples: ReadonlyArray<readonly [number, number, number]>): 
     const writer = new FrameRingWriter(sab);
     for (const [ts, hz, conf] of samples) {
         // rmsDb / fundamentalHzRaw are not part of drawTraces' input
-        // surface; pass placeholder values (rmsDb -30 dBFS, raw equal
-        // to stabilized hz as if no octave correction fired).
-        writer.publish({captureContextMs: ts, fundamentalHz: hz, confidence: conf, rmsDb: -30, fundamentalHzRaw: hz, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+        // surface; the helper supplies placeholder values (rmsDb -30
+        // dBFS, raw equal to stabilized hz as if no octave correction
+        // fired).
+        publishUiOnly(writer, ts, hz, conf);
     }
 
     return {v1: new FrameRingReader(sab, 0)};

@@ -10,6 +10,7 @@ import {
     type PublishFrame,
     createFrameRing,
 } from './frameRing';
+import {publishUiOnly} from '../__tests__/allocHarness';
 
 const OFFSET_MS = 10_000;  // arbitrary; readers just add it to contextMs
 
@@ -44,10 +45,10 @@ describe('FrameRingReader.published', () => {
         const sab = createFrameRing();
         const w = writer(sab);
         const r = reader(sab);
-        w.publish({captureContextMs: 0, fundamentalHz: 200, confidence: 0.5, rmsDb: -30, fundamentalHzRaw: 200, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+        publishUiOnly(w, 0, 200, 0.5);
         expect(r.published()).toBe(1);
-        w.publish({captureContextMs: 0, fundamentalHz: 200, confidence: 0.5, rmsDb: -30, fundamentalHzRaw: 200, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
-        w.publish({captureContextMs: 0, fundamentalHz: 200, confidence: 0.5, rmsDb: -30, fundamentalHzRaw: 200, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+        publishUiOnly(w, 0, 200, 0.5);
+        publishUiOnly(w, 0, 200, 0.5);
         expect(r.published()).toBe(3);
     });
 });
@@ -66,9 +67,9 @@ describe('FrameRingReader.forEach', () => {
         const w = writer(sab);
         const r = reader(sab, OFFSET_MS);
         // contextMs values 100, 200, 300
-        w.publish({captureContextMs: 100, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
-        w.publish({captureContextMs: 200, fundamentalHz: 330, confidence: 0.85, rmsDb: -30, fundamentalHzRaw: 330, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
-        w.publish({captureContextMs: 300, fundamentalHz: 440, confidence: 0.95, rmsDb: -30, fundamentalHzRaw: 440, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+        publishUiOnly(w, 100, 220, 0.9);
+        publishUiOnly(w, 200, 330, 0.85);
+        publishUiOnly(w, 300, 440, 0.95);
         const samples: Array<[number, number, number]> = [];
         r.forEach(0, (tsMs, hz, conf) => samples.push([tsMs, hz, conf]));
         // tsMs = contextMs + OFFSET_MS
@@ -84,10 +85,10 @@ describe('FrameRingReader.forEach', () => {
         const w = writer(sab);
         const r = reader(sab, OFFSET_MS);
         // Publishing with contextMs 100, 200, 300, 400
-        w.publish({captureContextMs: 100, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
-        w.publish({captureContextMs: 200, fundamentalHz: 330, confidence: 0.85, rmsDb: -30, fundamentalHzRaw: 330, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
-        w.publish({captureContextMs: 300, fundamentalHz: 440, confidence: 0.95, rmsDb: -30, fundamentalHzRaw: 440, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
-        w.publish({captureContextMs: 400, fundamentalHz: 550, confidence: 0.92, rmsDb: -30, fundamentalHzRaw: 550, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+        publishUiOnly(w, 100, 220, 0.9);
+        publishUiOnly(w, 200, 330, 0.85);
+        publishUiOnly(w, 300, 440, 0.95);
+        publishUiOnly(w, 400, 550, 0.92);
         // Paint window starts at tsMs = 10_250, so contextMs 200 is
         // the leading pre-window sample, 300 and 400 are in-window.
         const samples: number[] = [];
@@ -101,7 +102,7 @@ describe('FrameRingReader.forEach', () => {
         const sab = createFrameRing();
         const w = writer(sab);
         const r = reader(sab, OFFSET_MS);
-        w.publish({captureContextMs: 100, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+        publishUiOnly(w, 100, 220, 0.9);
         const before: number[] = [];
         r.forEach(0, (tsMs) => before.push(tsMs));
         expect(before[0]).toBe(OFFSET_MS + 100);
