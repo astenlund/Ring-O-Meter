@@ -15,7 +15,7 @@
     "test:watch": "vitest --config vitest.config.ts",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:e2e": "playwright test",
-    "test:e2e:prepare": "node scripts/gen-test-audio.mjs && node scripts/gen-staccato-audio.mjs"
+    "test:e2e:prepare": "node scripts/gen-test-audio.mjs && node scripts/gen-staccato-audio.mjs && node scripts/gen-formant-vowel.mjs"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",
