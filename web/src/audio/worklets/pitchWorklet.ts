@@ -9,7 +9,7 @@ import {computeRmsDb} from '../rmsDb';
 import {OctaveStabilizer} from '../octaveStabilizer';
 import {ANALYSIS_WINDOW_SIZE, FRAME_SIZE, PITCH_PROCESSOR_NAME} from '../constants';
 import {FORMANT_ABSENT_SENTINEL, FrameRingWriter, SAB_FORMANT_COLUMN_COUNT, type PublishFrame} from '../frameRing';
-import {DEFAULT_FORMANT_SPEC, FormantDetector} from '../formantDetector';
+import {DEFAULT_FORMANT_SPEC, FormantDetector, adaptDecimatedRate} from '../formantDetector';
 
 const PUBLISH_INTERVAL_FRAMES = 1; // every ~21 ms at 48 kHz -> ~47 Hz publish
 
@@ -63,19 +63,24 @@ class PitchProcessor extends AudioWorkletProcessor {
                 throw new Error('PitchProcessor: processorOptions.frameRingSab is required');
             }
             this.writer = new FrameRingWriter(opts.frameRingSab);
-            // FormantDetector throws when the host's negotiated sampleRate
-            // (e.g. 44100 on macOS/iOS Safari, regardless of the
-            // TARGET_SAMPLE_RATE_HZ hint) is not an integer multiple of
-            // DEFAULT_FORMANT_SPEC.decimatedRate. Browsers swallow
-            // AudioWorkletProcessor constructor errors, so without the
-            // surface below the failure is silent: the node is created,
-            // process() never runs, and the SAB stays empty for the
-            // session's lifetime. Surface it as a structured port message
-            // + console.error before re-throwing so main can render a
-            // diagnostic.
+            // FormantDetector requires `inputRate / decimatedRate` to be
+            // integer; the Decimator's tap structure depends on it.
+            // The host's negotiated sampleRate (e.g. 44100 on macOS/iOS
+            // Safari regardless of the TARGET_SAMPLE_RATE_HZ hint) may
+            // not be a multiple of DEFAULT_FORMANT_SPEC.decimatedRate.
+            // adaptDecimatedRate picks the largest valid divisor <= the
+            // preferred rate, so the worklet stays alive on those hosts
+            // (e.g. 11025 Hz from 44100). The structured port-message +
+            // console.error catch below is the belt-and-braces surface
+            // for any other construction failure: browsers swallow
+            // AudioWorkletProcessor constructor errors, so without it
+            // the node is created, process() never runs, and the SAB
+            // stays empty for the session's lifetime.
+            const decimatedRate = adaptDecimatedRate(sampleRate, DEFAULT_FORMANT_SPEC.decimatedRate);
             this.formantDetector = new FormantDetector({
                 ...DEFAULT_FORMANT_SPEC,
                 inputRate: sampleRate,
+                decimatedRate,
             });
             // The publish() loop below hardcodes formants[0..N-1] -> f1Hz..fNHz.
             // SAB_FORMANT_COLUMN_COUNT is the schema authority; bind the

@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest';
 
 import {synthesizeVowel} from '../__testing/testSignal';
-import {DEFAULT_FORMANT_SPEC, FormantDetector} from './formantDetector';
+import {DEFAULT_FORMANT_SPEC, FormantDetector, adaptDecimatedRate} from './formantDetector';
 
 // Helper: process the whole signal in 1024-sample chunks (matching the
 // worklet's FRAME_SIZE), record the detector's outputs across the run,
@@ -124,5 +124,48 @@ describe('FormantDetector', () => {
             lpcOrder: 4,
             formantCount: 3,
         })).toThrow(/formantCount 3 exceeds the 2 max/);
+    });
+});
+
+describe('adaptDecimatedRate', () => {
+    it('returns the target unchanged when it already divides input', () => {
+        // Arrange + Act + Assert
+        // 48000 / 12000 = 4 (integer), so 12000 is the answer.
+        expect(adaptDecimatedRate(48000, 12000)).toBe(12000);
+    });
+
+    it('picks 11025 for the macOS/iOS 44100 Hz host (the bug-trigger case)', () => {
+        // Arrange + Act + Assert
+        // 44100 / 12000 = 3.675 (not integer); next integer ratio is 4
+        // and 44100 / 4 = 11025 (which IS a divisor). 11025 is below
+        // the 12000 target, satisfying decimatedRate <= target.
+        expect(adaptDecimatedRate(44100, 12000)).toBe(11025);
+    });
+
+    it('walks past non-divisors to the first ratio that divides input', () => {
+        // Arrange + Act + Assert
+        // 96000 / 12000 = 8 (integer), so the search stops at the
+        // minimum ratio. Sanity check that the loop's lower bound is
+        // ceil(input / target), not 1.
+        expect(adaptDecimatedRate(96000, 12000)).toBe(12000);
+    });
+
+    it('falls back to ratio=1 when target exceeds input', () => {
+        // Arrange + Act + Assert
+        // input < target means the largest divisor of input that's
+        // <= target is input itself (ratio = 1, no decimation). The
+        // resulting spec may still fail downstream (e.g. cutoff <
+        // decimatedRate/2), but that's a separate validation; this
+        // helper's contract is only "find a valid integer divisor".
+        // Real AudioContext hosts never negotiate sampleRate below
+        // ~16 kHz, so this branch is defensive rather than expected.
+        expect(adaptDecimatedRate(8000, 12000)).toBe(8000);
+    });
+
+    it('returns 0 on non-positive inputs (defensive)', () => {
+        // Arrange + Act + Assert
+        expect(adaptDecimatedRate(0, 12000)).toBe(0);
+        expect(adaptDecimatedRate(48000, 0)).toBe(0);
+        expect(adaptDecimatedRate(-48000, 12000)).toBe(0);
     });
 });

@@ -217,6 +217,41 @@ export class FormantDetector {
     }
 }
 
+// Returns the largest divisor of `inputRate` that is <= `targetRate`.
+// FormantDetector requires `inputRate / decimatedRate` to be an
+// integer (the Decimator's tap structure depends on it); when the
+// host's negotiated `sampleRate` is not a multiple of the spec's
+// preferred `decimatedRate`, the worklet would otherwise crash at
+// construction. macOS/iOS Safari negotiates 44100 Hz regardless of
+// the `TARGET_SAMPLE_RATE_HZ = 48000` hint passed to AudioContext;
+// `44100 / 12000 = 3.675` is not an integer, so the default spec
+// throws. With this adapter, the worklet picks 11025 (44100 / 4)
+// and stays alive. When `targetRate >= inputRate` the helper falls
+// back to `ratio = 1` (no decimation, returns inputRate); the
+// resulting spec may then fail downstream validation (e.g. cutoff <
+// decimatedRate/2), but real AudioContext hosts never negotiate
+// sampleRate below ~16 kHz so this branch is defensive only. Returns
+// 0 on non-positive inputs.
+export function adaptDecimatedRate(inputRate: number, targetRate: number): number {
+    if (inputRate <= 0 || targetRate <= 0) {
+        return 0;
+    }
+    // Ratio = inputRate / decimatedRate must be integer; smallest
+    // ratio that produces decimatedRate <= targetRate is
+    // max(1, ceil(inputRate / targetRate)). Walk up from there until
+    // we find one that divides inputRate evenly. Bounded iteration:
+    // inputRate / targetRate is at most a few hundred (48000 / 50),
+    // so worst case is a handful of mod checks.
+    const minRatio = Math.max(1, Math.ceil(inputRate / targetRate));
+    for (let ratio = minRatio; ratio <= inputRate; ratio++) {
+        if (inputRate % ratio === 0) {
+            return inputRate / ratio;
+        }
+    }
+
+    return 0;
+}
+
 function validateSpec(spec: FormantDetectorSpec): void {
     if (spec.lpcOrder < 2) {
         throw new Error(`FormantDetector: lpcOrder must be >= 2, got ${spec.lpcOrder}`);

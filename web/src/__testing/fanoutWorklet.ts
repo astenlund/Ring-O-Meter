@@ -23,7 +23,7 @@ import {OctaveStabilizer} from '../audio/octaveStabilizer';
 import {ANALYSIS_WINDOW_SIZE, FRAME_SIZE} from '../audio/constants';
 import {FORMANT_ABSENT_SENTINEL, FrameRingWriter, SAB_FORMANT_COLUMN_COUNT, type PublishFrame} from '../audio/frameRing';
 import {PITCH_FANOUT_PROCESSOR_NAME} from './fanoutConstants';
-import {DEFAULT_FORMANT_SPEC, FormantDetector} from '../audio/formantDetector';
+import {DEFAULT_FORMANT_SPEC, FormantDetector, adaptDecimatedRate} from '../audio/formantDetector';
 
 const PUBLISH_INTERVAL_FRAMES = 1;
 
@@ -78,11 +78,18 @@ class FanoutPitchProcessor extends AudioWorkletProcessor {
             }
             this.writers = sabs.map((s) => new FrameRingWriter(s));
             this.multipliers = multipliers;
-            // Surface non-48k host failures the same way pitchWorklet.ts
-            // does; see that file for rationale.
+            // Adaptive decimatedRate so the worklet stays alive on
+            // hosts whose negotiated sampleRate is not a multiple of
+            // DEFAULT_FORMANT_SPEC.decimatedRate (e.g. 44100 on
+            // macOS/iOS); see pitchWorklet.ts for full rationale. The
+            // structured port-message + console.error fallback below
+            // remains as belt-and-braces for any other construction
+            // failure.
+            const decimatedRate = adaptDecimatedRate(sampleRate, DEFAULT_FORMANT_SPEC.decimatedRate);
             this.formantDetector = new FormantDetector({
                 ...DEFAULT_FORMANT_SPEC,
                 inputRate: sampleRate,
+                decimatedRate,
             });
             // Same SAB schema constraint as pitchWorklet.ts: publish()
             // hardcodes formants[0..N-1] -> f1Hz..fNHz.
