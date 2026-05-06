@@ -87,13 +87,23 @@ export class VoiceChannel {
         this.node = new AudioWorkletNode(this.opts.audioContext, PITCH_PROCESSOR_NAME, {
             processorOptions: {frameRingSab: sab},
         });
-        // slice N (slice number TBD): worklet -> main port message
-        // variants will be wired here (errors, diagnostics, parameter
-        // updates). Per-frame data flows via SAB; the port is currently
-        // unused at steady state. The literal `N` is the documented
-        // marker for indeterminate future slices (see CLAUDE.md's
-        // Future-slice plumbing section); substitute the real number
-        // once a concrete slice claims this seam.
+        // Worklet -> main port surface. Per-frame data flows via SAB;
+        // the port is reserved for non-frame events (errors,
+        // diagnostics, parameter updates). Today the only message
+        // shape carried is `processorError`, posted by the worklet
+        // when its constructor throws (e.g. an unsupported
+        // FormantDetector spec on a host this code didn't anticipate).
+        // Browsers swallow the constructor exception itself, so this
+        // listener is the only main-thread signal that the worklet
+        // failed to initialise. Future banner integration will surface
+        // these to the user; today the console.error keeps the
+        // failure loud-but-out-of-band rather than silent.
+        this.node.port.onmessage = (event: MessageEvent) => {
+            const data = event.data as {type?: unknown; message?: unknown} | undefined;
+            if (data && data.type === 'processorError' && typeof data.message === 'string') {
+                console.error(`VoiceChannel ${this.opts.channelId}: worklet construction failed:`, data.message);
+            }
+        };
         this.source.connect(this.node);
         // No audible output; don't connect to destination.
 
