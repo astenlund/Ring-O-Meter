@@ -76,6 +76,22 @@ let vowelCanvas: OffscreenCanvas | null = null;
 let vowelCtx: OffscreenCanvasRenderingContext2D | null = null;
 const vowelBacking: CanvasBacking = {cssWidth: 0, cssHeight: 0, dpr: 1};
 const vowelSize: CanvasSize = {width: 0, height: 0};
+
+// Chrome bitmap cache. drawVowelChrome's output (background fill + 16
+// gridlines + 2 axis labels = ~17 ctx ops) is pixel-identical across
+// frames except on backing/range change, so caching it to an
+// OffscreenCanvas and blitting via drawImage replaces ~17 ops/frame
+// with one. The bitmap includes the background fill, so blitting also
+// clears the canvas (preserving the previous "fillRect first" semantics
+// that prevent polygon/dot ghost-trail accumulation - polygon and dots
+// then paint on top per usual). Cache key is (width, height, dpr); the
+// F1/F2 ranges are constants today so they're not in the key, but
+// would join it if either becomes dynamic.
+let vowelChromeCache: OffscreenCanvas | null = null;
+let vowelChromeCacheWidth = 0;
+let vowelChromeCacheHeight = 0;
+let vowelChromeCacheDpr = 0;
+
 const vowelChannels = new Map<string, VowelChannelState>();
 const vowelOrderDebounce = new OrderDebounce();
 const vowelAnglesScratch = new Float64Array(MAX_VOICES);
@@ -140,6 +156,47 @@ vowelOrderingForPaint.length = 0;
 
 let lastVowelFrameMs = 0;
 
+// Returns the chrome bitmap, rebuilding it if backing dimensions or
+// dpr have changed since the last build. Returns null if the cache
+// cannot be (re)created (no canvas yet, zero-sized backing, or
+// 2D context unavailable on the cache); callers fall back to a
+// per-frame drawVowelChrome path in that branch.
+function ensureVowelChromeCache(): OffscreenCanvas | null {
+    if (vowelSize.width === 0 || vowelSize.height === 0) {
+        return null;
+    }
+    const dpr = vowelBacking.dpr;
+    const wantWidth = vowelSize.width;
+    const wantHeight = vowelSize.height;
+    if (vowelChromeCache !== null
+        && vowelChromeCacheWidth === wantWidth
+        && vowelChromeCacheHeight === wantHeight
+        && vowelChromeCacheDpr === dpr) {
+        return vowelChromeCache;
+    }
+    // Cache canvas is sized in device pixels to match destination's
+    // backing-store; dpr is then applied to its context so chrome
+    // draws in CSS-pixel coordinates (matching the vowelCtx state
+    // post-applyCanvasBacking).
+    if (vowelChromeCache === null) {
+        vowelChromeCache = new OffscreenCanvas(wantWidth * dpr, wantHeight * dpr);
+    } else {
+        vowelChromeCache.width = wantWidth * dpr;
+        vowelChromeCache.height = wantHeight * dpr;
+    }
+    const cacheCtx = vowelChromeCache.getContext('2d');
+    if (!cacheCtx) {
+        return null;
+    }
+    cacheCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawVowelChrome(cacheCtx, vowelSize, {min: F1_MIN, max: F1_MAX}, {min: F2_MIN, max: F2_MAX});
+    vowelChromeCacheWidth = wantWidth;
+    vowelChromeCacheHeight = wantHeight;
+    vowelChromeCacheDpr = dpr;
+
+    return vowelChromeCache;
+}
+
 function buildDimColorString(hex: string): string {
     const rgba = new Float32Array(4);
     hexToRgba(hex, rgba);
@@ -173,10 +230,24 @@ function paintVowel(): void {
         }
     }
 
-    // Always paint chrome (background + gridlines + axis labels). On
-    // the 2D arm chrome is painted per frame inline; the WebGPU arm
-    // uses a main-thread underlay canvas managed by PlotController.
-    drawVowelChrome(vowelCtx, vowelSize, {min: F1_MIN, max: F1_MAX}, {min: F2_MIN, max: F2_MAX});
+    // Chrome (background fill + gridlines + axis labels) is cached in
+    // a separate OffscreenCanvas and blitted per frame; the cache is
+    // rebuilt only when backing dimensions or dpr change. Falls back
+    // to a per-frame drawVowelChrome if the cache cannot be built
+    // (e.g. degenerate sizing). The blit's source size is in device
+    // pixels (the cache's storage) and the dest size is in CSS pixels
+    // (matching vowelCtx's post-scale coordinate space). The WebGPU
+    // arm uses a parallel underlay-canvas pattern managed on the main
+    // thread by PlotController; this worker-local cache is the 2D
+    // arm's equivalent.
+    const cache = ensureVowelChromeCache();
+    if (cache !== null) {
+        vowelCtx.drawImage(cache,
+            0, 0, cache.width, cache.height,
+            0, 0, vowelSize.width, vowelSize.height);
+    } else {
+        drawVowelChrome(vowelCtx, vowelSize, {min: F1_MIN, max: F1_MAX}, {min: F2_MIN, max: F2_MAX});
+    }
 
     const voiceCount = vowelPointsScratch.length;
     if (voiceCount === 0) {
