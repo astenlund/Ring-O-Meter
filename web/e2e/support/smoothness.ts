@@ -427,20 +427,45 @@ export async function run60sSmoothnessProbe(
     // class above drops the count to that floor.
     //
     // Trace gets a generous threshold (50): a single trace line at
-    // 60 fps × 60 s × ~1-px stroke clears that easily. The vowel
-    // threshold is tighter (10) because the chord-fanout test mode
-    // shares formants across the four voices → polygon vertices
-    // coincide → edges are zero-length; only the four stacked dots
-    // (one visible at 4×4 px = 16 coloured pixels) supply pixels.
-    // Threshold of 10 stays above 0 (the bug-detection floor) without
-    // demanding more pixels than the fanout fixture can produce.
-    await assertCanvasesHaveContent(page);
+    // 60 fps × 60 s × ~1-px stroke clears that easily.
+    //
+    // The vowel threshold is much tighter (4). The empirical floor is
+    // sub-pixel-noisy because of how the dom7 fanout interacts with the
+    // sustained-vowel.wav fixture: fanoutWorklet shares one formant
+    // detector across the four voices (vocal tract is shared since it's
+    // one mic), so polygon vertices coincide and edges contribute no
+    // pixels. The visible content is one stacked 4×4 device-pixel dot
+    // (Playwright's default viewport runs at dpr=1, so VOWEL_DOT_CSS_SIZE
+    // × dpr = 4 × 1 = 4). LPC fitted to the harmonic stack picks F2 ≈
+    // F2_MIN = 700 Hz (the fixture's strong harmonic right at the edge
+    // of the plot's F2 range), which sends the projection
+    // `x = width × (1 - (f2Hz - F2_MIN) / F2_SPAN)` to ≈ width — landing
+    // the dot square on the right canvas edge. Frame-to-frame F2 jitter
+    // of ±20 Hz around 700 shifts the dot in/out of the canvas, making
+    // the visible-pixel count vary 4–16. Threshold 4 catches the
+    // bug-detection floor (count = 0 for blank canvas / dot fully
+    // off-canvas / polygon collapsed) while tolerating the edge jitter.
+    // Switching to vowel-with-formants.wav (F2=1100, mid-plot) would
+    // eliminate the jitter and let us tighten the threshold, but that
+    // fixture is reserved for the robust-formant-pipeline feature.
+    // Vowel-canvas content check is skipped for the staccato fixture:
+    // gen-staccato-audio.mjs produces a pure 220 Hz sine with no
+    // harmonic structure, so LPC formant detection returns sentinel
+    // zeros and consumeLatestFrame leaves the per-channel f1Hz/f2Hz at
+    // their initial value of 0 (which maps off-canvas under the
+    // `width * (1 - (0 - F2_MIN) / F2_SPAN)` projection). The fixture
+    // was designed to exercise gate-flip rendering load at ~3 Hz, not
+    // to produce vowel content. The trace check still runs — YIN
+    // detects 220 Hz cleanly inside the plot's [80, 600] Hz window.
+    const checkVowel = fixtureLabel !== 'dom7-staccato';
+    await assertCanvasesHaveContent(page, checkVowel);
 }
 
-async function assertCanvasesHaveContent(page: Page): Promise<void> {
-    const counts = await page.evaluate(() => {
+async function assertCanvasesHaveContent(page: Page, checkVowel: boolean): Promise<void> {
+    const roles = checkVowel ? ['trace', 'vowel'] : ['trace'];
+    const counts = await page.evaluate((rolesArg) => {
         const samples: Record<string, number> = {};
-        for (const role of ['trace', 'vowel']) {
+        for (const role of rolesArg) {
             const canvas = document.querySelector(`canvas[data-role="${role}"]`) as HTMLCanvasElement | null;
             if (!canvas) {
                 samples[role] = -1;
@@ -480,7 +505,7 @@ async function assertCanvasesHaveContent(page: Page): Promise<void> {
         }
 
         return samples;
-    });
+    }, roles);
     // Negative sentinel (-1) means the canvas was not found or had zero
     // device-pixel dimensions — a distinct failure from "canvas found but
     // no coloured pixels." Different error messages help distinguish them.
@@ -488,8 +513,10 @@ async function assertCanvasesHaveContent(page: Page): Promise<void> {
         ? 'trace canvas: not found in page realm or has zero device-pixel dimensions'
         : `trace canvas: too few coloured pixels (${counts.trace}; expected > 50)`,
     ).toBeGreaterThan(50);
-    expect(counts.vowel, counts.vowel < 0
-        ? 'vowel canvas: not found in page realm or has zero device-pixel dimensions'
-        : `vowel canvas: too few coloured pixels (${counts.vowel}; expected > 10)`,
-    ).toBeGreaterThan(10);
+    if (checkVowel) {
+        expect(counts.vowel, counts.vowel < 0
+            ? 'vowel canvas: not found in page realm or has zero device-pixel dimensions'
+            : `vowel canvas: too few coloured pixels (${counts.vowel}; expected > 4)`,
+        ).toBeGreaterThan(4);
+    }
 }
