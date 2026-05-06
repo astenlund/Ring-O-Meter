@@ -9,7 +9,7 @@ import {useInputDevices} from './audio/useInputDevices';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
 import {FrameSourceRegistry} from './audio/frameSourceRegistry';
 import {PlotController} from './plot/plotController';
-import {useLatestRef} from './util/useLatestRef';
+import {useLatestRef} from './ui/useLatestRef';
 // Cleanup: remove this import + fanoutConfig state + fanout branch in
 // the slot-build effect + trim SLOT_COLORS back to ['#5cf', '#fc5'] when
 // the fanout test mode is retired (also remove FanoutGroup + fanoutGroup

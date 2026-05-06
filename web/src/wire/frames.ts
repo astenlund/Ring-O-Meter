@@ -12,9 +12,14 @@
 //
 // formants nests four formant slots under a single Key(6) on AnalysisFrame.
 // Each slot carries the FORMANT_ABSENT_SENTINEL = 0 contract from
-// audio/formantRing.ts: 0 means "no formant detected in this slot"
+// audio/frameRing.ts: 0 means "no formant detected in this slot"
 // (detector NaN mapped before SAB transit). Consumers gate on `f*Hz > 0`.
 
+// No direct named import yet: today FormantTuple is consumed only
+// via AnalysisFrame.formants below. The SignalR DisplayClient (when
+// the hub feature lands) will import this type by name to construct
+// hub-fed AnalysisFrame instances; until then the export keeps the
+// wire surface symmetric with the C# FormantTuple record struct.
 export interface FormantTuple {
     f1Hz: number;             // [Key(0)]
     f2Hz: number;             // [Key(1)]
