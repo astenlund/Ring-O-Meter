@@ -1,5 +1,18 @@
-import type {Page} from '@playwright/test';
+import {test, type Page} from '@playwright/test';
 import {CHANNEL_BRIDGE_KEY} from '../../src/audio/channelBridge';
+
+// beforeEach hook that initializes the channel test bridge map on
+// the page realm before each test. Spec files that read from the
+// bridge (today: only the suspend/resume rebase-continuity probe)
+// must call this; spec files that only run smoothness probes do
+// not, since the smoothness probe body never touches the bridge.
+export function armChannelTestBridgeBeforeEach(): void {
+    test.beforeEach(async ({context}) => {
+        await context.addInitScript((bridgeKey: string) => {
+            (globalThis as Record<string, unknown>)[bridgeKey] = new Map();
+        }, CHANNEL_BRIDGE_KEY);
+    });
+}
 
 // Suspend/resume rebase-correctness probe. Extracted from
 // smoothness.spec.ts so future probe variants (rapid double-suspend,
