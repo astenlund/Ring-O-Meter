@@ -4,7 +4,7 @@
 // AudioWorkletGlobalScope cannot follow. We only want the URL form, not the
 // worker constructor form, so addModule() loads it like any ESM module.
 import workletUrl from './worklets/pitchWorklet.ts?worker&url';
-import {PITCH_PROCESSOR_NAME} from './constants';
+import {PITCH_PROCESSOR_NAME, PROCESSOR_ERROR_TYPE} from './constants';
 import {FrameRingReader, createFrameRing, type FrameSource} from './frameRing';
 import {AudioContextEpoch} from './audioContextEpoch';
 import {publishChannel, revokeChannel} from './channelBridge';
@@ -100,7 +100,7 @@ export class VoiceChannel {
         // failure loud-but-out-of-band rather than silent.
         this.node.port.onmessage = (event: MessageEvent) => {
             const data = event.data as {type?: unknown; message?: unknown} | undefined;
-            if (data && data.type === 'processorError' && typeof data.message === 'string') {
+            if (data && data.type === PROCESSOR_ERROR_TYPE && typeof data.message === 'string') {
                 console.error(`VoiceChannel ${this.opts.channelId}: worklet construction failed:`, data.message);
             }
         };

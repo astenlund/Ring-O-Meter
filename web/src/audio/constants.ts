@@ -21,6 +21,14 @@ export const MAX_PUBLISH_HZ = 60;
 // registerProcessor at top level and is not main-thread-import-safe.
 export const PITCH_PROCESSOR_NAME = 'pitch-processor';
 
+// Discriminator for the structured port message a worklet posts when its
+// constructor throws. Both the posting side (pitchWorklet.ts,
+// fanoutWorklet.ts) and the receiving side (voiceChannel.ts) must agree
+// on the literal; owning it here follows the same pattern as
+// PITCH_PROCESSOR_NAME above, and protects against silent drift if
+// either side is renamed.
+export const PROCESSOR_ERROR_TYPE = 'processorError';
+
 // FRAME_SIZE is the publish-frame unit (~21 ms at 48 kHz): how often the
 // worklet's publish() runs, and the window size that RMS + formants
 // analyse. ANALYSIS_WINDOW_SIZE is the YIN-only window (2 * FRAME_SIZE):

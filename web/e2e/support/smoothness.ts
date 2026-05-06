@@ -481,6 +481,15 @@ async function assertCanvasesHaveContent(page: Page): Promise<void> {
 
         return samples;
     });
-    expect(counts.trace, `trace canvas: too few coloured pixels (${counts.trace})`).toBeGreaterThan(50);
-    expect(counts.vowel, `vowel canvas: too few coloured pixels (${counts.vowel})`).toBeGreaterThan(10);
+    // Negative sentinel (-1) means the canvas was not found or had zero
+    // device-pixel dimensions — a distinct failure from "canvas found but
+    // no coloured pixels." Different error messages help distinguish them.
+    expect(counts.trace, counts.trace < 0
+        ? 'trace canvas: not found in page realm or has zero device-pixel dimensions'
+        : `trace canvas: too few coloured pixels (${counts.trace}; expected > 50)`,
+    ).toBeGreaterThan(50);
+    expect(counts.vowel, counts.vowel < 0
+        ? 'vowel canvas: not found in page realm or has zero device-pixel dimensions'
+        : `vowel canvas: too few coloured pixels (${counts.vowel}; expected > 10)`,
+    ).toBeGreaterThan(10);
 }
