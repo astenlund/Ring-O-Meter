@@ -8,7 +8,6 @@ import {
     drawTraces,
     drawVowelChrome,
     drawVowelDots,
-    drawVowelPolygon,
     makeHzToY,
     type CanvasBacking,
     type CanvasSize,
@@ -138,6 +137,78 @@ for (let i = 0; i < MAX_VOICES; i++) {
 }
 vowelPointsScratch.length = 0;
 // vowelDrawPoints.length intentionally stays at MAX_VOICES; see comment above.
+
+// Per-edge gradient cache. Each frame, drawVowelPolygon would
+// otherwise allocate one CanvasGradient + two addColorStop entries
+// per edge in Chromium's renderer-process C++ heap (the JS-heap alloc
+// test doesn't observe these but they are real driver work). The
+// gradient at edge slot `i` is reusable across frames as long as both
+// endpoints' (x, y) and effective stroke colors are unchanged. The
+// OrderDebounce keeps the edge-slot to voice-pair mapping stable
+// across frames, so when singers hold a vowel the cache hit rate
+// stays high; on a polygon morph the comparison falls through and
+// rebuilds only the dirty slots.
+//
+// Layout: gradients[] holds one slot per edge (parallel to the
+// ordering buffer's MAX_VOICES capacity). keyCoords stores the four
+// endpoint coordinates per slot in a packed Float64Array (4 * MAX_VOICES
+// numbers) so reads stay typed-array fast. keyColor0/keyColor1 hold
+// the resolved CSS color strings (post-isDimmed selection) so a state
+// flip from non-dimmed to dimmed at a slot triggers a rebuild even
+// when (x, y) is unchanged.
+const vowelEdgeGradients: (CanvasGradient | null)[] = new Array<CanvasGradient | null>(MAX_VOICES).fill(null);
+const vowelEdgeCoordKeys = new Float64Array(MAX_VOICES * 4);
+const vowelEdgeColor0Keys: string[] = new Array<string>(MAX_VOICES).fill('');
+const vowelEdgeColor1Keys: string[] = new Array<string>(MAX_VOICES).fill('');
+
+// Mirror of drawVowelPolygon (paint.ts) with per-edge gradient
+// caching. The pure paint.ts version is retained so source-adjacent
+// alloc tests can validate the underlying canvas API behavior; the
+// worker uses this cached path because frame-rate is the actual hot
+// surface that benefits from gradient pooling.
+function drawVowelPolygonWithCache(
+    ctx: OffscreenCanvasRenderingContext2D,
+    points: ReadonlyArray<VowelPoint2d>,
+    ordering: ArrayLike<number>,
+    strokeWidthDevicePx: number,
+): void {
+    const n = ordering.length;
+    if (n < 2) {
+        return;
+    }
+    ctx.lineWidth = strokeWidthDevicePx;
+    for (let i = 0; i < n; i++) {
+        const a = points[ordering[i]];
+        const b = points[ordering[(i + 1) % n]];
+        const colorA = a.isDimmed ? a.dimColor : a.color;
+        const colorB = b.isDimmed ? b.dimColor : b.color;
+        const k = i * 4;
+        let grad = vowelEdgeGradients[i];
+        if (grad === null
+            || vowelEdgeCoordKeys[k] !== a.x
+            || vowelEdgeCoordKeys[k + 1] !== a.y
+            || vowelEdgeCoordKeys[k + 2] !== b.x
+            || vowelEdgeCoordKeys[k + 3] !== b.y
+            || vowelEdgeColor0Keys[i] !== colorA
+            || vowelEdgeColor1Keys[i] !== colorB) {
+            grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+            grad.addColorStop(0, colorA);
+            grad.addColorStop(1, colorB);
+            vowelEdgeGradients[i] = grad;
+            vowelEdgeCoordKeys[k] = a.x;
+            vowelEdgeCoordKeys[k + 1] = a.y;
+            vowelEdgeCoordKeys[k + 2] = b.x;
+            vowelEdgeCoordKeys[k + 3] = b.y;
+            vowelEdgeColor0Keys[i] = colorA;
+            vowelEdgeColor1Keys[i] = colorB;
+        }
+        ctx.strokeStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+    }
+}
 
 // Pre-allocated number[] used to expose a length-bounded view of
 // `applied` (Int32Array, full MAX_VOICES capacity) to the paint
@@ -298,7 +369,7 @@ function paintVowel(): void {
         vowelOrderingForPaint.push(applied[i]);
     }
 
-    drawVowelPolygon(vowelCtx, vowelDrawPoints, vowelOrderingForPaint, strokeWidthDevicePx);
+    drawVowelPolygonWithCache(vowelCtx, vowelDrawPoints, vowelOrderingForPaint, strokeWidthDevicePx);
     drawVowelDots(vowelCtx, vowelDrawPoints, voiceCount, dotSizeDevicePx);
 }
 
