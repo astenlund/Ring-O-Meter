@@ -13,12 +13,6 @@ on:
 # natural next step but deferred until there is operational
 # experience with the infra-change cadence.
 
-permissions:
-  id-token: write
-  # contents: write is needed for the final release-marker push.
-  # See the "Mark deployed commit" step at the bottom of the job.
-  contents: write
-
 env:
   REGISTRY_NAME: ''  # Resolved from Azure on first step; recorded as repo var if a stable value is preferred.
   CONTAINER_APP_NAME: ca-ringometer-test
@@ -35,6 +29,9 @@ jobs:
     # Skipped instead of a red Failed.
     if: github.repository == 'astenlund/Ring-O-Meter'
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Federated OIDC token for azure/login@v2.
+      contents: read   # actions/checkout@v4 default.
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -130,14 +127,28 @@ jobs:
           done
           curl -fsS "https://$FQDN/config.json"
 
-      # Mirrors Update-ReleaseBranch in Deploy-RingOMeter.ps1. Moves the
-      # release-test branch to the just-deployed commit so anyone asking
-      # "what's actually running in test?" can answer with a single ref.
-      # Force-push is intentional: this is a marker branch with no
-      # contributors and no merges, only ever advanced forward by a
-      # successful deploy. continue-on-error matches the PS script's
-      # warning-only semantics: the deploy already succeeded; a failed
-      # marker push leaves it one commit stale until the next deploy.
+  # Marker push lives in a dependent job so `contents: write` is scoped
+  # to a single git-push step, not the entire build/Docker/Azure
+  # pipeline above. GitHub Actions does not support per-step permission
+  # overrides, so a separate job is the standard mitigation. Mirrors
+  # Update-ReleaseBranch in Deploy-RingOMeter.ps1: moves the release-test
+  # branch to the just-deployed commit so anyone asking "what's actually
+  # running in test?" can answer with a single ref. Force-push is
+  # intentional: this is a marker branch with no contributors and no
+  # merges, only ever advanced forward by a successful deploy.
+  # continue-on-error matches the PS script's warning-only semantics:
+  # the deploy already succeeded; a failed marker push leaves it one
+  # commit stale until the next deploy.
+  mark-release-test:
+    if: github.repository == 'astenlund/Ring-O-Meter'
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Mark deployed commit
         continue-on-error: true
         run: |
