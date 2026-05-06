@@ -4,12 +4,12 @@
 // than via port.postMessage. The stabilized value is what reaches the
 // ring, which is what every consumer (NoteReadout, plot worker) reads.
 
-import {detectPitch} from '../pitchDetector';
-import {computeRmsDb} from '../rmsDb';
-import {OctaveStabilizer} from '../octaveStabilizer';
+import {detectPitch} from '../../dsp/pitchDetector';
+import {computeRmsDb} from '../../dsp/rmsDb';
+import {OctaveStabilizer} from '../../dsp/octaveStabilizer';
 import {ANALYSIS_WINDOW_SIZE, FRAME_SIZE, PITCH_PROCESSOR_NAME} from '../constants';
 import {FORMANT_ABSENT_SENTINEL, FrameRingWriter, SAB_FORMANT_COLUMN_COUNT, type PublishFrame} from '../frameRing';
-import {DEFAULT_FORMANT_SPEC, FormantDetector, adaptDecimatedRate} from '../formantDetector';
+import {DEFAULT_FORMANT_SPEC, FormantDetector, adaptDecimatedRate} from '../../dsp/formantDetector';
 
 const PUBLISH_INTERVAL_FRAMES = 1; // every ~21 ms at 48 kHz -> ~47 Hz publish
 
