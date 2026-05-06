@@ -1,6 +1,7 @@
 import {type CSSProperties, type RefObject, useEffect, useRef} from 'react';
 import {PlotController} from '../plot/plotController';
 import type {VoiceEntry} from '../plot/plotMessages';
+import type {Renderer} from '../plot/renderer';
 import {useCanvasBacking} from './useCanvasBacking';
 
 export type {VoiceEntry};
@@ -26,8 +27,12 @@ export interface PitchPlotProps {
     minHz?: number;
     maxHz?: number;
     handleRef: RefObject<PitchPlotHandle | null>;
-    useUnderlay?: boolean;
-    rendererWorkerUrl?: string;
+    // Discriminated-union renderer choice. The underlay canvas is
+    // mounted iff `renderer.kind === 'webgpu'`, and the worker URL
+    // for the self-construct controller fallback comes from the
+    // same branch. See plot/renderer.ts for why this replaces the
+    // earlier two-boolean shape.
+    renderer: Renderer;
     // Caller-driven sizing. The outer container fills 100% of whatever
     // the parent allocates by default; pass style={{height: 360}} (or
     // any flex shape) to override. An earlier version of the component
@@ -73,11 +78,11 @@ export function PitchPlot({
     minHz = DEFAULT_MIN_HZ,
     maxHz = DEFAULT_MAX_HZ,
     handleRef,
-    useUnderlay = false,
-    rendererWorkerUrl,
+    renderer,
     style,
     controller,
 }: PitchPlotProps) {
+    const useUnderlay = renderer.kind === 'webgpu';
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const underlayRef = useRef<HTMLCanvasElement>(null);
     const controllerRef = useRef<PlotController | null>(null);
@@ -101,7 +106,8 @@ export function PitchPlot({
                 controllerRef.current = controller;
                 ownsControllerRef.current = false;
             } else {
-                const fresh = new PlotController(rendererWorkerUrl);
+                const workerUrl = renderer.kind === 'webgpu' ? renderer.workerUrl : undefined;
+                const fresh = new PlotController(workerUrl);
                 controllerRef.current = fresh;
                 ownsControllerRef.current = true;
             }

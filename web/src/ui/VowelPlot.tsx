@@ -1,5 +1,6 @@
 import {type CSSProperties, useEffect, useRef} from 'react';
 import {PlotController} from '../plot/plotController';
+import type {Renderer} from '../plot/renderer';
 import {useCanvasBacking} from './useCanvasBacking';
 
 export interface VowelPlotProps {
@@ -11,12 +12,13 @@ export interface VowelPlotProps {
     // polygon is always wired into the same render worker as the trace
     // (one device, one queue, one submit per frame).
     controller: PlotController;
-    // Mirrors PitchPlot's useUnderlay: when true (WebGPU arm), an
-    // absolute-positioned 2D underlay canvas sits behind the WebGPU
-    // canvas and carries the static chrome (gridlines + axis labels).
-    // When false (2D arm), the worker paints chrome inline each frame
-    // and no main-thread underlay canvas is mounted.
-    useUnderlay?: boolean;
+    // Discriminated-union renderer choice; the underlay canvas is
+    // mounted iff `renderer.kind === 'webgpu'`. Mirrors PitchPlot:
+    // on the WebGPU arm, a 2D underlay canvas behind the WebGPU canvas
+    // carries the static chrome (gridlines + axis labels); on the 2D
+    // arm the worker paints chrome inline each frame and no
+    // main-thread underlay is mounted.
+    renderer: Renderer;
     style?: CSSProperties;
 }
 
@@ -42,7 +44,8 @@ const canvasStyle: CSSProperties = {
 // disposal happens when App unmounts (rare in production, expected in
 // dev strict-mode), at which point the controller terminates the
 // shared worker and the vowel canvas is implicitly released.
-export function VowelPlot({controller, useUnderlay = false, style}: VowelPlotProps) {
+export function VowelPlot({controller, renderer, style}: VowelPlotProps) {
+    const useUnderlay = renderer.kind === 'webgpu';
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const underlayRef = useRef<HTMLCanvasElement>(null);
     const attachedRef = useRef(false);

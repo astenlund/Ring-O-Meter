@@ -18,6 +18,7 @@ import {useLatestRef} from './ui/useLatestRef';
 // fanoutConstants.ts).
 import {parseFanoutFlag} from './__testing/fanoutFlag';
 import {parseRendererFlag} from './plot/rendererFlag';
+import type {Renderer} from './plot/renderer';
 // As of 2026-04-30 WebGPU is the production default renderer; the 2D
 // canvas worker remains available via ?renderer=2d. The static
 // `?worker&url` imports bundle both worker chunks at build time so
@@ -119,11 +120,16 @@ export function App() {
     const [rendererFlag] = useState(() => parseRendererFlag(window.location.search));
     // WebGPU is the production default; ?renderer=2d is the only
     // opt-out. `null` (no flag) and explicit `'webgpu'` both go
-    // through the WebGPU path. Hoisted so the two PitchPlot props
-    // (rendererWorkerUrl + useUnderlay) cannot diverge.
-    const useWebGpu = rendererFlag !== '2d';
+    // through the WebGPU path. The discriminated union keeps the
+    // worker URL and the underlay-canvas requirement statically
+    // linked: PitchPlot/VowelPlot pattern-match on `kind` so the
+    // two cannot drift the way the earlier two-boolean shape allowed.
+    const [renderer] = useState<Renderer>(() => rendererFlag === '2d'
+        ? {kind: '2d'}
+        : {kind: 'webgpu', workerUrl: webgpuWorkerUrl});
 
-    const [controller] = useState(() => new PlotController(useWebGpu ? webgpuWorkerUrl : undefined));
+    const [controller] = useState(() =>
+        new PlotController(renderer.kind === 'webgpu' ? renderer.workerUrl : undefined));
 
     // Started gates audio construction on an explicit user gesture: the
     // Start button overlay on the pitch plot. Browser autoplay policy
@@ -302,8 +308,7 @@ export function App() {
                         voices={voices}
                         windowMs={PLOT_WINDOW_MS}
                         handleRef={plotHandleRef}
-                        rendererWorkerUrl={useWebGpu ? webgpuWorkerUrl : undefined}
-                        useUnderlay={useWebGpu}
+                        renderer={renderer}
                         controller={controller}
                     />
                     {!started && (
@@ -331,7 +336,7 @@ export function App() {
                 </div>
                 <VowelPlot
                     controller={controller}
-                    useUnderlay={useWebGpu}
+                    renderer={renderer}
                     style={{width: 360, flexShrink: 0}}
                 />
             </div>
