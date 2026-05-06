@@ -7,7 +7,7 @@
 import {detectPitch} from '../../dsp/pitchDetector';
 import {computeRmsDb} from '../../dsp/rmsDb';
 import {OctaveStabilizer} from '../../dsp/octaveStabilizer';
-import {ANALYSIS_WINDOW_SIZE, FRAME_SIZE, PITCH_PROCESSOR_NAME} from '../constants';
+import {ANALYSIS_WINDOW_SIZE, FRAME_SIZE, PITCH_PROCESSOR_NAME, PROCESSOR_ERROR_TYPE} from '../constants';
 import {FORMANT_ABSENT_SENTINEL, FrameRingWriter, SAB_FORMANT_COLUMN_COUNT, type PublishFrame} from '../frameRing';
 import {DEFAULT_FORMANT_SPEC, FormantDetector, adaptDecimatedRate} from '../../dsp/formantDetector';
 
@@ -97,7 +97,7 @@ class PitchProcessor extends AudioWorkletProcessor {
         catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             console.error('PitchProcessor: construction failed', message);
-            this.port.postMessage({type: 'processorError', message});
+            this.port.postMessage({type: PROCESSOR_ERROR_TYPE, message});
             throw err;
         }
     }
