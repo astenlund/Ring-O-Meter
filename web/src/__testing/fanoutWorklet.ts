@@ -17,13 +17,13 @@
 // Cleanup: rm this file along with fanoutConstants.ts and
 // fanoutVoiceChannel.ts when the fanout test mode is retired.
 
-import {detectPitch} from '../audio/pitchDetector';
-import {computeRmsDb} from '../audio/rmsDb';
-import {OctaveStabilizer} from '../audio/octaveStabilizer';
+import {detectPitch} from '../dsp/pitchDetector';
+import {computeRmsDb} from '../dsp/rmsDb';
+import {OctaveStabilizer} from '../dsp/octaveStabilizer';
 import {ANALYSIS_WINDOW_SIZE, FRAME_SIZE} from '../audio/constants';
 import {FORMANT_ABSENT_SENTINEL, FrameRingWriter, SAB_FORMANT_COLUMN_COUNT, type PublishFrame} from '../audio/frameRing';
 import {PITCH_FANOUT_PROCESSOR_NAME} from './fanoutConstants';
-import {DEFAULT_FORMANT_SPEC, FormantDetector, adaptDecimatedRate} from '../audio/formantDetector';
+import {DEFAULT_FORMANT_SPEC, FormantDetector, adaptDecimatedRate} from '../dsp/formantDetector';
 
 const PUBLISH_INTERVAL_FRAMES = 1;
 

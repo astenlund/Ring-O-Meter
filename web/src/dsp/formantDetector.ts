@@ -26,7 +26,7 @@
 // per frame but their workspaces are pre-allocated to keep the
 // per-frame call zero-alloc in steady state.
 
-import {FRAME_SIZE} from './constants';
+import {FRAME_SIZE} from '../audio/constants';
 import {Decimator} from './decimator';
 import {LpcBurg} from './lpc';
 import {PolyRoots, factorToPole} from './polyRoots';
