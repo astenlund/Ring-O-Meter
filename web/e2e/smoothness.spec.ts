@@ -1,43 +1,39 @@
-import {test, expect} from '@playwright/test';
+import {test} from '@playwright/test';
+import {registerFakeAudioDevicesBeforeEach} from './support/fakeAudioDevices';
 import {
     RENDERER_ARMS,
-    registerFakeAudioBeforeEach,
     run60sSmoothnessProbe,
     setupSmoothnessPage,
     withChordFanout,
 } from './support/smoothness';
-import {LATENCY_DRIFT_BUDGET_MS, runSuspendResumeProbe} from './support/suspendResumeProbe';
 
-// End-to-end regression net covering three distinct invariants, all
-// driven through the same fake-audio harness:
+// End-to-end regression net covering two smoothness invariants
+// against the sustained-tone fixture (the global playwright.config.ts
+// audio file), driven through the same fake-audio device shim:
 //
-//   1. "pitch plot is smooth for 60 seconds (sustained, ...)" -
+//   1. "pitch plot is smooth for 60 seconds (dom7 sustained, ...)" -
 //      main-thread frame pacing on the steady-state singing workload.
 //      Both renderers (WebGPU default, 2D opt-out) tested. The probe
 //      body lives in support/smoothness.ts and is shared with the
 //      staccato fixture spec file.
-//   2. "pitch plot stays in sync across suspend/resume rebase" -
-//      AudioContext suspend/resume rebase correctness. Catches the
-//      offset miscomputation failure mode (cause (a) of the
-//      residual-snap-backs bug) that the smoothness assertion cannot
-//      see: a wrong offset produces a spatially-warped trace without
-//      any paint-rate or long-task symptom. Probe body lives in
-//      support/suspendResumeProbe.ts so future variants (rapid
-//      double-suspend, suspend-during-measurement, resume after long
-//      suspend) can share the latency-sampling / gap-bucketing
-//      machinery.
-//   3. "pitch plot is smooth for 30 minutes (...)" - long-window
+//   2. "pitch plot is smooth for 30 minutes (...)" - long-window
 //      diagnostic gated by PROTOTYPE_LONG=1, captures the rare freeze
 //      class at a statistically meaningful scale.
+//
+// The suspend/resume rebase-continuity test lives in
+// rebase-continuity.spec.ts: different setup needs (it arms the
+// channel test bridge), different invariant (rebase math, not frame
+// pacing), and the next probe variants in that family land alongside
+// it rather than expanding this file's responsibility.
 //
 // The staccato 60-second arm lives in staccato-smoothness.spec.ts
 // (separate file because Playwright restricts test.use({launchOptions})
 // to file scope, and we don't want to override the audio file for the
-// suspend/resume and 30-min tests in this file).
+// 30-min test here).
 
 // heuristic: smoothness-budget
 
-registerFakeAudioBeforeEach();
+registerFakeAudioDevicesBeforeEach();
 
 // Sustained 4-voice "barbershop seven" chord arm: the smoothness
 // regression net's primary smoothness fixture. Both renderers
@@ -63,35 +59,6 @@ for (const arm of RENDERER_ARMS) {
         await run60sSmoothnessProbe(page, FIXTURE_LABEL, arm, withChordFanout(arm.querystring));
     });
 }
-
-test('pitch plot stays in sync across suspend/resume rebase', async ({page}) => {
-    await page.goto('/');
-
-    const startButton = page.getByRole('button', {name: /^start$/i});
-    await expect(startButton).toBeVisible({timeout: 15_000});
-    await startButton.click();
-    await expect(page.locator('canvas').first()).toBeVisible();
-
-    const result = await runSuspendResumeProbe(page);
-
-    // Preconditions: measurement windows produced useful samples, the
-    // rebase observably fired on the post-resume transition.
-    expect(result.preLatencySamples).toBeGreaterThan(5);
-    expect(result.postLatencySamples).toBeGreaterThan(5);
-    expect(result.rebaseCountAfter).toBeGreaterThan(result.rebaseCountBefore);
-    expect(result.postResumePublished).toBeGreaterThan(result.preSuspendPublished);
-
-    // Main invariant: rebase offset continuity. A miscomputed offset
-    // shifts the post-resume median latency by the miscomputation
-    // magnitude, regardless of which direction.
-    expect(Math.abs(result.latencyPost - result.latencyPre)).toBeLessThan(LATENCY_DRIFT_BUDGET_MS);
-
-    // Paint smoothness pre and post. During-suspend is intentionally
-    // unasserted: paint stalling while the worklet is paused is
-    // expected behaviour, not a regression.
-    expect(result.preGaps).toBe(0);
-    expect(result.postGaps).toBe(0);
-});
 
 // Long-window diagnostic arm for the WebGPU plot prototype
 // (.claude/specs/2026-04-30-webgpu-plot-prototype.md). The 60 s

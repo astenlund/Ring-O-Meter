@@ -1,8 +1,8 @@
 import {test} from '@playwright/test';
 import {join} from 'node:path';
+import {registerFakeAudioDevicesBeforeEach} from './support/fakeAudioDevices';
 import {
     RENDERER_ARMS,
-    registerFakeAudioBeforeEach,
     run60sSmoothnessProbe,
     withChordFanout,
 } from './support/smoothness';
@@ -56,7 +56,7 @@ test.use({
     },
 });
 
-registerFakeAudioBeforeEach();
+registerFakeAudioDevicesBeforeEach();
 
 for (const arm of RENDERER_ARMS) {
     test(`pitch plot is smooth for 60 seconds (dom7 staccato, ${arm.label})`, async ({page}) => {
