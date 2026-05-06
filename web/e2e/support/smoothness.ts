@@ -414,4 +414,73 @@ export async function run60sSmoothnessProbe(
     if (result.heapMeasured) {
         expect(result.heapDelta).toBeLessThan(HEAP_DELTA_BUDGET_BYTES);
     }
+
+    // Content assertion: the timing budgets above can pass while the
+    // canvases show nothing (e.g. silent encoder.finish() throws after
+    // a missed WebGPU validation rule, render passes opened against
+    // 0x0 swap-chain textures, vowel-module roster never seeded). The
+    // rAF callback returns in time and the test green-stamps blank
+    // pixels. Count "coloured" pixels (R/G/B saturation > 30) so the
+    // background fill (#0a0a0a) and grey gridlines (#222) don't flatter
+    // the count: only voice-coloured trace lines and polygon
+    // strokes/dots qualify. An empty canvas reports 0; either bug
+    // class above drops the count to that floor.
+    //
+    // Trace gets a generous threshold (50): a single trace line at
+    // 60 fps × 60 s × ~1-px stroke clears that easily. The vowel
+    // threshold is tighter (10) because the chord-fanout test mode
+    // shares formants across the four voices → polygon vertices
+    // coincide → edges are zero-length; only the four stacked dots
+    // (one visible at 4×4 px = 16 coloured pixels) supply pixels.
+    // Threshold of 10 stays above 0 (the bug-detection floor) without
+    // demanding more pixels than the fanout fixture can produce.
+    await assertCanvasesHaveContent(page);
+}
+
+async function assertCanvasesHaveContent(page: Page): Promise<void> {
+    const counts = await page.evaluate(() => {
+        const samples: Record<string, number> = {};
+        for (const role of ['trace', 'vowel']) {
+            const canvas = document.querySelector(`canvas[data-role="${role}"]`) as HTMLCanvasElement | null;
+            if (!canvas) {
+                samples[role] = -1;
+
+                continue;
+            }
+            // Use the placeholder canvas's intrinsic pixel dimensions
+            // (set by the worker after transferControlToOffscreen). For
+            // both 2D and WebGPU paths the placeholder reflects the
+            // worker's most recent commit; drawImage into a same-origin
+            // OffscreenCanvas pulls those pixels without taint.
+            const w = canvas.width;
+            const h = canvas.height;
+            if (w === 0 || h === 0) {
+                samples[role] = -1;
+
+                continue;
+            }
+            const tmp = new OffscreenCanvas(w, h);
+            const ctx = tmp.getContext('2d');
+            if (!ctx) {
+                samples[role] = -1;
+
+                continue;
+            }
+            ctx.drawImage(canvas, 0, 0);
+            const data = ctx.getImageData(0, 0, w, h).data;
+            let colored = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                const max = Math.max(data[i], data[i + 1], data[i + 2]);
+                const min = Math.min(data[i], data[i + 1], data[i + 2]);
+                if (max - min > 30) {
+                    colored += 1;
+                }
+            }
+            samples[role] = colored;
+        }
+
+        return samples;
+    });
+    expect(counts.trace, `trace canvas: too few coloured pixels (${counts.trace})`).toBeGreaterThan(50);
+    expect(counts.vowel, `vowel canvas: too few coloured pixels (${counts.vowel})`).toBeGreaterThan(10);
 }
