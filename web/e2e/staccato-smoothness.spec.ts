@@ -1,5 +1,5 @@
 import {test} from '@playwright/test';
-import {join} from 'node:path';
+import {audioFixturePath} from '../audioFixturePath';
 import {registerFakeAudioDevicesBeforeEach} from './support/fakeAudioDevices';
 import {
     RENDERER_ARMS,
@@ -50,7 +50,7 @@ test.use({
             '--autoplay-policy=no-user-gesture-required',
             '--use-fake-ui-for-media-stream',
             '--use-fake-device-for-media-stream',
-            `--use-file-for-fake-audio-capture=${join(import.meta.dirname, '..', 'test-fixtures', 'staccato-vowel.wav')}`,
+            `--use-file-for-fake-audio-capture=${audioFixturePath('staccato-vowel.wav')}`,
             '--enable-unsafe-webgpu',
         ],
     },

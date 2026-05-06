@@ -1,10 +1,7 @@
 import {defineConfig} from '@playwright/test';
-import {join} from 'node:path';
+import {audioFixturePath} from './audioFixturePath';
 
-// web/package.json is "type": "module", so __dirname is not defined.
-// import.meta.dirname (Node 20.11+) resolves cleanly; the repo requires
-// Node 22+ per CLAUDE.md.
-const audioFile = join(import.meta.dirname, 'test-fixtures', 'sustained-vowel.wav');
+const audioFile = audioFixturePath('sustained-vowel.wav');
 
 export default defineConfig({
     testDir: './e2e',
