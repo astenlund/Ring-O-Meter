@@ -100,8 +100,8 @@ export interface FormantFrame {
  * `readLatestFormants(out: FormantFrame)` pattern: the caller owns
  * the struct's lifetime, hoists one instance, mutates fields in
  * place, and passes it by reference each publish. That keeps the
- * publish path zero-alloc in steady
- * state while making column transposition (the failure mode of the
+ * publish path zero-alloc in steady state while making column
+ * transposition (the failure mode of the
  * previous 5-positional-number signature) a TypeScript error rather
  * than a silent miswire that only the byte-offset test in
  * frameRing.test.ts would catch via sentinels. Adding a ring column

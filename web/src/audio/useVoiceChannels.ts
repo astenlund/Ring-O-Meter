@@ -3,7 +3,7 @@ import {TARGET_SAMPLE_RATE_HZ} from './constants';
 import {openInputStream} from './deviceManager';
 import type {FrameSourceRegistry} from './frameSourceRegistry';
 import {VoiceChannel, type VoiceChannelEvents} from './voiceChannel';
-import {useLatestRef} from '../util/useLatestRef';
+import {useLatestRef} from '../ui/useLatestRef';
 // Cleanup: remove this import + FanoutGroup interface + fanoutGroup field on
 // VoiceChannelSlot + the realSlots filter + the FanoutVoiceChannel ternary
 // branch when the fanout test mode is retired (also remove parseFanoutFlag
