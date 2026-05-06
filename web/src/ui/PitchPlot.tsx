@@ -195,7 +195,10 @@ export function PitchPlot({
             {useUnderlay && (
                 <canvas ref={underlayRef} style={{...canvasStyle, position: 'absolute', inset: 0}} />
             )}
-            <canvas ref={canvasRef} style={{...canvasStyle, position: 'absolute', inset: 0}} />
+            {/* `data-role="trace"` is the e2e canvas-content assertion's
+              * locator; if it ever needs to change, update the queries
+              * in web/e2e/support/smoothness.ts in lockstep. */}
+            <canvas ref={canvasRef} data-role="trace" style={{...canvasStyle, position: 'absolute', inset: 0}} />
         </div>
     );
 }

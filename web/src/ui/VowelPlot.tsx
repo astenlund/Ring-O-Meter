@@ -107,7 +107,10 @@ export function VowelPlot({controller, renderer, style}: VowelPlotProps) {
             {useUnderlay && (
                 <canvas ref={underlayRef} style={{...canvasStyle, position: 'absolute', inset: 0}} />
             )}
-            <canvas ref={canvasRef} style={{...canvasStyle, position: 'absolute', inset: 0}} />
+            {/* `data-role="vowel"` is the e2e canvas-content assertion's
+              * locator; if it ever needs to change, update the queries
+              * in web/e2e/support/smoothness.ts in lockstep. */}
+            <canvas ref={canvasRef} data-role="vowel" style={{...canvasStyle, position: 'absolute', inset: 0}} />
         </div>
     );
 }
