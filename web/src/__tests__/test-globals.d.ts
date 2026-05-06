@@ -4,13 +4,14 @@
 // accidental use of Node-only APIs (process, Buffer, __dirname) in
 // browser/worklet code.
 //
-// `gc` comes from Chromium's `--js-flags="--expose-gc"` and is
-// referenced exclusively by tests under web/src/__tests__/*.alloc.*.
+// `gc` comes from Chromium's `--js-flags="--expose-gc"`.
 // `Performance.memory` comes from `--enable-precise-memory-info`.
+// Both are read by `allocHarness.requireAllocHeap()`, which alloc
+// tests under web/src/__tests__/*.alloc.* call to obtain non-optional
+// handles for measurement.
 //
-// Both are typed as optional so the alloc tests' precondition checks
-// (`if (!globalThis.gc || !perfMem.memory) throw ...`) keep their
-// narrowing power instead of being flagged as always-true.
+// Both are typed as optional so the harness's precondition narrowing
+// (`if (!gc || !memory) throw ...`) is not flagged as always-true.
 
 declare global {
     var gc: (() => void) | undefined;

@@ -5,10 +5,7 @@ import {
     type PublishFrame,
     createFrameRing,
 } from '../audio/frameRing';
-
-interface PerformanceWithMemory extends Performance {
-    memory?: {usedJSHeapSize: number};
-}
+import {publishUiOnly, requireAllocHeap, settleHeap} from './allocHarness';
 
 const PUBLISH_ITERATIONS = 10_000;
 const READ_ITERATIONS = 10_000;
@@ -18,10 +15,7 @@ const READER_BUDGET_BYTES = 4 * 1024;
 
 describe('frameRing writer allocation budget', () => {
     test(`${PUBLISH_ITERATIONS} publishes leave heap under ${WRITER_BUDGET_BYTES / 1024} KB above warmup baseline`, () => {
-        const perfMem = performance as PerformanceWithMemory;
-        if (!globalThis.gc || !perfMem.memory) {
-            throw new Error('Test requires Chromium launched with --js-flags="--expose-gc" and --enable-precise-memory-info');
-        }
+        const heap = requireAllocHeap();
 
         const sab = createFrameRing();
         const writer = new FrameRingWriter(sab);
@@ -42,14 +36,14 @@ describe('frameRing writer allocation budget', () => {
         for (let i = 0; i < WARMUP_ITERATIONS; i += 1) {
             publish();
         }
-        globalThis.gc();
-        const baseline = perfMem.memory.usedJSHeapSize;
+        settleHeap(heap);
+        const baseline = heap.memory.usedJSHeapSize;
 
         for (let i = 0; i < PUBLISH_ITERATIONS; i += 1) {
             publish();
         }
-        globalThis.gc();
-        const after = perfMem.memory.usedJSHeapSize;
+        settleHeap(heap);
+        const after = heap.memory.usedJSHeapSize;
 
         expect(after - baseline).toBeLessThan(WRITER_BUDGET_BYTES);
     });
@@ -57,23 +51,19 @@ describe('frameRing writer allocation budget', () => {
 
 describe('frameRing reader.forEach allocation budget', () => {
     test(`${READ_ITERATIONS} forEach calls leave heap under ${READER_BUDGET_BYTES / 1024} KB above warmup baseline`, () => {
-        const perfMem = performance as PerformanceWithMemory;
-        if (!globalThis.gc || !perfMem.memory) {
-            throw new Error('Test requires Chromium launched with --js-flags="--expose-gc" and --enable-precise-memory-info');
-        }
+        const heap = requireAllocHeap();
 
         const sab = createFrameRing();
         const writer = new FrameRingWriter(sab);
         const reader = new FrameRingReader(sab, 0);
         // Populate the ring to ~plot-window fullness. Setup loop runs
         // before the warmup baseline gc(), so per-iteration object
-        // literals here don't contribute to the budget that measures
-        // readAll() below; readability beats scratch hoisting (matches
-        // the convention in paintLoop.alloc.browser.ts).
+        // literals (inside publishUiOnly) don't contribute to the
+        // budget that measures readAll() below.
         const baseMs = 0;
         for (let i = 0; i < 470; i += 1) {
             const hz = 220 + Math.sin(i * 0.1) * 10;
-            writer.publish({captureContextMs: baseMs + i * 21, fundamentalHz: hz, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: hz, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+            publishUiOnly(writer, baseMs + i * 21, hz, 0.9);
         }
 
         const readAll = () => {
@@ -89,14 +79,14 @@ describe('frameRing reader.forEach allocation budget', () => {
         for (let i = 0; i < WARMUP_ITERATIONS; i += 1) {
             readAll();
         }
-        globalThis.gc();
-        const baseline = perfMem.memory.usedJSHeapSize;
+        settleHeap(heap);
+        const baseline = heap.memory.usedJSHeapSize;
 
         for (let i = 0; i < READ_ITERATIONS; i += 1) {
             readAll();
         }
-        globalThis.gc();
-        const after = perfMem.memory.usedJSHeapSize;
+        settleHeap(heap);
+        const after = heap.memory.usedJSHeapSize;
 
         expect(after - baseline).toBeLessThan(READER_BUDGET_BYTES);
     });

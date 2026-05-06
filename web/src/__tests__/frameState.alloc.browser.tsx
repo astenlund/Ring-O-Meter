@@ -3,10 +3,7 @@ import {createRoot, type Root} from 'react-dom/client';
 import {act} from 'react';
 import {useFrameState, type FrameStateControl} from '../audio/useFrameState';
 import {createFrameRing, FrameRingReader, FrameRingWriter, type PublishFrame} from '../audio/frameRing';
-
-interface PerformanceWithMemory extends Performance {
-    memory?: {usedJSHeapSize: number};
-}
+import {requireAllocHeap, settleHeap} from './allocHarness';
 
 // Calibrated 2026-04-27: 10 isolated runs landed in 37,712-38,020 B
 // (0.8% spread) after wrapping publish loops in act() and using a
@@ -22,11 +19,7 @@ const WARMUP_ITERATIONS = 500;
 
 describe('frame-state allocation budget', () => {
     test(`${POLL_ITERATIONS} reader advances leave heap under ${HEAP_DELTA_BUDGET_BYTES / 1024} KB above warmup baseline`, async () => {
-        const perfMem = performance as PerformanceWithMemory;
-        const gc = globalThis.gc;
-        if (!gc || !perfMem.memory) {
-            throw new Error('Test requires Chromium launched with --js-flags="--expose-gc"');
-        }
+        const heap = requireAllocHeap();
 
         const container = document.createElement('div');
         document.body.appendChild(container);
@@ -80,17 +73,6 @@ describe('frame-state allocation budget', () => {
             writerB.publish(scratchB);
         };
 
-        // Two gc() calls eliminate the bimodal variance a single call
-        // produced (~1 in 6 runs spiked 4-7x because a slack-tracked /
-        // weak-referenced straggler landed on the wrong side of the
-        // baseline GC). A microtask between the calls makes no
-        // measurable difference; the second synchronous call already
-        // sees the state the first call's followups produce.
-        const settleHeap = (): void => {
-            gc();
-            gc();
-        };
-
         // Wrapping the publish + flush wait in act() forces React to
         // commit setLatest inside the act scope and silences the
         // dev-mode "update was not wrapped in act(...)" warning. The
@@ -107,8 +89,8 @@ describe('frame-state allocation budget', () => {
             }
             await waitForFlush();
         });
-        settleHeap();
-        const baseline = perfMem.memory.usedJSHeapSize;
+        settleHeap(heap);
+        const baseline = heap.memory.usedJSHeapSize;
 
         await act(async () => {
             for (let i = 0; i < POLL_ITERATIONS; i += 1) {
@@ -116,8 +98,8 @@ describe('frame-state allocation budget', () => {
             }
             await waitForFlush();
         });
-        settleHeap();
-        const after = perfMem.memory.usedJSHeapSize;
+        settleHeap(heap);
+        const after = heap.memory.usedJSHeapSize;
 
         expect(after - baseline).toBeLessThan(HEAP_DELTA_BUDGET_BYTES);
 

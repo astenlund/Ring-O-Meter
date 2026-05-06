@@ -3,6 +3,7 @@ import {createRoot, type Root} from 'react-dom/client';
 import {act} from 'react';
 import {useFrameState, type FrameStateControl} from '../audio/useFrameState';
 import {createFrameRing, FrameRingReader, FrameRingWriter} from '../audio/frameRing';
+import {publishUiOnly} from './allocHarness';
 
 interface ProbeRef {
     control: FrameStateControl | null;
@@ -59,14 +60,14 @@ describe('useFrameState structural invariants', () => {
         // alloc test inherits the same noise; explicit act() here
         // keeps the structural test's output clean.
         await act(async () => {
-            writer.publish({captureContextMs: 21, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+            publishUiOnly(writer, 21, 220, 0.9);
             await waitForFlush();
         });
         const latest1 = probeRef.control!.latest;
         const count1 = probeRef.renderCount;
 
         await act(async () => {
-            writer.publish({captureContextMs: 42, fundamentalHz: 330, confidence: 0.85, rmsDb: -30, fundamentalHzRaw: 330, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+            publishUiOnly(writer, 42, 330, 0.85);
             await waitForFlush();
         });
         const latest2 = probeRef.control!.latest;
@@ -123,8 +124,8 @@ describe('useFrameState structural invariants', () => {
         control.registerReader('b', readerB);
 
         await act(async () => {
-            writerA.publish({captureContextMs: 21, fundamentalHz: 220, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: 220, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
-            writerB.publish({captureContextMs: 21, fundamentalHz: 440, confidence: 0.95, rmsDb: -30, fundamentalHzRaw: 440, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+            publishUiOnly(writerA, 21, 220, 0.9);
+            publishUiOnly(writerB, 21, 440, 0.95);
             await waitForFlush();
         });
 

@@ -2,10 +2,7 @@ import {describe, expect, test} from 'vitest';
 import {TraceModule} from '../plot/traceModule';
 import {createFrameRing, FrameRingWriter, type FrameSource} from '../audio/frameRing';
 import type {VoiceEntry} from '../plot/plotMessages';
-
-interface PerformanceWithMemory extends Performance {
-    memory?: {usedJSHeapSize: number};
-}
+import {publishUiOnly, requireAllocHeap, settleHeap} from './allocHarness';
 
 // TODO: tighten this after three green CI runs to measured * 1.5
 // per the hot-path-allocation-discipline pattern. Initial ceiling
@@ -18,10 +15,7 @@ const WARMUP_ITERATIONS = 200;
 
 describe('WebGPU plot paint allocation budget', () => {
     test(`${PAINT_ITERATIONS} paints leave heap under ${HEAP_DELTA_BUDGET_BYTES / 1024} KB`, async () => {
-        const perfMem = performance as PerformanceWithMemory;
-        if (!globalThis.gc || !perfMem.memory) {
-            throw new Error('Test requires Chromium launched with --js-flags="--expose-gc"');
-        }
+        const heap = requireAllocHeap();
         if (!navigator.gpu) {
             throw new Error('Test requires Chromium launched with --enable-unsafe-webgpu');
         }
@@ -58,22 +52,14 @@ describe('WebGPU plot paint allocation budget', () => {
         renderer.attachChannel('a', source);
 
         // Pre-fill the ring with ~470 in-window samples (10 s window
-        // at the worklet's ~47 Hz publish rate).
+        // at the worklet's ~47 Hz publish rate). TraceModule renders
+        // pitch only; formants are not read on this path so the
+        // publishUiOnly placeholders are inert here.
         const baseMs = performance.now();
         for (let i = 0; i < 470; i += 1) {
             const ts = baseMs + i * 21;
             const hz = 220 + Math.sin(i * 0.1) * 10;
-            writer.publish({
-                captureContextMs: ts,
-                fundamentalHz: hz,
-                confidence: 0.9,
-                rmsDb: -30,
-                fundamentalHzRaw: hz,
-                f1Hz: 0,
-                f2Hz: 0,
-                f3Hz: 0,
-                f4Hz: 0,
-            });
+            publishUiOnly(writer, ts, hz, 0.9);
         }
 
         // Simulate the host frame loop: update (CPU + writeBuffer) then
@@ -98,14 +84,14 @@ describe('WebGPU plot paint allocation budget', () => {
         for (let i = 0; i < WARMUP_ITERATIONS; i += 1) {
             runFrame();
         }
-        globalThis.gc();
-        const baseline = perfMem.memory.usedJSHeapSize;
+        settleHeap(heap);
+        const baseline = heap.memory.usedJSHeapSize;
 
         for (let i = 0; i < PAINT_ITERATIONS; i += 1) {
             runFrame();
         }
-        globalThis.gc();
-        const after = perfMem.memory.usedJSHeapSize;
+        settleHeap(heap);
+        const after = heap.memory.usedJSHeapSize;
 
         expect(after - baseline).toBeLessThan(HEAP_DELTA_BUDGET_BYTES);
 

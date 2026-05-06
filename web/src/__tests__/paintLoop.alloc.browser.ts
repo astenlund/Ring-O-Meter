@@ -14,10 +14,7 @@ import {
     type VoiceEntry,
 } from '../plot/paint';
 import {createFrameRing, FrameRingReader, FrameRingWriter} from '../audio/frameRing';
-
-interface PerformanceWithMemory extends Performance {
-    memory?: {usedJSHeapSize: number};
-}
+import {publishUiOnly, requireAllocHeap, settleHeap} from './allocHarness';
 
 const HEAP_DELTA_BUDGET_BYTES = 50 * 1024;
 const PAINT_ITERATIONS = 10_000;
@@ -25,10 +22,7 @@ const WARMUP_ITERATIONS = 500;
 
 describe('paint loop allocation budget', () => {
     test(`${PAINT_ITERATIONS} paints leave heap under ${HEAP_DELTA_BUDGET_BYTES / 1024} KB above warmup baseline`, () => {
-        const perfMem = performance as PerformanceWithMemory;
-        if (!globalThis.gc || !perfMem.memory) {
-            throw new Error('Test requires Chromium launched with --js-flags="--expose-gc"');
-        }
+        const heap = requireAllocHeap();
 
         const canvas = document.createElement('canvas');
         canvas.style.width = '800px';
@@ -54,16 +48,15 @@ describe('paint loop allocation budget', () => {
             b: new FrameRingReader(sabB, 0),
         };
         const baseMs = performance.now();
-        // Setup loop runs before the warmup baseline gc(), so its
-        // per-iteration object literals do not contribute to the budget
-        // that measures paint() below; readability beats scratch
-        // hoisting here.
+        // Setup loop runs before the warmup baseline gc(), so the
+        // per-iteration object literals inside publishUiOnly do not
+        // contribute to the budget that measures paint() below.
         for (let i = 0; i < 470; i += 1) {
             const ts = baseMs + i * 21;
             const hzA = 220 + Math.sin(i * 0.1) * 10;
             const hzB = 440 + Math.sin(i * 0.1) * 10;
-            writerA.publish({captureContextMs: ts, fundamentalHz: hzA, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: hzA, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
-            writerB.publish({captureContextMs: ts, fundamentalHz: hzB, confidence: 0.9, rmsDb: -30, fundamentalHzRaw: hzB, f1Hz: 0, f2Hz: 0, f3Hz: 0, f4Hz: 0});
+            publishUiOnly(writerA, ts, hzA, 0.9);
+            publishUiOnly(writerB, ts, hzB, 0.9);
         }
 
         let hzToY = makeHzToY(range, 360);
@@ -86,14 +79,14 @@ describe('paint loop allocation budget', () => {
         for (let i = 0; i < WARMUP_ITERATIONS; i += 1) {
             paint();
         }
-        globalThis.gc();
-        const baseline = perfMem.memory.usedJSHeapSize;
+        settleHeap(heap);
+        const baseline = heap.memory.usedJSHeapSize;
 
         for (let i = 0; i < PAINT_ITERATIONS; i += 1) {
             paint();
         }
-        globalThis.gc();
-        const after = perfMem.memory.usedJSHeapSize;
+        settleHeap(heap);
+        const after = heap.memory.usedJSHeapSize;
 
         expect(after - baseline).toBeLessThan(HEAP_DELTA_BUDGET_BYTES);
     });
