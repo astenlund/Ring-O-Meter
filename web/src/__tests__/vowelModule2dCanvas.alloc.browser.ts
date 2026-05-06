@@ -1,10 +1,7 @@
 import {describe, expect, test} from 'vitest';
 import {drawVowelChrome, drawVowelDots, drawVowelPolygon} from '../plot/paint';
 import type {CanvasSize, VowelPoint2d} from '../plot/paint';
-
-interface PerformanceWithMemory extends Performance {
-    memory?: {usedJSHeapSize: number};
-}
+import {requireAllocHeap, settleHeap} from './allocHarness';
 
 // Calibrated 2026-05-04: 4 consecutive smoke-runs (1000 paints each)
 // measured a JS heap delta of approximately zero (the first run logged
@@ -30,10 +27,7 @@ const WARMUP_ITERATIONS = 200;
 describe('Vowel module 2D paint allocation budget', () => {
     test(`${PAINT_ITERATIONS} paints leave heap under ${HEAP_DELTA_BUDGET_BYTES / 1024} KB`, async () => {
         // Arrange
-        const perfMem = performance as PerformanceWithMemory;
-        if (!globalThis.gc || !perfMem.memory) {
-            throw new Error('Test requires Chromium launched with --js-flags="--expose-gc"');
-        }
+        const heap = requireAllocHeap();
 
         const canvas = new OffscreenCanvas(360, 360);
         const ctx = canvas.getContext('2d');
@@ -71,15 +65,15 @@ describe('Vowel module 2D paint allocation budget', () => {
         for (let i = 0; i < WARMUP_ITERATIONS; i++) {
             runFrame(i);
         }
-        globalThis.gc();
-        const baseline = perfMem.memory.usedJSHeapSize;
+        settleHeap(heap);
+        const baseline = heap.memory.usedJSHeapSize;
 
         // Act
         for (let i = 0; i < PAINT_ITERATIONS; i++) {
             runFrame(WARMUP_ITERATIONS + i);
         }
-        globalThis.gc();
-        const after = perfMem.memory.usedJSHeapSize;
+        settleHeap(heap);
+        const after = heap.memory.usedJSHeapSize;
 
         // Assert
         console.log(`vowelModule2dCanvas.alloc heap delta: ${after - baseline} bytes`);

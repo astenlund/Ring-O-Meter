@@ -2,10 +2,7 @@ import {describe, expect, test} from 'vitest';
 import {VowelModuleWebgpu} from '../plot/vowelModuleWebgpu';
 import {createFrameRing, FrameRingWriter, FrameRingReader} from '../audio/frameRing';
 import type {VoiceEntry} from '../plot/plotMessages';
-
-interface PerformanceWithMemory extends Performance {
-    memory?: {usedJSHeapSize: number};
-}
+import {requireAllocHeap, settleHeap} from './allocHarness';
 
 // PLACEHOLDER until orchestrator runs the mid-task review + 3-run
 // Calibrated 2026-05-04: 3 consecutive runs after applying mid-task
@@ -27,10 +24,7 @@ const WARMUP_ITERATIONS = 200;
 describe('Vowel module WebGPU paint allocation budget', () => {
     test(`${PAINT_ITERATIONS} paints leave heap under ${HEAP_DELTA_BUDGET_BYTES / 1024} KB`, async () => {
         // Arrange
-        const perfMem = performance as PerformanceWithMemory;
-        if (!globalThis.gc || !perfMem.memory) {
-            throw new Error('Test requires Chromium launched with --js-flags="--expose-gc"');
-        }
+        const heap = requireAllocHeap();
         if (!navigator.gpu) {
             throw new Error('Test requires Chromium launched with --enable-unsafe-webgpu');
         }
@@ -122,15 +116,15 @@ describe('Vowel module WebGPU paint allocation budget', () => {
         for (let i = 0; i < WARMUP_ITERATIONS; i++) {
             runFrame(i);
         }
-        globalThis.gc();
-        const baseline = perfMem.memory.usedJSHeapSize;
+        settleHeap(heap);
+        const baseline = heap.memory.usedJSHeapSize;
 
         // Act
         for (let i = 0; i < PAINT_ITERATIONS; i++) {
             runFrame(WARMUP_ITERATIONS + i);
         }
-        globalThis.gc();
-        const after = perfMem.memory.usedJSHeapSize;
+        settleHeap(heap);
+        const after = heap.memory.usedJSHeapSize;
 
         // Assert
         console.log(`vowelModuleWebgpu.alloc heap delta: ${after - baseline} bytes`);
