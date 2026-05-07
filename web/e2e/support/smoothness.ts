@@ -2,6 +2,7 @@ import {expect, type CDPSession, type Page} from '@playwright/test';
 import {createWriteStream, mkdirSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {assertOnAcPower} from './acPower';
 
 // Chrome DevTools Protocol categories for the optional in-test
 // performance trace (CAPTURE_TRACE=1). Matches what DevTools'
@@ -228,11 +229,12 @@ export function withChordFanout(armQuerystring: string): string {
 }
 
 // Page-level setup shared between the 60-second smoothness probe
-// and the opt-in 30-minute long-window arm: navigates to the
-// renderer-arm-specific URL, hard-asserts WebGPU adapter
-// availability for arms that require it, clicks Start, waits for
-// the canvas to mount, and gives the worklet 1500 ms to settle
-// before the caller's measurement window begins.
+// and the opt-in 30-minute long-window arm: refuses on battery
+// (assertOnAcPower), navigates to the renderer-arm-specific URL,
+// hard-asserts WebGPU adapter availability for arms that require
+// it, clicks Start, waits for the canvas to mount, and gives the
+// worklet 5000 ms to settle before the caller's measurement
+// window begins.
 //
 // Extracted from run60sSmoothnessProbe so the long-window arm
 // (smoothness.spec.ts under PROTOTYPE_LONG=1) does not duplicate
@@ -243,6 +245,8 @@ export async function setupSmoothnessPage(
     arm: RendererArm,
     querystring: string,
 ): Promise<void> {
+    // Placed before page.goto so battery-throttled hosts are rejected before any browser work begins.
+    assertOnAcPower();
     await page.goto(`/${querystring}`);
 
     if (arm.requiresAdapter) {
