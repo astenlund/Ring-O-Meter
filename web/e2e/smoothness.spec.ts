@@ -55,7 +55,9 @@ registerFakeAudioDevicesBeforeEach();
 const FIXTURE_LABEL = 'dom7-sustained';
 
 for (const arm of RENDERER_ARMS) {
-    test(`pitch plot is smooth for 60 seconds (dom7 sustained, ${arm.label})`, async ({page}) => {
+    test(`pitch plot is smooth for 60 seconds (dom7 sustained, ${arm.label})`, {
+        tag: '@battery-sensitive',
+    }, async ({page}) => {
         await run60sSmoothnessProbe(page, FIXTURE_LABEL, arm, withChordFanout(arm.querystring));
     });
 }
@@ -79,7 +81,9 @@ const FREEZE_THRESHOLD_MS = 200;
 
 if (process.env.PROTOTYPE_LONG === '1') {
     for (const arm of RENDERER_ARMS) {
-        test(`pitch plot is smooth for 30 minutes (dom7 sustained, ${arm.label})`, async ({page}) => {
+        test(`pitch plot is smooth for 30 minutes (dom7 sustained, ${arm.label})`, {
+            tag: '@battery-sensitive',
+        }, async ({page}) => {
             // Playwright's default per-test timeout (180_000 in
             // playwright.config.ts) would fail this run at 0.6%
             // completion. Extend just this test by the observation

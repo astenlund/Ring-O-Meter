@@ -59,7 +59,9 @@ test.use({
 registerFakeAudioDevicesBeforeEach();
 
 for (const arm of RENDERER_ARMS) {
-    test(`pitch plot is smooth for 60 seconds (dom7 staccato, ${arm.label})`, async ({page}) => {
+    test(`pitch plot is smooth for 60 seconds (dom7 staccato, ${arm.label})`, {
+        tag: '@battery-sensitive',
+    }, async ({page}) => {
         await run60sSmoothnessProbe(page, 'dom7-staccato', arm, withChordFanout(arm.querystring));
     });
 }
