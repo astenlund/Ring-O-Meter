@@ -1,0 +1,225 @@
+/*
+ * page-chrome.css
+ *
+ * Two-page rendered layout for sketch-brainstorm. Both pages share a
+ * header strip (topic + iteration label) and a chrome footer (the
+ * Finish-turn checkbox today; End-session and mode-switches when those
+ * layer in). Page 1 is the mockup page; page 2 is the legend page.
+ *
+ * The Finish-turn checkbox is pinned at the same coordinates on both
+ * rendered pages: (x=1500, y=2050) 80x80 px on the 1620x2160 viewport.
+ * The polling slice's variance detector will crop this rectangle from
+ * both rendered pages of the pulled annotated PDF; either firing means
+ * the user finished the turn.
+ */
+
+@page {
+  size: 1620px 2160px;
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 1620px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #222;
+  background: #ffffff;
+}
+
+.page {
+  position: relative;
+  width: 1620px;
+  height: 2160px;
+  page-break-after: always;
+  break-after: page;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.page:last-child {
+  page-break-after: auto;
+  break-after: auto;
+}
+
+/* Header strip: top of page, full width, identical on both pages.
+   Right padding leaves a 140 px clear column at x=1480..1620 reserved
+   for visual symmetry with the footer's checkbox column (the header
+   itself does not host any checkboxes). */
+.header-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1620px;
+  height: 100px;
+  padding: 24px 160px 24px 40px;
+  background: #f4f4f0;
+  border-bottom: 2px solid #d8d8d2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 28px;
+}
+
+.header-topic {
+  font-weight: 600;
+}
+
+.header-iter {
+  font-weight: 400;
+  color: #666;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+/* Chrome footer: bottom of page, identical on both pages. Hosts the
+   Finish-turn checkbox (and End-session / mode-switch boxes when those
+   layer in). The checkbox column is right-aligned so the user's pen
+   always lands at the same screen position regardless of which
+   rendered page they are on. */
+.chrome-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 1620px;
+  height: 160px;
+  background: #f4f4f0;
+  border-top: 2px solid #d8d8d2;
+}
+
+/* Finish-turn checkbox: pinned at (1500, 2050) on the 1620x2160
+   viewport, 80x80 px. The pixel coordinates are load-bearing: the
+   future polling slice will crop this rectangle from both rendered
+   pages of the pulled annotated PDF and run pixel-variance detection
+   on it to decide whether the user marked it. Do not move without
+   updating the polling slice in lockstep. */
+.finish-turn-checkbox {
+  position: absolute;
+  top: 2050px;
+  left: 1500px;
+  width: 80px;
+  height: 80px;
+  background: #ffffff;
+  border: 3px solid #222;
+  border-radius: 4px;
+}
+
+/* --- Page 1: mockup page --- */
+
+/* Mockup region: large area between header and small notes region.
+   Fills the full page width below the header. */
+.mockup-region {
+  position: absolute;
+  top: 100px;
+  left: 0;
+  width: 1620px;
+  height: 1500px;
+  padding: 40px;
+  overflow: hidden;
+}
+
+/* --- Notes regions (shared) --- */
+
+.notes-region {
+  position: absolute;
+  left: 0;
+  width: 1620px;
+  padding: 30px 40px;
+  background: #fafaf6;
+  border-top: 2px solid #d8d8d2;
+}
+
+/* Page-1 small notes area: between mockup region and footer.
+   ~300 px tall (top:1600 to bottom:2000 minus footer-border). */
+.notes-region-small {
+  top: 1600px;
+  height: 400px;
+}
+
+/* Page-2 larger notes area: below the legend region. */
+.notes-region-large {
+  top: 1100px;
+  height: 900px;
+}
+
+.notes-heading {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #555;
+  margin-bottom: 16px;
+}
+
+.notes-area {
+  width: 100%;
+  height: calc(100% - 50px);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 59px,
+    #e0ddd0 59px,
+    #e0ddd0 60px
+  );
+}
+
+/* --- Page 2: legend region --- */
+
+.legend-region {
+  position: absolute;
+  top: 100px;
+  left: 0;
+  width: 1620px;
+  height: 1000px;
+  padding: 40px;
+  background: #ffffff;
+}
+
+.legend-title {
+  font-size: 28px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #555;
+  margin-bottom: 28px;
+}
+
+.legend-list {
+  list-style: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  /* Layout column-by-column so the five gesture rows cluster in column 1
+     and the three text-convention rows in column 2. With the default
+     row-by-row flow, the gesture and text-convention groups would
+     interleave across columns and visually mix. */
+  grid-template-rows: repeat(5, auto);
+  grid-auto-flow: column;
+  gap: 18px 60px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 26px;
+  line-height: 1.4;
+}
+
+.legend-sample {
+  flex: 0 0 100px;
+  width: 100px;
+  height: 32px;
+}
+
+.legend-label {
+  flex: 1;
+}
+
+.legend-text .legend-label {
+  font-style: italic;
+  color: #444;
+}
