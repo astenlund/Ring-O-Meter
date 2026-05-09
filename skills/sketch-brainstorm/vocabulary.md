@@ -23,9 +23,9 @@ Two tiers:
 | Grey line through or near elements                       | Align elements on the line's axis. Position = axis: through = center, near top = top-aligned, near bottom = bottom-aligned, on left/right edge = left/right-aligned. Optional letter callout near the line clarifies: `c` / `t` / `b` / `l` / `r`. |
 | Squiggle inside an element                               | Lorem-ipsum text placeholder     |
 | Handwritten text inside a UI element                     | UI copy for that element         |
-| Handwritten text in margins / free-text area             | Instruction for Claude           |
+| Handwritten text in the notes region                     | Instruction for Claude           |
 | Handwritten text + arrow pointing at element             | Instruction about that element   |
-| Letter callout (`a:`, `b:`, ...) near element + matching `a.`-prefixed note in the NOTES region | Long-form instruction tied to that element. Use when a single sentence in the margin would be too cramped or far from the target. Letters are arbitrary identifiers, not ordering. |
+| Letter callout (`a:`, `b:`, ...) near element + matching `a.`-prefixed note in the notes region | Long-form instruction tied to that element. Use when a single sentence inline in the notes would be too cramped or too far from the target. Letters are arbitrary identifiers, not ordering. The matching note may sit in the same page's notes region or in any user-added notes-only page; letter callouts are unique within an iteration. |
 
 **Color usage.** For most gestures, color is optional emphasis: shape
 carries the meaning and black ink is fine. Pen-color switching is a
