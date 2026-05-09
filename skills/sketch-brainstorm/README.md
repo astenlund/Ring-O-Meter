@@ -17,7 +17,7 @@ Secondary benefit: location independence. UI brainstorming is a common couch / b
 
 ## Status
 
-The **outbound half** works end-to-end: render an HTML mockup to a PDF, push it to a folder on the reMarkable cloud via rmapi. The **inbound stroke render** also works locally (parses `.rm` files from a manually-extracted `.rmdoc` archive into transparent SVG overlays). What remains: rmapi `get` for inbound, polling + checkbox detection, the interpretation subagent that composites pre-render PDFs with stroke overlays, the iter01+ loop, and `design-state.md`. See `SKILL.md` for current entry-points.
+Both transport directions work end-to-end. **Outbound**: render an HTML mockup to a PDF, push to a folder on the reMarkable cloud via rmapi. **Inbound**: pull a cloud document with `rmapi get`, extract the `.rmdoc` archive, parse the per-page `.rm` files into transparent SVG overlays. What remains: polling + checkbox detection, the interpretation subagent that composites pre-render PDFs with stroke overlays, the iter01+ loop, and `design-state.md`. See `SKILL.md` for current entry-points.
 
 ## Architecture (full design)
 
@@ -69,6 +69,9 @@ The full design is documented in the host project's feature backlog at `.claude/
 - **Per-page `.rm` files are named by random UUID; PDF page order lives in the sibling `<doc-uuid>.content` JSON.** Sorting `.rm` filenames alphabetically scrambles strokes against PDF pages (the very first observed archive happened to sort backwards). The authoritative mapping is `cPages.pages[].redir.value` (0-based PDF page index) inside the `.content` file; `render-strokes.py` reads it and falls back to alphabetical sort with a warning if the file is missing. Treat the `.content` field as load-bearing for inbound page ordering, not a diagnostic.
 - **`rmapi rm -r <folder>` orphans contained files to the cloud root rather than deleting them.** Verified on rmapi 0.0.33: a folder containing one PDF, after `rmapi rm -r`, leaves the folder gone and the PDF reappearing at the cloud root with the same bare name. The cleanup pattern is therefore "delete leaves first, folders last", not the POSIX-shaped "rm -rf the parent". Future session-cleanup or close-session ceremony slices must enumerate contents via `rmapi ls <folder>` and `rmapi rm` each leaf before removing the folder. Any `--purge` style helper should pattern-match this two-phase order.
 - **`rmapi mkdir` is single-level only; no `--parents` flag.** Matches the BSD `mkdir` shape, not GNU `mkdir -p`. Multi-segment cloud paths must be created one level at a time. The push wrapper assumes parents already exist; deeper cloud-tree provisioning belongs to the bootstrap-dialogue slice.
+- **`rmapi get` writes to PWD with no `-o`/`--output` flag, and silently overwrites an existing `<basename>.rmdoc`.** No way to direct the output via a flag; callers `cd` into the destination directory before invoking. The silent-overwrite behavior is friendly for re-pulls during iteration (no stale-file collision) but means a wrapper cannot detect a stale archive without checksumming. Missing-doc error wording on rmapi 0.0.33: `file doesn't exist` (with an `Error:` prefix and a `main.go:NN` source-line stamp; the stable substring is `file doesn't exist`).
+- **`rmapi get` writes its `downloading: ... OK` progress to stdout, not stderr.** Any wrapper that emits a pipe-friendly stdout line (e.g., the extracted directory path) must redirect rmapi's stdout to stderr (`rmapi get ... >&2`) or its progress will contaminate the captured output.
+- **`.rmdoc` archive shape varies between un-annotated and annotated docs.** Un-annotated cloud docs (newly pushed, never opened on the device): a flat archive with `<doc-uuid>.content`, `<doc-uuid>.metadata`, `<doc-uuid>.pdf` at archive root and no `.rm` files. Once the user opens the doc and annotates, the archive grows a nested `<doc-uuid>/` subdirectory containing the per-page `<page-uuid>.rm` stroke files, and a `<doc-uuid>.pagedata` file appears alongside the manifest at root. `pull-from-tablet.sh` detects the nested subdirectory and emits its path as the rm-dir; un-annotated pulls emit the outer extract dir, which `render-strokes.py` correctly reports as containing zero strokes. The `.content` schema also evolves with the doc lifecycle: un-opened docs use the older format with `pageCount: 0`, `pages: null`, no `cPages`; opened docs use `cPages.pages[].redir.value` per the inbound page-ordering contract.
 
 ## Files
 
@@ -79,6 +82,7 @@ The full design is documented in the host project's feature backlog at `.claude/
 - `render/render.mjs` -- Node ESM script that drives Chromium and writes the PDF.
 - `render-html-to-pdf.sh` -- bash wrapper for the outbound PDF render pipeline.
 - `push-to-tablet.sh` -- bash wrapper for the rmapi push (outbound cloud upload).
+- `pull-from-tablet.sh` -- bash wrapper for `rmapi get` + `.rmdoc` extraction (inbound cloud download).
 - `render/render-strokes.py` -- converts per-page `.rm` stroke files to SVG overlays.
 - `render-strokes.sh` -- bash wrapper for the inbound stroke-rendering pipeline.
 - `requirements.txt` -- Python deps for the inbound pipeline (rmscene).
