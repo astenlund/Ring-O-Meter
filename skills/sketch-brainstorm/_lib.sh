@@ -52,3 +52,65 @@ require_rmapi_authenticated() {
     exit 1
   fi
 }
+
+# _detect_venv_python
+#
+# Internal helper: print the path to the venv's python executable, or
+# return non-zero if no venv is present yet. Handles the POSIX vs
+# Windows venv layouts (bin/python vs Scripts/python.exe).
+_detect_venv_python() {
+  if [ -x "$VENV_DIR/bin/python" ]; then
+    echo "$VENV_DIR/bin/python"
+  elif [ -x "$VENV_DIR/Scripts/python.exe" ]; then
+    echo "$VENV_DIR/Scripts/python.exe"
+  else
+    return 1
+  fi
+}
+
+# ensure_skill_venv <wrapper-name>
+#
+# Ensures the shared skill venv at $VENV_DIR exists and reflects the
+# current $REQUIREMENTS hash. Bootstraps if absent or if requirements
+# have drifted since the venv was created. On success, the variable
+# VENV_PYTHON is set in the calling shell to the venv's python.
+#
+# Caller must set $VENV_DIR and $REQUIREMENTS before invoking. The
+# <wrapper-name> argument prefixes diagnostics so the user can tell
+# which wrapper is bootstrapping.
+#
+# Drift detection: hashes $REQUIREMENTS via Python (always available
+# as a hard dep, simpler than juggling sha256sum vs shasum portability),
+# stores the digest at $VENV_DIR/.req-hash after a successful install,
+# compares on subsequent runs and rebootstraps on divergence. Existing
+# 'rm -rf "$VENV_DIR"' wipes the sentinel, so no separate cleanup
+# step is needed when the venv is being recreated.
+ensure_skill_venv() {
+  local prefix="$1"
+  if ! command -v python >/dev/null 2>&1; then
+    echo "$prefix: 'python' not on PATH. Install Python 3.10+ first." >&2
+    exit 1
+  fi
+  local current_hash stored_hash need
+  current_hash="$(python -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$REQUIREMENTS")"
+  stored_hash="$(cat "$VENV_DIR/.req-hash" 2>/dev/null || true)"
+  need=false
+  if ! _detect_venv_python >/dev/null 2>&1; then
+    need=true
+  elif [ "$stored_hash" != "$current_hash" ]; then
+    echo "$prefix: requirements.txt has changed since venv bootstrap; rebootstrapping..."
+    need=true
+  fi
+  if $need; then
+    echo "$prefix: bootstrapping venv at $VENV_DIR..."
+    rm -rf "$VENV_DIR"
+    python -m venv "$VENV_DIR"
+    VENV_PYTHON="$(_detect_venv_python)"
+    "$VENV_PYTHON" -m pip install --quiet --upgrade pip
+    "$VENV_PYTHON" -m pip install --quiet -r "$REQUIREMENTS"
+    echo "$current_hash" > "$VENV_DIR/.req-hash"
+    echo "$prefix: venv ready"
+  else
+    VENV_PYTHON="$(_detect_venv_python)"
+  fi
+}
