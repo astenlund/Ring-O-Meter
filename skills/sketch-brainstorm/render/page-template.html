@@ -9,8 +9,7 @@
 
 <section class="page page-1">
   <header class="header-strip">
-    <div class="header-topic">{{topic}}</div>
-    <div class="header-iter">{{iteration_label}}</div>
+    <div class="header-topic">{{topic}}<span class="header-iter">{{iteration_label}}</span></div>
   </header>
 
   <main class="mockup-region">
@@ -23,13 +22,13 @@
   </section>
 
   <footer class="chrome-footer"></footer>
+  <span class="finish-turn-label">Finish turn</span>
   <div class="finish-turn-checkbox" aria-label="Finish turn (mark to send)"></div>
 </section>
 
 <section class="page page-2">
   <header class="header-strip">
-    <div class="header-topic">{{topic}}</div>
-    <div class="header-iter">{{iteration_label}}</div>
+    <div class="header-topic">{{topic}}<span class="header-iter">{{iteration_label}}</span></div>
   </header>
 
   <section class="legend-region" aria-label="Vocabulary legend">
@@ -43,29 +42,48 @@
         <span class="legend-label">Arrow A to B = Move</span>
       </li>
       <li class="legend-row legend-gesture">
-        <svg class="legend-sample" viewBox="0 0 80 24" aria-hidden="true">
-          <path d="M8 6 q4 -4 8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0" fill="none" stroke="#d22" stroke-width="3" stroke-linecap="round"/>
+        <svg class="legend-sample" viewBox="0 0 120 24" aria-hidden="true">
+          <line x1="15" y1="4" x2="15" y2="20" stroke="#222" stroke-width="3" stroke-linecap="round"/>
+          <line x1="5" y1="12" x2="25" y2="12" stroke="#222" stroke-width="3" stroke-linecap="round"/>
+          <line x1="65" y1="4" x2="65" y2="20" stroke="#222" stroke-width="3" stroke-linecap="round"/>
+          <line x1="55" y1="12" x2="75" y2="12" stroke="#222" stroke-width="3" stroke-linecap="round"/>
+          <line x1="95" y1="4" x2="95" y2="20" stroke="#222" stroke-width="3" stroke-linecap="round"/>
+          <line x1="85" y1="12" x2="105" y2="12" stroke="#222" stroke-width="3" stroke-linecap="round"/>
         </svg>
-        <span class="legend-label">Red strokes = Remove</span>
+        <span class="legend-label">+ / ++ near element = Larger</span>
+      </li>
+      <li class="legend-row legend-gesture">
+        <svg class="legend-sample" viewBox="0 0 120 24" aria-hidden="true">
+          <line x1="5" y1="12" x2="25" y2="12" stroke="#222" stroke-width="3" stroke-linecap="round"/>
+          <line x1="55" y1="12" x2="75" y2="12" stroke="#222" stroke-width="3" stroke-linecap="round"/>
+          <line x1="85" y1="12" x2="105" y2="12" stroke="#222" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+        <span class="legend-label">− / −− near element = Smaller</span>
       </li>
       <li class="legend-row legend-gesture">
         <svg class="legend-sample" viewBox="0 0 80 24" aria-hidden="true">
-          <line x1="40" y1="4" x2="40" y2="20" stroke="#1b8" stroke-width="3" stroke-linecap="round"/>
-          <line x1="32" y1="12" x2="48" y2="12" stroke="#1b8" stroke-width="3" stroke-linecap="round"/>
+          <rect x="14" y="4" width="52" height="16" fill="none" stroke="#222" stroke-width="1.5"/>
+          <line x1="10" y1="12" x2="70" y2="12" stroke="#222" stroke-width="2.5" stroke-linecap="round"/>
         </svg>
-        <span class="legend-label">Green strokes = Add</span>
+        <span class="legend-label">Strikethrough = Remove</span>
+      </li>
+      <li class="legend-row legend-gesture">
+        <svg class="legend-sample" viewBox="0 0 80 24" aria-hidden="true">
+          <rect x="10" y="5" width="60" height="14" fill="none" stroke="#222" stroke-width="2" stroke-dasharray="3 2"/>
+        </svg>
+        <span class="legend-label">Drawn element in place = Add</span>
       </li>
       <li class="legend-row legend-gesture">
         <svg class="legend-sample" viewBox="0 0 80 24" aria-hidden="true">
           <line x1="6" y1="12" x2="74" y2="12" stroke="#888" stroke-width="2"/>
         </svg>
-        <span class="legend-label">Grey straight = Alignment</span>
+        <span class="legend-label">Grey line = Align (position = axis; c/t/b/l/r)</span>
       </li>
       <li class="legend-row legend-gesture">
         <svg class="legend-sample" viewBox="0 0 80 24" aria-hidden="true">
           <path d="M6 14 q4 -6 8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0" fill="none" stroke="#222" stroke-width="2" stroke-linecap="round"/>
         </svg>
-        <span class="legend-label">Black squiggle = Lorem ipsum</span>
+        <span class="legend-label">Squiggle inside = Lorem ipsum</span>
       </li>
       <li class="legend-row legend-text">
         <em class="legend-label">Text in element = UI copy for that element</em>
@@ -77,6 +95,12 @@
         <em class="legend-label">Text + arrow = Instruction about that element</em>
       </li>
     </ul>
+    <p class="legend-color-note">
+      Color on lines disambiguates:
+      <span class="legend-color-emph legend-color-remove">red = Remove</span>,
+      <span class="legend-color-emph legend-color-align">grey = Align</span>.
+      <span class="legend-color-emph legend-color-add">Green</span> emphasises Add when natural.
+    </p>
   </section>
 
   <section class="notes-region notes-region-large">
@@ -85,6 +109,7 @@
   </section>
 
   <footer class="chrome-footer"></footer>
+  <span class="finish-turn-label">Finish turn</span>
   <div class="finish-turn-checkbox" aria-label="Finish turn (mark to send)"></div>
 </section>
 

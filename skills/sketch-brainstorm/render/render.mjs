@@ -69,11 +69,20 @@ async function readMockupHtml(mockupPath) {
   }
 }
 
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function substituteTokens(template, tokens) {
   return template
-    .replaceAll('{{topic}}', tokens.topic)
-    .replaceAll('{{iteration_label}}', tokens.iteration_label)
-    .replaceAll('{{mockup_html}}', tokens.mockup_html);
+    .replaceAll('{{topic}}', escapeHtml(tokens.topic))
+    .replaceAll('{{iteration_label}}', escapeHtml(tokens.iteration_label))
+    .replaceAll('{{mockup_html}}', tokens.mockup_html); // intentionally raw HTML
 }
 
 async function ensureDir(filePath) {
@@ -120,9 +129,24 @@ async function main() {
   const template = await readFile(TEMPLATE_PATH, 'utf8');
   const mockupHtml = await readMockupHtml(values['mockup-html']);
 
+  // CLI keeps 'seed' / 'iter01' / 'iter02' as the canonical iteration
+  // identifiers (filenames, references, design-state lookups all use
+  // the long form). The header label sits inline after the topic as
+  // ' #NN' (with leading space, both # and digits styled grey). Seed
+  // renders as empty so the title shows just the topic.
+  const iterMatch = /^iter(\d+)$/.exec(values.iteration);
+  let headerIteration;
+  if (values.iteration === 'seed') {
+    headerIteration = '';
+  } else if (iterMatch) {
+    headerIteration = ` #${iterMatch[1]}`;
+  } else {
+    headerIteration = ` ${values.iteration}`;
+  }
+
   const rendered = substituteTokens(template, {
     topic: values.topic,
-    iteration_label: values.iteration,
+    iteration_label: headerIteration,
     mockup_html: mockupHtml,
   });
 

@@ -7,10 +7,12 @@
  * layer in). Page 1 is the mockup page; page 2 is the legend page.
  *
  * The Finish-turn checkbox is pinned at the same coordinates on both
- * rendered pages: (x=1500, y=2050) 80x80 px on the 1620x2160 viewport.
- * The polling slice's variance detector will crop this rectangle from
- * both rendered pages of the pulled annotated PDF; either firing means
- * the user finished the turn.
+ * rendered pages: (x=1540, y=2100) 40x40 px on the 1620x2160 viewport.
+ * Bottom-aligned in the footer with a 60 px slot above reserved for
+ * the future End-session checkbox sibling. The polling slice's
+ * variance detector will crop this rectangle from both rendered pages
+ * of the pulled annotated PDF; either firing means the user finished
+ * the turn.
  */
 
 @page {
@@ -47,33 +49,38 @@ html, body {
 }
 
 /* Header strip: top of page, full width, identical on both pages.
-   Right padding leaves a 140 px clear column at x=1480..1620 reserved
-   for visual symmetry with the footer's checkbox column (the header
-   itself does not host any checkboxes). */
+   Title (topic + inline #NN iter label) is horizontally centered.
+   Symmetric padding keeps the title visually anchored. */
 .header-strip {
   position: absolute;
   top: 0;
   left: 0;
   width: 1620px;
   height: 100px;
-  padding: 24px 160px 24px 40px;
-  background: #f4f4f0;
+  padding: 24px 160px;
+  background: #ebebeb;
   border-bottom: 2px solid #d8d8d2;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   font-size: 28px;
 }
 
 .header-topic {
+  font-size: 36px;
   font-weight: 600;
 }
 
+/* Iteration label sits inline immediately after the topic as ' #NN',
+   with the # and digits both rendered in the same grey used for the
+   alignment-guide color hint. Render.mjs supplies the leading space
+   so the topic and label have a single source of truth for spacing. */
 .header-iter {
-  font-weight: 400;
-  color: #666;
-  letter-spacing: 0.04em;
-  text-transform: lowercase;
+  font-weight: 700;
+  /* Lighter than .legend-color-align because the bold weight makes
+     the same grey look much darker on e-ink under dithered greyscale.
+     The two shades intentionally diverge once the header went bold. */
+  color: #909090;
 }
 
 /* Chrome footer: bottom of page, identical on both pages. Hosts the
@@ -87,22 +94,55 @@ html, body {
   left: 0;
   width: 1620px;
   height: 160px;
-  background: #f4f4f0;
+  background: #ebebeb;
   border-top: 2px solid #d8d8d2;
 }
 
-/* Finish-turn checkbox: pinned at (1500, 2050) on the 1620x2160
-   viewport, 80x80 px. The pixel coordinates are load-bearing: the
-   future polling slice will crop this rectangle from both rendered
-   pages of the pulled annotated PDF and run pixel-variance detection
-   on it to decide whether the user marked it. Do not move without
-   updating the polling slice in lockstep. */
+/* "Finish turn" label sits immediately left of the checkbox, vertically
+   centered with it, so the box's purpose is discoverable on first
+   glance. Subdued grey (matching the alignment-hint shade) keeps it
+   from competing with the user's pen marks. */
+.finish-turn-label {
+  position: absolute;
+  /* Bottom-aligned with the checkbox (which is at top:2100, height:40).
+     Empirically, line-height:40 still leaves the all-caps text glyph
+     center about 1.5 px below the checkbox center because the font's
+     line box reserves descender space the all-caps run does not use.
+     Nudging top up by 2 px brings the visual centers within 0.5 px of
+     each other. End-session sibling slot is the 60 px above.
+     font-metric: this 2 px nudge is calibrated for Segoe UI (the
+     current system-stack resolution on Windows). Re-measure when we
+     bundle a specific webfont; different faces have different
+     line-box geometry. */
+  top: 2098px;
+  /* Right edge at x=1520 (20 px gap before the checkbox at x=1540). */
+  right: 100px;
+  height: 40px;
+  /* line-height equal to height vertically centers the text glyphs on
+     the same y axis as the checkbox box-center, so the pair reads as
+     center-aligned. Flex centering left a font-metric offset because
+     the line box was smaller than the container. */
+  line-height: 40px;
+  font-size: 32px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #707070;
+}
+
+/* Finish-turn checkbox: pinned at (1540, 2100) on the 1620x2160
+   viewport, 40x40 px. Bottom-aligned in the footer (20 px gap to
+   footer bottom at y=2160), leaving a 60 px band above for the
+   future End-session checkbox sibling. The pixel coordinates are
+   load-bearing: the future polling slice will crop this rectangle
+   from both rendered pages of the pulled annotated PDF and run
+   pixel-variance detection on it to decide whether the user marked
+   it. Do not move without updating the polling slice in lockstep. */
 .finish-turn-checkbox {
   position: absolute;
-  top: 2050px;
-  left: 1500px;
-  width: 80px;
-  height: 80px;
+  top: 2100px;
+  left: 1540px;
+  width: 40px;
+  height: 40px;
   background: #ffffff;
   border: 3px solid #222;
   border-radius: 4px;
@@ -111,14 +151,21 @@ html, body {
 /* --- Page 1: mockup page --- */
 
 /* Mockup region: large area between header and small notes region.
-   Fills the full page width below the header. */
+   Fills the full page width below the header. Left padding clears
+   the device's tool-panel overlay, pairing with the right-side
+   close-button clearance on .header-iter. The PDF page is sized so
+   that 1 CSS px equals 1 device pixel on-screen after the device's
+   fit-to-page scaling, so this padding's CSS px count equals its
+   device-pixel clearance. 130 px is observed-tight: 80 was inside
+   the panel, 160 cleared with margin to spare, 130 sits a few mm
+   right of the panel edge. */
 .mockup-region {
   position: absolute;
   top: 100px;
   left: 0;
   width: 1620px;
   height: 1500px;
-  padding: 40px;
+  padding: 40px 40px 40px 130px;
   overflow: hidden;
 }
 
@@ -128,9 +175,15 @@ html, body {
   position: absolute;
   left: 0;
   width: 1620px;
-  padding: 30px 40px;
-  background: #fafaf6;
-  border-top: 2px solid #d8d8d2;
+  /* Left padding clears the device's tool-panel overlay; see
+     .mockup-region for the full constraint. */
+  padding: 30px 40px 30px 130px;
+  /* Pure white instead of an off-white tint: anything that isn't a
+     palette level on the e-ink display dithers into a sparse pixel
+     pattern that reads as dirty grey. The border-top still separates
+     this region from the mockup above it. */
+  background: #ffffff;
+  border-top: 2px solid #888888;
 }
 
 /* Page-1 small notes area: between mockup region and footer.
@@ -142,8 +195,8 @@ html, body {
 
 /* Page-2 larger notes area: below the legend region. */
 .notes-region-large {
-  top: 1100px;
-  height: 900px;
+  top: 1400px;
+  height: 600px;
 }
 
 .notes-heading {
@@ -158,13 +211,16 @@ html, body {
 .notes-area {
   width: 100%;
   height: calc(100% - 50px);
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 59px,
-    #e0ddd0 59px,
-    #e0ddd0 60px
-  );
+  /* Lined-paper background. Inline-SVG tile (60 px tall, 1620 px wide,
+     a single line at y=59) repeated vertically. Earlier draft used
+     `repeating-linear-gradient` which Chrome's PDF renderer silently
+     drops; SVG backgrounds survive the PDF round-trip. Stroke width
+     and color are tuned for the e-ink path: thin/faint lines smear
+     into apparent gradient under the device's dithered greyscale, so
+     the line is now thicker and darker than print-style ruled paper
+     would suggest. */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1620' height='60'><line x1='0' y1='59' x2='1620' y2='59' stroke='%23808080' stroke-width='2'/></svg>");
+  background-repeat: repeat-y;
 }
 
 /* --- Page 2: legend region --- */
@@ -174,45 +230,51 @@ html, body {
   top: 100px;
   left: 0;
   width: 1620px;
-  height: 1000px;
-  padding: 40px;
+  /* Grew from 1000 -> 1300 px tall per first-eyeball feedback (the
+     gesture rows were too cramped). Notes region's top shifts
+     correspondingly to 1400. */
+  height: 1300px;
+  /* Left padding clears the device's tool-panel overlay; see
+     .mockup-region for the full constraint. */
+  padding: 50px 60px 50px 130px;
   background: #ffffff;
 }
 
 .legend-title {
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #555;
-  margin-bottom: 28px;
+  margin-bottom: 36px;
 }
 
 .legend-list {
   list-style: none;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  /* Layout column-by-column so the five gesture rows cluster in column 1
-     and the three text-convention rows in column 2. With the default
-     row-by-row flow, the gesture and text-convention groups would
-     interleave across columns and visually mix. */
-  grid-template-rows: repeat(5, auto);
+  /* Layout column-by-column so the gesture rows cluster in column 1
+     and the text-convention rows in column 2. With the default
+     row-by-row flow, the two groups would interleave visually. Row
+     count tracks the gesture-entry count, since gestures are the
+     longer column today. */
+  grid-template-rows: repeat(7, auto);
   grid-auto-flow: column;
-  gap: 18px 60px;
+  gap: 32px 80px;
 }
 
 .legend-row {
   display: flex;
   align-items: center;
-  gap: 20px;
-  font-size: 26px;
+  gap: 28px;
+  font-size: 34px;
   line-height: 1.4;
 }
 
 .legend-sample {
-  flex: 0 0 100px;
-  width: 100px;
-  height: 32px;
+  flex: 0 0 140px;
+  width: 140px;
+  height: 44px;
 }
 
 .legend-label {
@@ -223,3 +285,18 @@ html, body {
   font-style: italic;
   color: #444;
 }
+
+.legend-color-note {
+  margin-top: 36px;
+  font-size: 26px;
+  line-height: 1.4;
+  color: #444;
+}
+
+.legend-color-emph {
+  font-weight: 600;
+}
+
+.legend-color-remove { color: #d22; }
+.legend-color-add    { color: #1b8; }
+.legend-color-align  { color: #808080; }
