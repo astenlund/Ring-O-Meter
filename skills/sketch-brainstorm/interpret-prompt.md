@@ -190,7 +190,7 @@ mockup. The user_intent paragraph is the load-bearing output.
      --cloud-doc <path> --out-dir <out>)"
    bash skills/sketch-brainstorm/render-strokes.sh "$STROKES_DIR" <svgs>
    bash skills/sketch-brainstorm/composite-annotated.sh \
-     --pdf "$(dirname $STROKES_DIR)/$(basename $STROKES_DIR).pdf" \
+     --pdf "$(dirname "$STROKES_DIR")/$(basename "$STROKES_DIR").pdf" \
      --strokes-dir <svgs> --out-dir <composites>
    ```
 

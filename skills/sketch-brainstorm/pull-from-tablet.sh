@@ -109,12 +109,7 @@ done
 [ -n "$OUT_DIR" ] || { echo "pull-from-tablet.sh: --out-dir is required" >&2; usage; }
 
 require_rmapi_authenticated "pull-from-tablet.sh"
-
-if ! command -v python >/dev/null 2>&1; then
-  echo "pull-from-tablet.sh: python not on PATH" >&2
-  echo "  Install Python 3.10+; used here only for stdlib zipfile extraction." >&2
-  exit 1
-fi
+require_python "pull-from-tablet.sh"
 
 mkdir -p "$OUT_DIR"
 
@@ -129,7 +124,7 @@ BASENAME="$(basename "$CLOUD_DOC")"
 # landed alongside it) or escape via "..". basename returns "/" for "/"
 # and "//" inputs, "." for empty, ".." for paths ending in "/..".
 case "$BASENAME" in
-  ""|.|..|/*|*/) echo "pull-from-tablet.sh: refusing unsafe basename '$BASENAME' derived from --cloud-doc '$CLOUD_DOC'" >&2; exit 1 ;;
+  ""|.|..|*/) echo "pull-from-tablet.sh: refusing unsafe basename '$BASENAME' derived from --cloud-doc '$CLOUD_DOC'" >&2; exit 1 ;;
 esac
 RMDOC_PATH="$OUT_DIR/$BASENAME.rmdoc"
 EXTRACT_DIR="$OUT_DIR/$BASENAME"
@@ -142,7 +137,7 @@ PARENT="$(dirname "$CLOUD_DOC")"
 if [ "$PARENT" = "." ]; then
   PARENT_HINT="'rmapi ls' (cloud root)"
 else
-  PARENT_HINT="'rmapi ls $PARENT'"
+  PARENT_HINT="'rmapi ls $(printf '%q' "$PARENT")'"
 fi
 
 # Redirect rmapi's "downloading: ... OK" progress to stderr so the

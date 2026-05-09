@@ -31,13 +31,12 @@ PAGE_H = 2160
 
 
 def _pixmap_to_pil(pix: fitz.Pixmap) -> Image.Image:
-    """Convert a fitz Pixmap to a PIL image, preserving alpha if present."""
     mode = "RGBA" if pix.alpha else "RGB"
 
     return Image.frombytes(mode, (pix.width, pix.height), pix.samples)
 
 
-def rasterize_pdf_page(pdf_path: Path, page_index: int) -> Image.Image:
+def rasterize_pdf_page(doc: "fitz.Document", page_index: int) -> Image.Image:
     """Render one PDF page to a PIL image at PAGE_W x PAGE_H, RGB.
 
     The PDF was produced by Playwright at CSS-px dimensions; PDF unit
@@ -45,22 +44,22 @@ def rasterize_pdf_page(pdf_path: Path, page_index: int) -> Image.Image:
     rect ends up at 3/4 of the original CSS px count. Compute the
     zoom matrix from the actual page rect rather than a hardcoded
     factor so a future template change doesn't drift this silently.
-    """
-    doc = fitz.open(pdf_path)
-    try:
-        if page_index >= doc.page_count:
-            raise IndexError(
-                f"PDF has {doc.page_count} pages; page index {page_index} out of range"
-            )
-        page = doc[page_index]
-        zoom_x = PAGE_W / page.rect.width
-        zoom_y = PAGE_H / page.rect.height
-        matrix = fitz.Matrix(zoom_x, zoom_y)
-        pix = page.get_pixmap(matrix=matrix, alpha=False)
 
-        return _pixmap_to_pil(pix)
-    finally:
-        doc.close()
+    Caller opens and closes the fitz.Document; this function borrows
+    it (no open/close here) so a multi-page composite only parses the
+    PDF once.
+    """
+    if not (0 <= page_index < doc.page_count):
+        raise IndexError(
+            f"PDF has {doc.page_count} pages; page index {page_index} out of range"
+        )
+    page = doc[page_index]
+    zoom_x = PAGE_W / page.rect.width
+    zoom_y = PAGE_H / page.rect.height
+    matrix = fitz.Matrix(zoom_x, zoom_y)
+    pix = page.get_pixmap(matrix=matrix, alpha=False)
+
+    return _pixmap_to_pil(pix)
 
 
 def rasterize_svg(svg_path: Path) -> Image.Image:
@@ -71,7 +70,14 @@ def rasterize_svg(svg_path: Path) -> Image.Image:
     resolution; the matrix collapses to identity in the common case.
     Compute it explicitly so a future viewBox change is absorbed.
     """
-    doc = fitz.open(svg_path)
+    try:
+        doc = fitz.open(svg_path)
+    except Exception as exc:
+        print(
+            f"composite-annotated.py: failed to open SVG '{svg_path}': {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     try:
         page = doc[0]  # SVGs render as single-page documents in fitz
         zoom_x = PAGE_W / page.rect.width
@@ -86,10 +92,10 @@ def rasterize_svg(svg_path: Path) -> Image.Image:
 
 def composite_page(pdf_image: Image.Image, svg_image: Image.Image) -> Image.Image:
     """Overlay svg_image (RGBA) onto pdf_image (RGB), return RGB."""
-    base = pdf_image.convert("RGBA")
-    base.alpha_composite(svg_image)
+    result = pdf_image.copy()
+    result.paste(svg_image, mask=svg_image.split()[3])
 
-    return base.convert("RGB")
+    return result
 
 
 _PAGE_PATTERN = re.compile(r"^strokes-page(\d+)\.svg$")
@@ -140,14 +146,25 @@ def main():
         )
         return
 
-    for page_number, svg_path in svgs:
-        # strokes-pageN encodes 1-based; fitz uses 0-based.
-        pdf_image = rasterize_pdf_page(pdf_path, page_number - 1)
-        svg_image = rasterize_svg(svg_path)
-        composite = composite_page(pdf_image, svg_image)
-        out_path = out_dir / f"composite-page{page_number}.png"
-        composite.save(out_path, format="PNG")
-        print(f"{svg_path.name} + page {page_number} -> {out_path.name}")
+    try:
+        pdf_doc = fitz.open(pdf_path)
+    except Exception as exc:
+        print(
+            f"composite-annotated.py: failed to open PDF '{pdf_path}': {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    try:
+        for page_number, svg_path in svgs:
+            # strokes-pageN encodes 1-based; fitz uses 0-based.
+            pdf_image = rasterize_pdf_page(pdf_doc, page_number - 1)
+            svg_image = rasterize_svg(svg_path)
+            composite = composite_page(pdf_image, svg_image)
+            out_path = out_dir / f"composite-page{page_number}.png"
+            composite.save(out_path, format="PNG")
+            print(f"{svg_path.name} + page {page_number} -> {out_path.name}", file=sys.stderr)
+    finally:
+        pdf_doc.close()
 
 
 if __name__ == "__main__":

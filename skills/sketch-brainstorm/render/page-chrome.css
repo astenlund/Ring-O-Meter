@@ -7,7 +7,7 @@
  * layer in). Page 1 is the mockup page; page 2 is the legend page.
  *
  * The Finish-turn checkbox is pinned at the same coordinates on both
- * rendered pages: (x=1540, y=2100) 40x40 px on the 1620x2160 viewport.
+ * rendered pages: (x=1540, y=2100) 40x40 px on the 1620x2160 viewport. /* checkbox-coords */
  * Bottom-aligned in the footer with a 60 px slot above reserved for
  * the future End-session checkbox sibling. The polling slice's
  * variance detector will crop this rectangle from both rendered pages
