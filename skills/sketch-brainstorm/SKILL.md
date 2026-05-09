@@ -9,17 +9,18 @@ A skill for design-iteration with handwritten annotations on a reMarkable tablet
 
 ## STATUS: render-only walking skeleton
 
-This skill is currently the first vertical slice. Only the render half works:
+This skill is currently the first vertical slice. Both render directions work locally:
 
 - `render-html-to-pdf.sh` produces a two-page PDF at the Paper Pro viewport from a parametrised HTML template. Page 1 is the mockup page (header, mockup region, small notes area, chrome footer with the Finish-turn checkbox); page 2 is the legend page (header, vocabulary legend, larger notes area, mirrored chrome footer). The user can append further pages on the tablet for long-form notes (handled by the future interpretation slice).
 - The PDF can be eyeballed locally.
+- `render-strokes.sh` converts per-page `.rm` stroke files (from a locally extracted `.rmdoc` archive) to SVG overlays at the same viewport dimensions as the PDF. Bootstraps a Python venv with `rmscene` on first run.
 
 Not yet implemented (deferred to follow-up plans):
 
-- rmapi cloud push (`setup-rmapi.sh`, `~/.rmapi` token, deny rules, PreToolUse hook)
+- rmapi cloud push and pull (`setup-rmapi.sh`, `~/.rmapi` token, deny rules, PreToolUse hook, `rmapi get`)
 - Bootstrap dialogue (precondition check, topic prompt, cloud path resolution, design-language briefing)
 - Background polling script and pixel-region checkbox sentinel (color-aware detection sampled from the pre-render baseline)
-- Five-views interpretation pipeline (per-rendered-page pre-render + annotated, page-1 diff) feeding a fresh subagent; user-added pages 3+ pass through as additional images
+- Per-rendered-page interpretation pipeline (pre-render + strokes + annotated composite) feeding a fresh subagent; user-added pages 3+ pass through as additional stroke views
 - Multi-sketch iterations (N rendered sketches plus a trailing legend page, for side-by-side alternatives)
 - Verify-before-push (visual sanity check on the rendered output before pushing)
 - iter01+ loop and `design-state.md` append protocol
@@ -37,8 +38,26 @@ When asked to push to the tablet today, surface that the push half is not implem
 - `render/page-chrome.css` -- styles for header strip, notes region, legend, and Finish-turn checkbox.
 - `render/render.mjs` -- Node ESM script that substitutes tokens, launches Chromium, and writes the PDF.
 - `render-html-to-pdf.sh` -- bash wrapper around `render.mjs`. The user-facing entry point.
+- `render/render-strokes.py` -- converts per-page `.rm` stroke files to SVG overlays.
+- `render-strokes.sh` -- bash wrapper for the inbound stroke pipeline; bootstraps Python venv.
+- `requirements.txt` -- Python deps for the inbound pipeline (rmscene).
 
-## Render entry point
+## Inbound stroke render entry point
+
+After pulling an annotated `.rmdoc` archive with `rmapi get` and extracting it:
+
+```
+bash .claude/skills/sketch-brainstorm/render-strokes.sh \
+  <rm-dir> \
+  .tmp/sketch-brainstorm/test/strokes-out/
+```
+
+- `<rm-dir>` — the directory inside the extracted `.rmdoc` archive that contains the per-page `<uuid>.rm` files (typically named after the document UUID).
+- `<out-dir>` — receives `strokes-page1.svg`, `strokes-page2.svg`, … one SVG overlay per annotated page.
+
+Bootstraps a Python venv at `skills/sketch-brainstorm/.venv/` on first run and installs `rmscene` via `requirements.txt`. Subsequent runs reuse the venv.
+
+## Outbound PDF render entry point
 
 From the Ring-O-Meter repo root:
 

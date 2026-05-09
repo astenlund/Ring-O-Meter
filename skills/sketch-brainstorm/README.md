@@ -24,17 +24,49 @@ This is the **render-only walking skeleton**. Only the local PDF render works to
 The full design is documented in the host project's feature backlog at `.claude/features/remarkable-tablet-brainstorm.md` (private to the Ring-O-Meter repo where this skill is being incubated). Key shape:
 
 - **Transport**: `rmapi` (community CLI for reMarkable Cloud). USB tether is the documented escape hatch.
-- **Render**: Playwright drives Chrome via DevTools Protocol; pages target the Paper Pro viewport (1620x2160 px at 229 PPI, 7.08 x 9.43 inches at full bleed). rM2 owners see a small letterboxed margin.
+- **Render (outbound)**: Playwright drives Chrome via DevTools Protocol; pages target the Paper Pro viewport (1620x2160 px at 229 PPI, 7.08 x 9.43 inches at full bleed). rM2 owners see a small letterboxed margin.
+- **Render (inbound)**: `rmapi get` pulls the turn's `.rmdoc` archive (zip with the source PDF + per-page `.rm` stroke files); `rmscene` parses the `.rm` files into vector stroke data; we render the strokes to SVG overlays at the same viewport dimensions as the rendered PDF. We do NOT use `rmapi geta` (its bundled `.rm` renderer trails the device firmware; recent v6 strokes fail with `Unknown header`). Going through `.rm` files directly gives clean vector data with exact device coordinates, no rasterisation noise, and no diff/subtract step.
 - **Hand-off**: a Finish-turn checkbox at fixed pixel coordinates serves as the deterministic turn-boundary, mirrored on every rendered page so the user can mark Finish-turn from whichever page they are on. A background polling script crops the checkbox region from each pulled PDF and uses color-aware variance detection (sampling the per-iteration pre-render baseline as the source of truth for what each rendered checkbox is supposed to look like) to identify user marks. No multimodal LLM read in the polling loop until a real turn fires.
-- **Interpretation**: a fresh subagent per turn receives five image views (page-1 pre-render, page-1 annotated, page-1 diff, page-2 pre-render, page-2 annotated) plus any user-added extra pages plus the design state and vocabulary, returns distilled `user_intent` text. Multimodal raster data never lands in the parent context.
+- **Interpretation**: a fresh subagent per turn receives, per page: the pre-render PDF view, the stroke SVG overlay (vector strokes from `rmscene`, replacing the raster-diff approach), and the annotated PDF view; plus any user-added extra pages plus the design state and vocabulary; returns distilled `user_intent` text. Multimodal raster data never lands in the parent context.
 - **Memory**: per-session `design-state.md` head plus an immutable archive chain. Async compression keeps the active head bounded turn-over-turn.
-- **Layout contract**: pinned in this skill's render output. The Finish-turn checkbox at coordinates `(1500, 2050)` 80x80 px on the `1620x2160` viewport, in the chrome footer of every rendered page, is load-bearing for the future polling slice's hardcoded crop.
+- **Layout contract**: pinned in this skill's render output. The Finish-turn checkbox at coordinates `(1540, 2100)` 40x40 px on the `1620x2160` viewport, in the chrome footer of every rendered page, is load-bearing for the future polling slice's hardcoded crop. Sized to leave a 60 px sibling slot above for the future End-session checkbox.
+
+## Open questions
+
+- **Which font to bundle.** Today `page-chrome.css` declares the
+  platform system-font stack (`-apple-system, BlinkMacSystemFont,
+  "Segoe UI", Roboto, sans-serif`), so the rendered PDF embeds whatever
+  the rendering machine resolves. On Windows that is Segoe UI. The
+  system stack works because Chrome embeds the actual glyph subsets
+  into the PDF at render time, so the device always sees consistent
+  glyphs for a given render. But two different rendering machines
+  produce two different PDFs, and a future move to e.g. macOS or a
+  CI runner would silently shift typography across iterations. Once a
+  specific face is chosen, ship it via `@font-face` (likely a co-located
+  `.woff2`) so renders are byte-stable across hosts. Pending the user's
+  choice.
+- **Re-tune the chrome-footer label nudge after font swap.** The
+  `.finish-turn-label`'s `top: 2098px` (rather than 2100, where the
+  matching checkbox sits) compensates for Segoe UI's particular
+  line-box-vs-cap-height geometry. Different fonts have different
+  metrics; the nudge will need empirical re-measurement on the new
+  face. The value is tagged in `page-chrome.css` with a comment that
+  greps for "font-metric" so it is easy to find.
 
 ## Per-machine setup
 
 - `rmapi` on `$PATH`. The skill assumes it is installed and authenticated; a `setup-rmapi.sh` helper (future slice) handles initial pairing and token rotation.
 - A host project with `playwright` available. Today the skill resolves Playwright from the host repo's `web/node_modules`. When the skill ships to its own gist, this loosens via a per-skill `package.json` and `npm install`.
 - Chrome installed on the machine (the render uses `channel: 'chrome'` to mirror the host project's e2e suite).
+- Python 3.10+ on `$PATH`. The inbound stroke-rendering pipeline (`render/render-strokes.py`) bootstraps a Python venv on first run inside the skill folder (`./.venv/`) and installs `rmscene` and any rendering helpers from `requirements.txt`. The venv keeps the Python deps self-contained alongside the skill rather than polluting the host machine's global Python.
+
+## rmapi quirks observed in practice
+
+- **`rmapi put <file>` defaults to cloud root.** Passing `/` as the destination explicitly fails with `directory doesn't exist`; rmapi treats `/` as a path lookup, not a root marker. The push wrapper must special-case "no destination" vs. an explicit root-as-`/`.
+- **`rmapi put` has no `--name` flag.** The cloud filename equals the source basename. To push with a different cloud name, either rename the source file before the call (then restore) or follow the `put` with `rmapi mv <basename> <new-name>` as a second step.
+- **The cloud strips `.pdf` in display surfaces.** `rmapi ls` output and the device's file picker show bare names; the PDF identity is preserved at the protocol level. Pass arguments to `rmapi mv` and `rmapi put` as the bare name (no extension) once the file is on the cloud, even though the source file retains `.pdf`.
+- **Use `rmapi get`, not `rmapi geta`.** `geta` asks the cloud to render a flattened annotated PDF, which goes through rmapi's bundled `.rm` renderer. That renderer trails the device firmware: as of rmapi 0.0.33 (the latest stable), `.rm` v6 files (written by recent firmware) fail with `Failed to generate annotations: Unknown header`. `rmapi get` returns the raw `.rmdoc` archive (a zip with the source PDF + per-page `.rm` files), which we parse with `rmscene` ourselves. This sidesteps the rmapi-renderer-vs-device-firmware version drift entirely.
+- **Per-page `.rm` files are named by random UUID; PDF page order lives in the sibling `<doc-uuid>.content` JSON.** Sorting `.rm` filenames alphabetically scrambles strokes against PDF pages (the very first observed archive happened to sort backwards). The authoritative mapping is `cPages.pages[].redir.value` (0-based PDF page index) inside the `.content` file; `render-strokes.py` reads it and falls back to alphabetical sort with a warning if the file is missing. Treat the `.content` field as load-bearing for inbound page ordering, not a diagnostic.
 
 ## Files
 
@@ -43,6 +75,9 @@ The full design is documented in the host project's feature backlog at `.claude/
 - `render/page-template.html` -- HTML template with token placeholders.
 - `render/page-chrome.css` -- chrome-zone styles (header, notes, legend, checkbox).
 - `render/render.mjs` -- Node ESM script that drives Chromium and writes the PDF.
-- `render-html-to-pdf.sh` -- bash wrapper invoking the render script.
+- `render-html-to-pdf.sh` -- bash wrapper for the outbound PDF render pipeline.
+- `render/render-strokes.py` -- converts per-page `.rm` stroke files to SVG overlays.
+- `render-strokes.sh` -- bash wrapper for the inbound stroke-rendering pipeline.
+- `requirements.txt` -- Python deps for the inbound pipeline (rmscene).
 
 The intended gist layout is a mechanical mirror of this directory tree.
