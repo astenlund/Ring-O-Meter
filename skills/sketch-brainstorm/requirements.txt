@@ -1,1 +1,11 @@
 rmscene>=0.8.0,<2
+# PDF + SVG rasterization for the composite-annotated step. PyMuPDF is
+# on PyPI under the name `pymupdf` (lowercase); the import is
+# `import fitz`. Reuses fitz for SVG too: fitz.open(svg_path) opens
+# an SVG as a single-page document whose page rasterizes via the same
+# get_pixmap matrix path as PDFs. Avoids cairosvg's libcairo system-
+# DLL dependency that breaks on Windows without GTK / MSYS2.
+pymupdf>=1.24,<2
+# Image compositing (alpha-blend pixmap -> pixmap) for combining the
+# rasterized PDF page with the rasterized stroke overlay.
+Pillow>=10,<12
