@@ -104,17 +104,19 @@ html, body {
    from competing with the user's pen marks. */
 .finish-turn-label {
   position: absolute;
-  /* Bottom-aligned with the checkbox (which is at top:2100, height:40).
-     Empirically, line-height:40 still leaves the all-caps text glyph
-     center about 1.5 px below the checkbox center because the font's
-     line box reserves descender space the all-caps run does not use.
-     Nudging top up by 2 px brings the visual centers within 0.5 px of
-     each other. End-session sibling slot is the 60 px above.
+  /* Bottom-aligned with the checkbox (which sits at bottom:20, height:40
+     in the footer, i.e. y=2100..2140 on the page). Empirically,
+     line-height:40 still leaves the all-caps text glyph center about
+     1.5 px below the checkbox center because the font's line box
+     reserves descender space the all-caps run does not use. Nudging
+     bottom up by 2 px (22 instead of 20) brings the visual centers
+     within 0.5 px of each other. End-session sibling slot is the 60 px
+     above this row.
      font-metric: this 2 px nudge is calibrated for Segoe UI (the
      current system-stack resolution on Windows). Re-measure when we
      bundle a specific webfont; different faces have different
      line-box geometry. */
-  top: 2098px;
+  bottom: 22px;
   /* Right edge at x=1520 (20 px gap before the checkbox at x=1540). */
   right: 100px;
   height: 40px;
@@ -129,18 +131,20 @@ html, body {
   color: #707070;
 }
 
-/* Finish-turn checkbox: pinned at (1540, 2100) on the 1620x2160
-   viewport, 40x40 px. Bottom-aligned in the footer (20 px gap to
-   footer bottom at y=2160), leaving a 60 px band above for the
-   future End-session checkbox sibling. The pixel coordinates are
-   load-bearing: the future polling slice will crop this rectangle
-   from both rendered pages of the pulled annotated PDF and run
-   pixel-variance detection on it to decide whether the user marked
-   it. Do not move without updating the polling slice in lockstep. */
+/* Finish-turn checkbox: nested in the chrome-footer and anchored
+   bottom:20 / right:40 so it lands at (x=1540, y=2100) 40x40 px on the
+   1620x2160 viewport (footer is bottom:0, height:160, width:1620, so
+   bottom:20 -> page-y 2100 and right:40 -> page-x 1540). Leaves a
+   60 px band above for the future End-session checkbox sibling. The
+   *rendered* pixel coordinates are load-bearing: the future polling
+   slice crops this rectangle from both pages of the pulled annotated
+   PDF and runs pixel-variance detection on it to decide whether the
+   user marked it. Do not change the footer geometry or this offset
+   pair without updating the polling slice in lockstep. */
 .finish-turn-checkbox {
   position: absolute;
-  top: 2100px;
-  left: 1540px;
+  bottom: 20px;
+  right: 40px;
   width: 40px;
   height: 40px;
   background: #ffffff;
