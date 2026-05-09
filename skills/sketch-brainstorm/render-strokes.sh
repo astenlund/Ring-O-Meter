@@ -40,17 +40,42 @@ detect_venv_python() {
     fi
 }
 
+# Python is required both to create the venv and to hash requirements.txt
+# for drift detection, so check it once up-front regardless of which path
+# we end up taking.
+if ! command -v python >/dev/null 2>&1; then
+    echo "render-strokes.sh: 'python' not on PATH. Install Python 3.10+ first." >&2
+    exit 1
+fi
+
+# Drift detection: hash requirements.txt and store the result inside the
+# venv. On a subsequent run, mismatched hashes mean a dep was added,
+# removed, or version-bumped since this venv was created; rebootstrap so
+# the new deps land. The existing 'rm -rf "$VENV_DIR"' wipes the sentinel
+# along with the rest of the venv, so no separate cleanup is needed.
+req_hash() {
+    python -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$1"
+}
+
+CURRENT_REQ_HASH="$(req_hash "$REQUIREMENTS")"
+
+bootstrap_needed=false
 if ! VENV_PYTHON="$(detect_venv_python 2>/dev/null)"; then
+    bootstrap_needed=true
+elif [ "$(cat "$VENV_DIR/.req-hash" 2>/dev/null)" != "$CURRENT_REQ_HASH" ]; then
+    echo "render-strokes.sh: requirements.txt has changed since venv bootstrap; rebootstrapping..."
+    bootstrap_needed=true
+fi
+
+if $bootstrap_needed; then
     echo "render-strokes.sh: bootstrapping venv at $VENV_DIR..."
-    if ! command -v python >/dev/null 2>&1; then
-        echo "  ERROR: 'python' not on PATH. Install Python 3.10+ first." >&2
-        exit 1
-    fi
     rm -rf "$VENV_DIR"
     python -m venv "$VENV_DIR"
     VENV_PYTHON="$(detect_venv_python)"
     "$VENV_PYTHON" -m pip install --quiet --upgrade pip
     "$VENV_PYTHON" -m pip install --quiet -r "$REQUIREMENTS"
+    echo "$CURRENT_REQ_HASH" > "$VENV_DIR/.req-hash"
     echo "render-strokes.sh: venv ready"
 fi
+
 exec "$VENV_PYTHON" "$RENDER_SCRIPT" "$@"
