@@ -17,7 +17,7 @@ Secondary benefit: location independence. UI brainstorming is a common couch / b
 
 ## Status
 
-This is the **render-only walking skeleton**. Only the local PDF render works today; rmapi push, polling, interpretation, and the iter01+ loop are stacked in follow-up slices. See `SKILL.md` for the current entry-point and `STATUS` block.
+The **outbound half** works end-to-end: render an HTML mockup to a PDF, push it to a folder on the reMarkable cloud via rmapi. The **inbound stroke render** also works locally (parses `.rm` files from a manually-extracted `.rmdoc` archive into transparent SVG overlays). What remains: rmapi `get` for inbound, polling + checkbox detection, the interpretation subagent that composites pre-render PDFs with stroke overlays, the iter01+ loop, and `design-state.md`. See `SKILL.md` for current entry-points.
 
 ## Architecture (full design)
 
@@ -62,11 +62,13 @@ The full design is documented in the host project's feature backlog at `.claude/
 
 ## rmapi quirks observed in practice
 
-- **`rmapi put <file>` defaults to cloud root.** Passing `/` as the destination explicitly fails with `directory doesn't exist`; rmapi treats `/` as a path lookup, not a root marker. The push wrapper must special-case "no destination" vs. an explicit root-as-`/`.
+- **`rmapi put <file>` defaults to cloud root.** Passing `/` as the destination explicitly fails with `directory doesn't exist`; rmapi treats `/` as a path lookup, not a root marker. The push wrapper sidesteps the ambiguity by requiring an explicit `--cloud-folder` argument, so "no destination" is never a valid input shape; any future caller that wants a root push must elide the destination entirely rather than pass `/`.
 - **`rmapi put` has no `--name` flag.** The cloud filename equals the source basename. To push with a different cloud name, either rename the source file before the call (then restore) or follow the `put` with `rmapi mv <basename> <new-name>` as a second step.
 - **The cloud strips `.pdf` in display surfaces.** `rmapi ls` output and the device's file picker show bare names; the PDF identity is preserved at the protocol level. Pass arguments to `rmapi mv` and `rmapi put` as the bare name (no extension) once the file is on the cloud, even though the source file retains `.pdf`.
 - **Use `rmapi get`, not `rmapi geta`.** `geta` asks the cloud to render a flattened annotated PDF, which goes through rmapi's bundled `.rm` renderer. That renderer trails the device firmware: as of rmapi 0.0.33 (the latest stable), `.rm` v6 files (written by recent firmware) fail with `Failed to generate annotations: Unknown header`. `rmapi get` returns the raw `.rmdoc` archive (a zip with the source PDF + per-page `.rm` files), which we parse with `rmscene` ourselves. This sidesteps the rmapi-renderer-vs-device-firmware version drift entirely.
 - **Per-page `.rm` files are named by random UUID; PDF page order lives in the sibling `<doc-uuid>.content` JSON.** Sorting `.rm` filenames alphabetically scrambles strokes against PDF pages (the very first observed archive happened to sort backwards). The authoritative mapping is `cPages.pages[].redir.value` (0-based PDF page index) inside the `.content` file; `render-strokes.py` reads it and falls back to alphabetical sort with a warning if the file is missing. Treat the `.content` field as load-bearing for inbound page ordering, not a diagnostic.
+- **`rmapi rm -r <folder>` orphans contained files to the cloud root rather than deleting them.** Verified on rmapi 0.0.33: a folder containing one PDF, after `rmapi rm -r`, leaves the folder gone and the PDF reappearing at the cloud root with the same bare name. The cleanup pattern is therefore "delete leaves first, folders last", not the POSIX-shaped "rm -rf the parent". Future session-cleanup or close-session ceremony slices must enumerate contents via `rmapi ls <folder>` and `rmapi rm` each leaf before removing the folder. Any `--purge` style helper should pattern-match this two-phase order.
+- **`rmapi mkdir` is single-level only; no `--parents` flag.** Matches the BSD `mkdir` shape, not GNU `mkdir -p`. Multi-segment cloud paths must be created one level at a time. The push wrapper assumes parents already exist; deeper cloud-tree provisioning belongs to the bootstrap-dialogue slice.
 
 ## Files
 
@@ -76,6 +78,7 @@ The full design is documented in the host project's feature backlog at `.claude/
 - `render/page-chrome.css` -- chrome-zone styles (header, notes, legend, checkbox).
 - `render/render.mjs` -- Node ESM script that drives Chromium and writes the PDF.
 - `render-html-to-pdf.sh` -- bash wrapper for the outbound PDF render pipeline.
+- `push-to-tablet.sh` -- bash wrapper for the rmapi push (outbound cloud upload).
 - `render/render-strokes.py` -- converts per-page `.rm` stroke files to SVG overlays.
 - `render-strokes.sh` -- bash wrapper for the inbound stroke-rendering pipeline.
 - `requirements.txt` -- Python deps for the inbound pipeline (rmscene).
