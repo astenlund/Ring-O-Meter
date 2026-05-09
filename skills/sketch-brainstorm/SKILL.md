@@ -41,6 +41,7 @@ When asked to drive a full round-trip today, surface that the polling + interpre
 - `render-html-to-pdf.sh` -- bash wrapper around `render.mjs`. Outbound render entry point.
 - `push-to-tablet.sh` -- bash wrapper for `rmapi put`; outbound cloud upload entry point.
 - `pull-from-tablet.sh` -- bash wrapper for `rmapi get` + `.rmdoc` extraction; inbound cloud download entry point.
+- `_lib.sh` -- internal helpers sourced by transport wrappers (rmapi auth precondition).
 - `render/render-strokes.py` -- converts per-page `.rm` stroke files to SVG overlays.
 - `render-strokes.sh` -- bash wrapper for the inbound stroke pipeline; bootstraps Python venv.
 - `requirements.txt` -- Python deps for the inbound pipeline (rmscene).

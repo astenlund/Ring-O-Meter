@@ -83,6 +83,7 @@ The full design is documented in the host project's feature backlog at `.claude/
 - `render-html-to-pdf.sh` -- bash wrapper for the outbound PDF render pipeline.
 - `push-to-tablet.sh` -- bash wrapper for the rmapi push (outbound cloud upload).
 - `pull-from-tablet.sh` -- bash wrapper for `rmapi get` + `.rmdoc` extraction (inbound cloud download).
+- `_lib.sh` -- internal bash helpers sourced by the transport wrappers (rmapi auth precondition).
 - `render/render-strokes.py` -- converts per-page `.rm` stroke files to SVG overlays.
 - `render-strokes.sh` -- bash wrapper for the inbound stroke-rendering pipeline.
 - `requirements.txt` -- Python deps for the inbound pipeline (rmscene).
