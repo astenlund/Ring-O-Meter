@@ -59,6 +59,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/_lib.sh"
+
 usage() {
   cat >&2 <<EOF
 Usage: $0 --cloud-doc <path> --out-dir <dir>
@@ -105,26 +108,11 @@ done
 [ -n "$CLOUD_DOC" ] || { echo "pull-from-tablet.sh: --cloud-doc is required" >&2; usage; }
 [ -n "$OUT_DIR" ] || { echo "pull-from-tablet.sh: --out-dir is required" >&2; usage; }
 
-if ! command -v rmapi >/dev/null 2>&1; then
-  echo "pull-from-tablet.sh: rmapi not on PATH" >&2
-  echo "  Install rmapi (https://github.com/ddvk/rmapi) and pair the machine" >&2
-  echo "  via the future setup-rmapi.sh helper (or rmapi's first-run prompt)." >&2
-  exit 1
-fi
+require_rmapi_authenticated "pull-from-tablet.sh"
 
 if ! command -v python >/dev/null 2>&1; then
   echo "pull-from-tablet.sh: python not on PATH" >&2
   echo "  Install Python 3.10+; used here only for stdlib zipfile extraction." >&2
-  exit 1
-fi
-
-# Auth precondition: 'rmapi ls' on the cloud root succeeds when the
-# token is valid. Same shape as push-to-tablet.sh; fails fast with a
-# clear pointer rather than letting 'rmapi get' fail mid-call.
-if ! rmapi ls >/dev/null 2>&1; then
-  echo "pull-from-tablet.sh: rmapi cannot list the cloud root" >&2
-  echo "  Token missing or expired. Re-pair the machine, or run" >&2
-  echo "  'rmapi ls' interactively to surface the underlying error." >&2
   exit 1
 fi
 

@@ -36,6 +36,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/_lib.sh"
+
 usage() {
   cat >&2 <<EOF
 Usage: $0 --pdf <local-pdf> --cloud-folder <cloud-folder>
@@ -80,23 +83,7 @@ done
 [ -n "$CLOUD_FOLDER" ] || { echo "push-to-tablet.sh: --cloud-folder is required" >&2; usage; }
 [ -f "$PDF" ] || { echo "push-to-tablet.sh: PDF not found: $PDF" >&2; exit 1; }
 
-if ! command -v rmapi >/dev/null 2>&1; then
-  echo "push-to-tablet.sh: rmapi not on PATH" >&2
-  echo "  Install rmapi (https://github.com/ddvk/rmapi) and pair the machine" >&2
-  echo "  via the future setup-rmapi.sh helper (or rmapi's first-run prompt)." >&2
-  exit 1
-fi
-
-# Auth precondition: 'rmapi ls' on the cloud root succeeds when the token
-# is valid. Any failure here means the token is missing, expired, or the
-# device cannot reach the cloud; either way upload won't work, so fail
-# early with a clear pointer rather than letting 'rmapi put' fail mid-call.
-if ! rmapi ls >/dev/null 2>&1; then
-  echo "push-to-tablet.sh: rmapi cannot list the cloud root" >&2
-  echo "  Token missing or expired. Re-pair the machine, or run" >&2
-  echo "  'rmapi ls' interactively to surface the underlying error." >&2
-  exit 1
-fi
+require_rmapi_authenticated "push-to-tablet.sh"
 
 # Ensure destination exists. rmapi has no --parents flag and no exists
 # primitive, so we attempt mkdir and pattern-match the already-exists
