@@ -7,28 +7,29 @@ description: Round-trip UI brainstorm loop with a reMarkable tablet. Use when th
 
 A skill for design-iteration with handwritten annotations on a reMarkable tablet. The user sketches reactions on the tablet, Claude reads the marks and emits the next mockup.
 
-## STATUS: round-trip transport walking skeleton
+## STATUS: round-trip transport + composite walking skeleton
 
-Both transport directions are end-to-end: render a two-page PDF locally, push to the reMarkable cloud, pull the annotated archive back, parse strokes into SVG overlays. What's missing is the orchestration around the transport (when to push, when to pull, how to interpret).
+Both transport directions ship end-to-end and the inbound stroke pipeline now produces composite PNGs ready for an interpretation subagent to read multimodally. What's missing is the subagent itself plus the orchestration loop (polling, bootstrap, iter01+, design-state).
 
 - `render-html-to-pdf.sh` produces a two-page PDF at the Paper Pro viewport from a parametrised HTML template. Page 1 is the mockup page (header, mockup region, small notes area, chrome footer with the Finish-turn checkbox); page 2 is the legend page (header, vocabulary legend, larger notes area, mirrored chrome footer). The user can append further pages on the tablet for long-form notes (handled by the future interpretation slice).
 - `push-to-tablet.sh` uploads a rendered PDF to a named cloud folder via `rmapi put --force`. Owns just the upload step; cloud-path composition (project root + per-session slug) belongs to the future bootstrap-dialogue slice that calls this wrapper.
 - `pull-from-tablet.sh` downloads a cloud document via `rmapi get` and extracts the resulting `.rmdoc` archive into a per-document directory. Stdout is the extracted directory path so it pipes directly into `render-strokes.sh`. Owns just the download + extract; rendering and interpretation are downstream.
 - `render-strokes.sh` converts per-page `.rm` stroke files (in the directory `pull-from-tablet.sh` produces, or any locally-extracted `.rmdoc`) to SVG overlays at the same viewport dimensions as the PDF. Bootstraps a Python venv with `rmscene` on first run.
+- `composite-annotated.sh` overlays each `strokes-pageN.svg` onto its matching PDF page at full Paper Pro resolution and writes `composite-pageN.png`. Uses the same shared venv as `render-strokes.sh` (PyMuPDF for both PDF and SVG rasterization, Pillow for the alpha-composite). The PNGs are what the interpretation subagent will read multimodally.
 
 Not yet implemented (deferred to follow-up plans):
 
+- Interpretation subagent itself (Half B): consumes composite PNGs + vocabulary cheat-sheet + design state, emits user_intent text describing the next iteration
 - Auth bootstrap (`setup-rmapi.sh`, `~/.rmapi` token, deny rules, PreToolUse hook); both transport wrappers assume the machine is already paired
 - Bootstrap dialogue (precondition check, topic prompt, cloud path resolution, design-language briefing)
 - Background polling script and pixel-region checkbox sentinel (color-aware detection sampled from the pre-render baseline)
-- Per-rendered-page interpretation pipeline (pre-render + strokes + annotated composite) feeding a fresh subagent; user-added pages 3+ pass through as additional stroke views
 - Multi-sketch iterations (N rendered sketches plus a trailing legend page, for side-by-side alternatives)
 - Verify-before-push (visual sanity check on the rendered output before pushing)
 - iter01+ loop and `design-state.md` append protocol
 - B&W and Wireframe render modes (Color is current default and only mode)
 - Vocabulary lifecycle (weight-based active / archived split, frecency-style scoring) and close-session ceremony
 
-When asked to drive a full round-trip today, surface that the polling + interpretation halves are not implemented yet and point at the feature spec for the full design.
+When asked to drive a full round-trip today, surface that the interpretation subagent + polling + bootstrap halves are not implemented yet and point at the feature spec for the full design.
 
 ## Files in this skill
 
@@ -41,10 +42,12 @@ When asked to drive a full round-trip today, surface that the polling + interpre
 - `render-html-to-pdf.sh` -- bash wrapper around `render.mjs`. Outbound render entry point.
 - `push-to-tablet.sh` -- bash wrapper for `rmapi put`; outbound cloud upload entry point.
 - `pull-from-tablet.sh` -- bash wrapper for `rmapi get` + `.rmdoc` extraction; inbound cloud download entry point.
-- `_lib.sh` -- internal helpers sourced by transport wrappers (rmapi auth precondition).
+- `_lib.sh` -- internal helpers sourced by other wrappers (rmapi auth precondition; shared Python venv bootstrap with requirements.txt drift detection).
 - `render/render-strokes.py` -- converts per-page `.rm` stroke files to SVG overlays.
-- `render-strokes.sh` -- bash wrapper for the inbound stroke pipeline; bootstraps Python venv.
-- `requirements.txt` -- Python deps for the inbound pipeline (rmscene).
+- `render-strokes.sh` -- bash wrapper for the inbound stroke pipeline; reuses the shared venv.
+- `render/composite-annotated.py` -- composites stroke SVGs onto PDF pages as PNGs (PyMuPDF + Pillow).
+- `composite-annotated.sh` -- bash wrapper for the composite step; reuses the shared venv.
+- `requirements.txt` -- Python deps for the inbound pipeline (rmscene + pymupdf + Pillow).
 
 ## Inbound stroke render entry point
 
@@ -132,3 +135,24 @@ The captured stdout is exactly the rm-dir path. rmapi's `downloading: ... OK` pr
 Re-pulling the same `--cloud-doc` overwrites both the archive and the extraction; brainstorm iteration assumes overwrite semantics. Any caller that needs to keep the previous extraction must rename it before re-pulling. `--out-dir` is keyed only on the cloud-doc's leaf basename, so distinct cloud paths sharing a basename (`Foo/iter01` vs `Bar/iter01`) clobber each other when pulled into the same `--out-dir`; use distinct out-dirs to keep both.
 
 Per-machine setup: same as push (`rmapi` paired). Additionally, `python` must be on PATH for the stdlib `zipfile` extraction (this wrapper does not require the `render-strokes.sh` venv; it uses Python only for unzipping).
+
+## Composite entry point
+
+After `render-strokes.sh` produces stroke SVGs, composite them onto the source PDF pages to get the multimodal-readable annotated PNGs:
+
+```
+bash .claude/skills/sketch-brainstorm/composite-annotated.sh \
+  --pdf .tmp/sketch-brainstorm/pulls/iter01/<doc-uuid>.pdf \
+  --strokes-dir .tmp/sketch-brainstorm/pulls/iter01-svgs/ \
+  --out-dir .tmp/sketch-brainstorm/pulls/iter01-composites/
+```
+
+CLI flags:
+
+- `--pdf <path>` (required): the source PDF. For pulls done via `pull-from-tablet.sh`, this is `<extract-dir>/<doc-uuid>.pdf` (the manifest sits one level above the rm-dir; see README rmapi quirks).
+- `--strokes-dir <dir>` (required): directory containing `strokes-pageN.svg` files from `render-strokes.sh`.
+- `--out-dir <dir>` (required): receives `composite-pageN.png`. Created if missing.
+
+For each `strokes-pageN.svg` present in the strokes-dir, the wrapper writes one `composite-pageN.png` showing the rendered mockup at full Paper Pro resolution (1620x2160) with the user's strokes overlaid in their original colors at their original positions. Pages without strokes are skipped silently because the interpretation subagent only needs to read pages that carry user annotations.
+
+Per-machine setup: same as `render-strokes.sh` (the two wrappers share the venv). First run on a machine without the venv bootstraps automatically; later runs detect requirements.txt drift via the sentinel hash and rebootstrap if a dep changed.

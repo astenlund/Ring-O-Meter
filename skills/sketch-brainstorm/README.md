@@ -17,7 +17,7 @@ Secondary benefit: location independence. UI brainstorming is a common couch / b
 
 ## Status
 
-Both transport directions work end-to-end. **Outbound**: render an HTML mockup to a PDF, push to a folder on the reMarkable cloud via rmapi. **Inbound**: pull a cloud document with `rmapi get`, extract the `.rmdoc` archive, parse the per-page `.rm` files into transparent SVG overlays. What remains: polling + checkbox detection, the interpretation subagent that composites pre-render PDFs with stroke overlays, the iter01+ loop, and `design-state.md`. See `SKILL.md` for current entry-points.
+Both transport directions work end-to-end and the inbound stroke pipeline now produces composite PNGs ready for an interpretation subagent. **Outbound**: render an HTML mockup to a PDF, push to a folder on the reMarkable cloud via rmapi. **Inbound**: pull a cloud document with `rmapi get`, extract the `.rmdoc` archive, parse the per-page `.rm` files into transparent SVG overlays, composite each overlay onto its source PDF page as a PNG. What remains: polling + checkbox detection, the interpretation subagent itself (consumes the composites and emits user_intent text), the iter01+ loop, and `design-state.md`. See `SKILL.md` for current entry-points.
 
 ## Architecture (full design)
 
@@ -83,9 +83,11 @@ The full design is documented in the host project's feature backlog at `.claude/
 - `render-html-to-pdf.sh` -- bash wrapper for the outbound PDF render pipeline.
 - `push-to-tablet.sh` -- bash wrapper for the rmapi push (outbound cloud upload).
 - `pull-from-tablet.sh` -- bash wrapper for `rmapi get` + `.rmdoc` extraction (inbound cloud download).
-- `_lib.sh` -- internal bash helpers sourced by the transport wrappers (rmapi auth precondition).
+- `_lib.sh` -- internal bash helpers sourced by other wrappers (rmapi auth precondition, shared Python venv bootstrap with requirements.txt drift detection).
 - `render/render-strokes.py` -- converts per-page `.rm` stroke files to SVG overlays.
 - `render-strokes.sh` -- bash wrapper for the inbound stroke-rendering pipeline.
-- `requirements.txt` -- Python deps for the inbound pipeline (rmscene).
+- `render/composite-annotated.py` -- composites stroke SVGs onto PDF pages as PNGs (uses PyMuPDF + Pillow).
+- `composite-annotated.sh` -- bash wrapper for the composite step.
+- `requirements.txt` -- Python deps for the inbound pipeline (rmscene + pymupdf + Pillow).
 
 The intended gist layout is a mechanical mirror of this directory tree.
