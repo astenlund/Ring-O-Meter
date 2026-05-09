@@ -17,7 +17,7 @@ Secondary benefit: location independence. UI brainstorming is a common couch / b
 
 ## Status
 
-Both transport directions work end-to-end and the inbound stroke pipeline now produces composite PNGs ready for an interpretation subagent. **Outbound**: render an HTML mockup to a PDF, push to a folder on the reMarkable cloud via rmapi. **Inbound**: pull a cloud document with `rmapi get`, extract the `.rmdoc` archive, parse the per-page `.rm` files into transparent SVG overlays, composite each overlay onto its source PDF page as a PNG. What remains: polling + checkbox detection, the interpretation subagent itself (consumes the composites and emits user_intent text), the iter01+ loop, and `design-state.md`. See `SKILL.md` for current entry-points.
+Both transport directions work end-to-end and the full interpretation pipeline (strokes → composite → multimodal subagent → user_intent text) is functionally validated. **Outbound**: render an HTML mockup to a PDF, push to a folder on the reMarkable cloud via rmapi. **Inbound**: pull a cloud document with `rmapi get`, extract the `.rmdoc` archive, parse the per-page `.rm` files into transparent SVG overlays, composite each overlay onto its source PDF page, dispatch a fresh subagent with the composite PNGs + the vocabulary, receive distilled `user_intent` text. What remains: polling + checkbox detection, the iter01+ loop that consumes `user_intent` to drive the next render, `design-state.md` for cross-turn memory, and the bootstrap dialogue that ties the loop together. See `SKILL.md` for current entry-points.
 
 ## Architecture (full design)
 
@@ -89,6 +89,7 @@ The full design is documented in the host project's feature backlog at `.claude/
 - `render/composite-annotated.py` -- composites stroke SVGs onto PDF pages as PNGs (uses PyMuPDF + Pillow).
 - `composite-annotated.sh` -- bash wrapper for the composite step.
 - `render/test_composite_annotated.py` -- unit tests for the page-pattern regex, numeric sort, and resolution-constants invariant. Run via `python skills/sketch-brainstorm/render/test_composite_annotated.py`.
+- `interpret-prompt.md` -- prompt template for the interpretation subagent. Read by the orchestrator (Claude in main chat); not directly executable.
 - `requirements.txt` -- Python deps for the inbound pipeline (rmscene + pymupdf + Pillow).
 
 The intended gist layout is a mechanical mirror of this directory tree.
