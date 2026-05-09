@@ -18,6 +18,26 @@
 # wrappers (a `setup-rmapi.sh` helper, a polling daemon) will reuse
 # this same precondition.
 
+# require_python <wrapper-name>
+#
+# Verifies python 3.10+ is on PATH. On failure, prints a script-prefixed
+# diagnostic and exits the calling wrapper with status 1. Used by
+# wrappers that need Python for stdlib-only operations (e.g., zipfile
+# extraction) without necessarily bootstrapping the skill venv. Also
+# called internally by ensure_skill_venv, which needs Python both for
+# the dep hash and for the venv itself.
+require_python() {
+  local prefix="$1"
+  if ! command -v python >/dev/null 2>&1; then
+    echo "$prefix: 'python' not on PATH. Install Python 3.10+ first." >&2
+    exit 1
+  fi
+  if ! python -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" 2>/dev/null; then
+    echo "$prefix: Python 3.10+ required; found $(python --version 2>&1)." >&2
+    exit 1
+  fi
+}
+
 # require_rmapi_authenticated <wrapper-name>
 #
 # Verifies rmapi is on PATH and can list the cloud root (i.e., the
@@ -87,10 +107,7 @@ _detect_venv_python() {
 # step is needed when the venv is being recreated.
 ensure_skill_venv() {
   local prefix="$1"
-  if ! command -v python >/dev/null 2>&1; then
-    echo "$prefix: 'python' not on PATH. Install Python 3.10+ first." >&2
-    exit 1
-  fi
+  require_python "$prefix"
   local current_hash stored_hash need
   current_hash="$(python -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$REQUIREMENTS")"
   stored_hash="$(cat "$VENV_DIR/.req-hash" 2>/dev/null || true)"

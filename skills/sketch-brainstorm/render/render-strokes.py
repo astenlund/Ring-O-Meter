@@ -15,9 +15,9 @@ clustered in a small region (e.g., a Finish-turn-only annotation with
 no other marks on the page) the bounds are not representative and the
 derived scale is loose, displacing the strokes from where they were
 drawn. The proper fix is to calibrate against a pinned reference -
-the Finish-turn checkbox at `(1540, 2100) 40x40` (authoritative
-coordinates are in .finish-turn-checkbox in page-chrome.css; update
-both if the box moves) is the natural landmark - and use a fixed
+the Finish-turn checkbox at `(1540, 2100) 40x40`  # checkbox-coords
+(authoritative coordinates are in .finish-turn-checkbox in
+page-chrome.css; update both if the box moves) is the natural landmark - and use a fixed
 device-firmware-versioned scale instead of auto-fitting per call.
 Punted to a later slice; auto-fit works well enough for spread-out
 annotations, which dominate the iteration loop.
@@ -62,7 +62,7 @@ PEN_COLORS = {
 }
 
 
-def collect_lines(rm_file):
+def collect_lines(rm_file: Path) -> list[tuple[str, float, list[tuple[float, float]]]]:
     """Return a list of (color, width, points) tuples for all strokes."""
     with open(rm_file, "rb") as f:
         tree = read_tree(f)
@@ -80,7 +80,9 @@ def collect_lines(rm_file):
     return lines
 
 
-def union_bounds(all_lines):
+def union_bounds(
+    all_lines: dict[Path, list[tuple[str, float, list[tuple[float, float]]]]],
+) -> tuple[float, float, float, float]:
     """Find combined bounding box across every stroke from every page."""
     x_min = y_min = math.inf
     x_max = y_max = -math.inf
@@ -98,7 +100,7 @@ def union_bounds(all_lines):
     return x_min, y_min, x_max, y_max
 
 
-def derive_scale(bounds):
+def derive_scale(bounds: tuple[float, float, float, float]) -> float:
     """Pick a uniform scale that fits the bounds onto 1620x2160.
 
     .rm uses center-origin in x. Treat the maximum |x| as the
@@ -115,11 +117,15 @@ def derive_scale(bounds):
     return min(scale_x, scale_y)
 
 
-def rm_to_page(x, y, scale):
+def rm_to_page(x: float, y: float, scale: float) -> tuple[float, float]:
     return x * scale + PAGE_W / 2, y * scale
 
 
-def render_svg(lines, scale, out_svg):
+def render_svg(
+    lines: list[tuple[str, float, list[tuple[float, float]]]],
+    scale: float,
+    out_svg: Path,
+) -> None:
     polylines = []
     for color, width, pts in lines:
         coords = " ".join(
@@ -158,6 +164,14 @@ def _page_order_modern(rm_dir, data):
         # than len(ordered) so unannotated pages that were skipped above do
         # not collapse the index and cause two annotated pages to map to the
         # same output slot.
+        if redir is not None and not isinstance(redir, int):
+            print(
+                f"warning: page {i} redir.value has unexpected type "
+                f"{type(redir).__name__!r} (expected int); "
+                f"falling back to position {i}",
+                file=sys.stderr,
+            )
+            redir = None
         pdf_index = redir if isinstance(redir, int) else i
         ordered.append((pdf_index, rm_file))
 
@@ -181,7 +195,7 @@ def _page_order_legacy(rm_dir, data):
     return ordered
 
 
-def ordered_rm_files(rm_dir):
+def ordered_rm_files(rm_dir: Path) -> list[tuple[int, Path]]:
     """Return [(pdf_page_index, rm_file)] in PDF-page order.
 
     Reads the .rmdoc archive's <doc-uuid>.content sibling file (where
@@ -203,7 +217,7 @@ def ordered_rm_files(rm_dir):
     if not ordered:
         # Only fall back to alphabetical sort when .rm files actually exist
         # in the directory. If they do, the content file was missing or its
-        # schema was not recognised — warn the caller. If they don't, all
+        # schema was not recognised - warn the caller. If they don't, all
         # pages are genuinely unannotated; no warning or fallback is needed.
         rm_files_found = sorted(rm_dir.glob("*.rm"))
         if rm_files_found:

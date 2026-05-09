@@ -42,12 +42,7 @@ function loadPlaywright() {
     );
   }
   const anchor = pathToFileURL(join(host, 'package.json')).href;
-  let require;
-  try {
-    require = createRequire(anchor);
-  } catch (err) {
-    fail(`createRequire failed for ${anchor}: ${err.message}`);
-  }
+  const require = createRequire(anchor);
   try {
     return require('playwright');
   } catch (err) {
@@ -169,14 +164,20 @@ async function main() {
 
   const browser = await playwright.chromium.launch({ channel: 'chrome' });
   try {
-    // Pass viewport at page creation so initial layout, web font loading,
+    // Pass viewport at context creation so initial layout, web font loading,
     // and the networkidle wait all happen against the target dimensions.
     // Setting viewport after navigate would lay out at the default
     // 1280x720 first, fire networkidle against that, then re-layout on
     // resize without re-triggering font load.
-    const page = await browser.newPage({
+    // javaScriptEnabled: false is a defensive default: the template does
+    // not use JS, and the --mockup-html file is LLM-generated content that
+    // should not execute arbitrary scripts inside a file:// Chromium context
+    // (which has unrestricted local filesystem read access).
+    const context = await browser.newContext({
+      javaScriptEnabled: false,
       viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
     });
+    const page = await context.newPage();
     // page.pdf() defaults to print media, which silently drops @media
     // screen rules and applies UA print-stylesheet defaults. Force
     // screen media before navigate so any media-conditional CSS is
