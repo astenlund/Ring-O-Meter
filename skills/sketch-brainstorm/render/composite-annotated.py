@@ -95,6 +95,25 @@ def composite_page(pdf_image: Image.Image, svg_image: Image.Image) -> Image.Imag
 _PAGE_PATTERN = re.compile(r"^strokes-page(\d+)\.svg$")
 
 
+def collect_strokes_pages(strokes_dir: Path) -> list[tuple[int, Path]]:
+    """Return sorted [(pdf_page_number, svg_path)] for strokes-pageN.svg files.
+
+    The strokes producer (render-strokes.py) emits one SVG per page
+    that has at least one stroke, named after the 1-based PDF page
+    index. Returns numeric-sorted tuples so page 10 follows page 9
+    rather than page 1 (lexicographic sort would interleave them).
+    Pages without strokes get no SVG and contribute no entry.
+    """
+    svgs = []
+    for entry in strokes_dir.iterdir():
+        match = _PAGE_PATTERN.match(entry.name)
+        if match:
+            svgs.append((int(match.group(1)), entry))
+    svgs.sort()
+
+    return svgs
+
+
 def main():
     if len(sys.argv) != 4:
         print(f"usage: {sys.argv[0]} <pdf> <strokes-dir> <out-dir>", file=sys.stderr)
@@ -112,16 +131,7 @@ def main():
         print(f"composite-annotated.py: strokes-dir not found: {strokes_dir}", file=sys.stderr)
         sys.exit(1)
 
-    # The strokes producer (render-strokes.py) emits one SVG per page
-    # that has at least one stroke, named after the 1-based PDF page
-    # index. Pages without strokes get no SVG and no composite.
-    svgs = []
-    for entry in strokes_dir.iterdir():
-        match = _PAGE_PATTERN.match(entry.name)
-        if match:
-            svgs.append((int(match.group(1)), entry))
-    svgs.sort()
-
+    svgs = collect_strokes_pages(strokes_dir)
     if not svgs:
         print(
             f"composite-annotated.py: no strokes-pageN.svg files in {strokes_dir}; "

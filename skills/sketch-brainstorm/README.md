@@ -88,6 +88,7 @@ The full design is documented in the host project's feature backlog at `.claude/
 - `render-strokes.sh` -- bash wrapper for the inbound stroke-rendering pipeline.
 - `render/composite-annotated.py` -- composites stroke SVGs onto PDF pages as PNGs (uses PyMuPDF + Pillow).
 - `composite-annotated.sh` -- bash wrapper for the composite step.
+- `render/test_composite_annotated.py` -- unit tests for the page-pattern regex, numeric sort, and resolution-constants invariant. Run via `python skills/sketch-brainstorm/render/test_composite_annotated.py`.
 - `requirements.txt` -- Python deps for the inbound pipeline (rmscene + pymupdf + Pillow).
 
 The intended gist layout is a mechanical mirror of this directory tree.
