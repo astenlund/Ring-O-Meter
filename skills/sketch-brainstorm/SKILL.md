@@ -1,23 +1,24 @@
 ---
 name: sketch-brainstorm
-description: Round-trip UI brainstorm loop with a reMarkable tablet. Use when the user wants to sketch on the tablet ("push to tablet", "send sketch to remarkable", "brainstorm UI on the tablet", "pull from tablet", "grab the annotated version"). Renders HTML mockups to PDF at the tablet's viewport, pushes via rmapi (future slice), polls for annotations, interprets pen marks, iterates.
+description: Round-trip UI brainstorm loop with a reMarkable tablet. Use when the user wants to sketch on the tablet ("push to tablet", "send sketch to remarkable", "brainstorm UI on the tablet", "pull from tablet", "grab the annotated version"). Renders HTML mockups to PDF at the tablet's viewport, pushes to the reMarkable cloud via rmapi, polls for annotations (future slice), interprets pen marks, iterates.
 ---
 
 # sketch-brainstorm
 
 A skill for design-iteration with handwritten annotations on a reMarkable tablet. The user sketches reactions on the tablet, Claude reads the marks and emits the next mockup.
 
-## STATUS: render-only walking skeleton
+## STATUS: render + push walking skeleton
 
-This skill is currently the first vertical slice. Both render directions work locally:
+Outbound is now end-to-end: render a two-page PDF locally, push it to a folder on the reMarkable cloud via rmapi. Inbound stroke parsing also works locally from a manually-extracted `.rmdoc` archive.
 
 - `render-html-to-pdf.sh` produces a two-page PDF at the Paper Pro viewport from a parametrised HTML template. Page 1 is the mockup page (header, mockup region, small notes area, chrome footer with the Finish-turn checkbox); page 2 is the legend page (header, vocabulary legend, larger notes area, mirrored chrome footer). The user can append further pages on the tablet for long-form notes (handled by the future interpretation slice).
-- The PDF can be eyeballed locally.
+- `push-to-tablet.sh` uploads a rendered PDF to a named cloud folder via `rmapi put --force`. Owns just the upload step; cloud-path composition (project root + per-session slug) belongs to the future bootstrap-dialogue slice that calls this wrapper.
 - `render-strokes.sh` converts per-page `.rm` stroke files (from a locally extracted `.rmdoc` archive) to SVG overlays at the same viewport dimensions as the PDF. Bootstraps a Python venv with `rmscene` on first run.
 
 Not yet implemented (deferred to follow-up plans):
 
-- rmapi cloud push and pull (`setup-rmapi.sh`, `~/.rmapi` token, deny rules, PreToolUse hook, `rmapi get`)
+- `rmapi get` pull + automated `.rmdoc` extraction (today the user runs `rmapi get` and unzips manually before invoking `render-strokes.sh`)
+- Auth bootstrap (`setup-rmapi.sh`, `~/.rmapi` token, deny rules, PreToolUse hook); the push wrapper assumes the machine is already paired
 - Bootstrap dialogue (precondition check, topic prompt, cloud path resolution, design-language briefing)
 - Background polling script and pixel-region checkbox sentinel (color-aware detection sampled from the pre-render baseline)
 - Per-rendered-page interpretation pipeline (pre-render + strokes + annotated composite) feeding a fresh subagent; user-added pages 3+ pass through as additional stroke views
@@ -27,7 +28,7 @@ Not yet implemented (deferred to follow-up plans):
 - B&W and Wireframe render modes (Color is current default and only mode)
 - Vocabulary lifecycle (weight-based active / archived split, frecency-style scoring) and close-session ceremony
 
-When asked to push to the tablet today, surface that the push half is not implemented yet and point at the feature spec for the full design.
+When asked to drive a full round-trip today, surface that the polling + interpretation halves are not implemented yet and point at the feature spec for the full design.
 
 ## Files in this skill
 
@@ -37,7 +38,8 @@ When asked to push to the tablet today, surface that the push half is not implem
 - `render/page-template.html` -- HTML template with `{{topic}}`, `{{iteration_label}}`, `{{mockup_html}}` tokens.
 - `render/page-chrome.css` -- styles for header strip, notes region, legend, and Finish-turn checkbox.
 - `render/render.mjs` -- Node ESM script that substitutes tokens, launches Chromium, and writes the PDF.
-- `render-html-to-pdf.sh` -- bash wrapper around `render.mjs`. The user-facing entry point.
+- `render-html-to-pdf.sh` -- bash wrapper around `render.mjs`. Outbound render entry point.
+- `push-to-tablet.sh` -- bash wrapper for `rmapi put`; outbound cloud upload entry point.
 - `render/render-strokes.py` -- converts per-page `.rm` stroke files to SVG overlays.
 - `render-strokes.sh` -- bash wrapper for the inbound stroke pipeline; bootstraps Python venv.
 - `requirements.txt` -- Python deps for the inbound pipeline (rmscene).
@@ -78,3 +80,22 @@ CLI flags:
 Windows: the bash wrapper requires Git Bash or WSL. PowerShell users invoke via `bash render-html-to-pdf.sh ...`.
 
 The wrapper expects to run from a host repo that has `playwright` installed in `web/node_modules/` (the Ring-O-Meter shape). When the skill ships to its own gist, that constraint loosens via a per-skill `package.json` and `npm install` (see README).
+
+## Outbound rmapi push entry point
+
+After rendering a PDF, push it to a folder on the reMarkable cloud:
+
+```
+bash .claude/skills/sketch-brainstorm/push-to-tablet.sh \
+  --pdf .tmp/sketch-brainstorm/test/seed.pdf \
+  --cloud-folder Brainstorms/warmup-gate
+```
+
+CLI flags:
+
+- `--pdf <path>` (required): local PDF file to upload.
+- `--cloud-folder <path>` (required): reMarkable cloud folder. Created via `rmapi mkdir` if missing (single-level only; deeper paths require their parents to exist).
+
+The wrapper verifies `rmapi` is on PATH and authenticated, runs `rmapi mkdir` (tolerating already-exists), then `rmapi put --force`. The cloud filename equals the source basename and the cloud display strips `.pdf` (see README rmapi quirks). Cloud-path composition (project root + per-session slug) is the bootstrap-dialogue slice's responsibility; this wrapper is intentionally dumb about session structure.
+
+Per-machine setup: `rmapi` must already be installed and paired (the future `setup-rmapi.sh` helper will own first-run pairing). If `rmapi ls` fails, re-pair before invoking the push wrapper.
