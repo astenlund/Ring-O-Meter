@@ -1,26 +1,40 @@
 ---
 name: sketch-brainstorm
-description: Round-trip UI brainstorm loop with a reMarkable tablet. Use when the user wants to sketch on the tablet ("push to tablet", "send sketch to remarkable", "brainstorm UI on the tablet", "pull from tablet", "grab the annotated version"). Renders HTML mockups to PDF at the tablet's viewport, pushes to the reMarkable cloud via rmapi, polls for annotations (future slice), interprets pen marks, iterates.
+description: Round-trip UI brainstorm loop with a reMarkable tablet. Use when the user wants to sketch on the tablet ("push to tablet", "send sketch to remarkable", "brainstorm UI on the tablet", "pull from tablet", "grab the annotated version"). Renders HTML mockups to PDF at the tablet's viewport, pushes to the reMarkable cloud via rmapi, drives an iter-by-iter render-pull-interpret-render loop. Polling, full bootstrap dialogue, verify-before-push, and compression are deferred to follow-up slices.
 ---
 
 # sketch-brainstorm
 
 A skill for design-iteration with handwritten annotations on a reMarkable tablet. The user sketches reactions on the tablet, Claude reads the marks and emits the next mockup.
 
-## STATUS: round-trip + interpretation walking skeleton
+## STATUS: closed loop with bootstrap-lite + structured interpret JSON
 
-Both transport directions ship end-to-end, the inbound pipeline produces composite PNGs, and a fresh multimodal subagent dispatched against the composites + vocabulary returns distilled `user_intent` text. What's missing is the orchestration around the loop (polling, bootstrap, iter01+ render-from-user_intent, design-state).
+Round-trip ships end-to-end: bootstrap-lite cold-start, orchestrator-driven
+loop body (pull -> render-strokes -> composite -> interpret -> compose next
+mockup -> render+push), structured-JSON interpret output, single growing
+`design-state.md` per session. Polling, verify-before-push, full bootstrap
+dialogue, compression, and multi-sketch are deferred to follow-up slices.
 
-- `render-html-to-pdf.sh` produces a two-page PDF at the Paper Pro viewport from a parametrised HTML template. Page 1 is the mockup page (header, mockup region, small notes area, chrome footer with the Finish-turn checkbox); page 2 is the legend page (header, vocabulary legend, larger notes area, mirrored chrome footer). The user can append further pages on the tablet for long-form notes (handled by the future interpretation slice).
+- `render-html-to-pdf.sh` produces a two-page PDF at the Paper Pro viewport from a parametrised HTML template. Page 1 is the mockup page (header, mockup region, small notes area, chrome footer with the Finish-turn checkbox); page 2 is the legend page (header, vocabulary legend, larger notes area, mirrored chrome footer). The user can append further pages on the tablet for long-form notes (handled by the future interpretation slice). `--subtopic` (forward-compat for multi-sketch) and `--prerender-out <dir>` (captures per-page PNGs to feed verify-before-push when it lands).
 - `push-to-tablet.sh` uploads a rendered PDF to a named cloud folder via `rmapi put --force`. Owns just the upload step; cloud-path composition (project root + per-session slug) belongs to the future bootstrap-dialogue slice that calls this wrapper.
 - `pull-from-tablet.sh` downloads a cloud document via `rmapi get` and extracts the resulting `.rmdoc` archive into a per-document directory. Stdout is the extracted directory path so it pipes directly into `render-strokes.sh`. Owns just the download + extract; rendering and interpretation are downstream.
 - `render-strokes.sh` converts per-page `.rm` stroke files (in the directory `pull-from-tablet.sh` produces, or any locally-extracted `.rmdoc`) to SVG overlays at the same viewport dimensions as the PDF. Bootstraps a Python venv with `rmscene` on first run.
 - `composite-annotated.sh` overlays each `strokes-pageN.svg` onto its matching PDF page at full Paper Pro resolution and writes `composite-pageN.png`. Uses the same shared venv as `render-strokes.sh` (PyMuPDF for both PDF and SVG rasterization, Pillow for the alpha-composite). The PNGs are what the interpretation subagent reads multimodally.
-- `interpret-prompt.md` is the prompt template for the interpretation subagent. The orchestrator (Claude in main chat) substitutes tokens (composite paths, vocabulary path, session topic) and dispatches via the Agent tool with `subagent_type: general-purpose`. The fresh subagent reads the composite PNGs + the vocabulary itself, identifies stroke clusters, attributes them to UI elements, consults the vocabulary, and returns per-page observations + a 1-3 sentence `user_intent` paragraph. Multimodal raster data lives only in the subagent's context; the orchestrator receives only the distilled text.
+- `interpret-prompt.md` is the prompt template for the interpretation subagent. The orchestrator (Claude in main chat) substitutes tokens (composite paths, vocabulary path, session topic) and dispatches via the Agent tool with `subagent_type: general-purpose`. The fresh subagent reads the composite PNGs + the vocabulary itself, identifies stroke clusters, attributes them to UI elements, consults the vocabulary, and returns a fenced JSON block with `user_intent`, `design_state_delta`, and `per_page_observations` per the contract documented at the top of `interpret-prompt.md`. Multimodal raster data lives only in the subagent's context; the orchestrator receives only the distilled text.
+- `bootstrap-session.sh` -- creates the per-session local folder
+  skeleton (`mockups/`, `prerender/`, `pulls/`, `strokes/`,
+  `composites/`, `archive/`) and primes `design-state.md` with
+  frontmatter and a `## Iteration 00` section. Idempotent.
+- `parse-interpret-json.mjs` -- shell-callable helper that extracts
+  and validates the JSON block from an interpret subagent's response.
+  Used by the loop body's parse step; tested at
+  `test_interpret_parse.mjs`.
+- `render/prerender-pages.py` -- rasterizes each page of a rendered
+  PDF to PNG via PyMuPDF, invoked by `render-html-to-pdf.sh`'s
+  `--prerender-out` flag.
 
 Not yet implemented (deferred to follow-up plans):
 
-- iter01+ loop and `design-state.md` append protocol (the orchestration that consumes `user_intent` to drive the next render)
 - Auth bootstrap (`setup-rmapi.sh`, `~/.rmapi` token, deny rules, PreToolUse hook); both transport wrappers assume the machine is already paired
 - Bootstrap dialogue (precondition check, topic prompt, cloud path resolution, design-language briefing)
 - Background polling script and pixel-region checkbox sentinel (color-aware detection sampled from the pre-render baseline)
@@ -29,7 +43,11 @@ Not yet implemented (deferred to follow-up plans):
 - B&W and Wireframe render modes (Color is current default and only mode)
 - Vocabulary lifecycle (weight-based active / archived split, frecency-style scoring) and close-session ceremony
 
-When asked to drive a full automated loop today, surface that the iter01+ render + polling + bootstrap halves are not implemented yet and point at the feature spec for the full design. A *manual* loop (you run the wrappers, dispatch the interpret subagent yourself, read the user_intent, re-render iter01 by hand) works end-to-end today.
+The automated loop ships today: bootstrap-lite + iter01+ render loop +
+structured interpret JSON. Polling and the full bootstrap dialogue are
+deferred to follow-up slices, so the orchestrator drives the loop via
+manual chat triggers (`go` / `pull` / `next` / `iter NN`) rather than
+auto-detecting the user's tablet back-out.
 
 ## Files in this skill
 
@@ -47,7 +65,15 @@ When asked to drive a full automated loop today, surface that the iter01+ render
 - `render-strokes.sh` -- bash wrapper for the inbound stroke pipeline; reuses the shared venv.
 - `render/composite-annotated.py` -- composites stroke SVGs onto PDF pages as PNGs (PyMuPDF + Pillow).
 - `composite-annotated.sh` -- bash wrapper for the composite step; reuses the shared venv.
+- `render/prerender-pages.py` -- PyMuPDF-based PDF-to-PNG rasterizer; invoked by `render-html-to-pdf.sh`'s `--prerender-out` flag to feed the deferred verify-before-push slice.
+- `bootstrap-session.sh` -- creates the per-session local folder skeleton and primes `design-state.md` with frontmatter + `## Iteration 00`. Idempotent.
+- `parse-interpret-json.mjs` -- shell-callable JSON parse + validate helper for the interpret subagent's response. Authoritative schema lives at the top of this file.
 - `interpret-prompt.md` -- prompt template for the interpretation subagent (read by the orchestrator; not directly executable).
+- `test_interpret_parse.mjs` -- node:test cases for `parseInterpretResponse` (happy path, CRLF, missing/wrong-type fields, malformed JSON).
+- `test_bootstrap_session.sh` -- bash test for `bootstrap-session.sh` (folder skeleton, frontmatter, idempotency re-run, negative-input rejection).
+- `render/test_render_format.mjs` -- node:test cases for `formatIterationLabel`.
+- `render/test_prerender_pages.py` -- end-to-end test for `prerender-pages.py` against a real two-page PDF.
+- `render/test_composite_annotated.py` -- unit tests for `composite-annotated.py`'s page-pattern regex, numeric sort, and resolution constants (now also cross-checks `prerender-pages.py`).
 - `requirements.txt` -- Python deps for the inbound pipeline (rmscene + pymupdf + Pillow).
 
 ## Inbound stroke render entry point
@@ -60,8 +86,8 @@ bash .claude/skills/sketch-brainstorm/render-strokes.sh \
   .tmp/sketch-brainstorm/test/strokes-out/
 ```
 
-- `<rm-dir>` — the directory inside the extracted `.rmdoc` archive that contains the per-page `<uuid>.rm` files (typically named after the document UUID).
-- `<out-dir>` — receives `strokes-page1.svg`, `strokes-page2.svg`, … one SVG overlay per annotated page.
+- `<rm-dir>` - the directory inside the extracted `.rmdoc` archive that contains the per-page `<uuid>.rm` files (typically named after the document UUID).
+- `<out-dir>` - receives `strokes-page1.svg`, `strokes-page2.svg`, ... one SVG overlay per annotated page.
 
 Bootstraps a Python venv at `skills/sketch-brainstorm/.venv/` on first run and installs `rmscene` via `requirements.txt`. Subsequent runs reuse the venv.
 
@@ -72,16 +98,18 @@ From the Ring-O-Meter repo root:
 ```
 bash .claude/skills/sketch-brainstorm/render-html-to-pdf.sh \
   --topic "warmup gate UI" \
-  --iteration seed \
-  --out .tmp/sketch-brainstorm/test/seed.pdf
+  --iteration 00 \
+  --out .tmp/sketch-brainstorm/test/warmup-gate-00.pdf
 ```
 
 CLI flags:
 
 - `--topic <string>` (required): substituted into the page header on each rendered page.
-- `--iteration <string>` (required): label like `seed`, `iter01`, `iter05`. Substituted into the page header.
-- `--out <path>` (required): output PDF path. Parent directory is created if missing.
-- `--mockup-html <path>` (optional): file whose contents are substituted into the mockup region. Seed renders pass no mockup; iter renders (a future plan) pass LLM-generated mockup HTML.
+- `--iteration <string>` (required): two-digit zero-padded number (00, 01, 02, ...). The seed render uses 00; subsequent loop-body iterations increment. Substituted into the page header as `<topic> #NN`.
+- `--out <path>` (required): output PDF path, conventionally `<slug>-NN.pdf`. Parent directory is created if missing.
+- `--mockup-html <path>` (optional): file whose contents are substituted into the mockup region. Iter 00 renders may pass an empty mockup or a description-driven mockup, depending on the bootstrap-lite path; iter 01+ pass orchestrator-composed mockup HTML derived from the prior turn's `user_intent`.
+- `--subtopic <string>` (optional): forward-compat hook for the deferred multi-sketch slice; substituted into the page header alongside the topic when present.
+- `--prerender-out <dir>` (optional): captures per-page PNGs of the rendered PDF (`<slug>-NN-page1.png`, `-page2.png`, ...) via PyMuPDF; consumed by the deferred verify-before-push slice and useful for spot-checking what was pushed.
 
 Windows: the bash wrapper requires Git Bash or WSL. PowerShell users invoke via `bash render-html-to-pdf.sh ...`.
 
@@ -164,12 +192,145 @@ After `composite-annotated.sh` produces the composite PNGs, dispatch a fresh int
 
 1. Read `skills/sketch-brainstorm/interpret-prompt.md` (the prompt template).
 2. Substitute the bracketed tokens:
-   - `{COMPOSITE_PATHS}` — newline-bullet absolute paths to the composite PNGs.
-   - `{VOCAB_PATH}` — absolute path to `skills/sketch-brainstorm/vocabulary.md` (and the project-local extension at `.claude/sketch-brainstorm-vocab.md` if it exists).
-   - `{TOPIC}` — the session's topic phrase.
+   - `{COMPOSITE_PATHS}` - newline-bullet absolute paths to the composite PNGs.
+   - `{VOCAB_PATH}` - absolute path to `skills/sketch-brainstorm/vocabulary.md` (and the project-local extension at `.claude/sketch-brainstorm-vocab.md` if it exists).
+   - `{TOPIC}` - the session's topic phrase.
 3. Dispatch via the Agent tool with `subagent_type: general-purpose`. Pass the substituted prompt body.
-4. Receive a response carrying per-page observations and a `user_intent` paragraph. Extract `user_intent` as the input to the next iteration's render. Per-page observations are spot-check material for when a turn went sideways; discard after the next iteration ships.
+4. Receive the subagent's response. Parse the fenced JSON block via `node skills/sketch-brainstorm/parse-interpret-json.mjs` (stdin = raw response; stdout = canonicalized JSON; exit 0 on valid). The parsed object has three fields: `user_intent` (1-3 sentence summary that drives the next-render composition), `design_state_delta` (markdown body to append under `## Iteration NN` in `design-state.md`), and `per_page_observations` (informational; surface to chat for visibility, then discard).
 
-This step is orchestrator-side, not a shell wrapper: the Agent tool is Claude Code's; shells can't dispatch it. The fresh-per-turn discipline is load-bearing — it isolates multimodal raster data to the subagent and keeps the orchestrator context lean across many iterations.
+This step is orchestrator-side, not a shell wrapper: the Agent tool is Claude Code's; shells can't dispatch it. The fresh-per-turn discipline is load-bearing - it isolates multimodal raster data to the subagent and keeps the orchestrator context lean across many iterations.
 
-The current MVP shape returns plain text (`user_intent` paragraph + per-page observations). The structured-JSON shape (`user_intent` + `design_state_delta` + `slug_suggestion`) the feature spec describes layers in once `design-state.md` and the bootstrap-dialogue slices land — see `interpret-prompt.md`'s "Future expansion" section.
+The structured JSON contract documented above is the shipped shape; `parse-interpret-json.mjs` validates it on every loop body iteration. See the Loop body section below for the full orchestrator-side flow, and `interpret-prompt.md`'s "Future expansion" section for fields under consideration but not yet shipped (e.g., `slug_suggestion`).
+
+## Loop body (orchestrator-driven)
+
+When the user signals progress on the active session - `go`, `pull`,
+`next`, `iter NN`, or any equivalent unambiguous trigger - run one loop
+body iteration:
+
+1. Resolve next iter NN: list the cloud session folder
+   (`rmapi ls <cloud-path>/<slug>` exit-status + parse) and take
+   `largest <slug>-NN.pdf` + 1.
+2. `pull-from-tablet.sh` -> `render-strokes.sh` -> `composite-annotated.sh`
+   for iter (NN-1).
+3. Dispatch the interpret subagent with the composite PNGs, current
+   `design-state.md`, prior `mockups/<slug>-(NN-1).html`, and
+   `vocabulary.md`. Collect the response.
+4. Pipe the response through `node parse-interpret-json.mjs` (stdin =
+   raw response; stdout = canonicalized JSON; exit 0 on valid). On
+   parse failure, retry once with a "JSON only, no preamble" reminder;
+   on a second failure, surface the raw response to chat and ask the
+   user for a manual `user_intent` paraphrase.
+5. Append `## Iteration NN\n\n${design_state_delta}\n\n` to
+   `design-state.md`. Surface `per_page_observations` to chat for
+   visibility.
+6. Compose `mockups/<slug>-NN.html` from `user_intent` + prior mockup
+   HTML + `design-state.md`, respecting the design-language CSS.
+7. Run `render-html-to-pdf.sh --topic "<topic>" --iteration NN
+   --mockup-html <mockups/<slug>-NN.html> --out <session>/<slug>-NN.pdf
+   --prerender-out <session>/prerender/`.
+8. `push-to-tablet.sh --pdf <session>/<slug>-NN.pdf --cloud-folder
+   <cloud-path>/<slug>`.
+9. Tell the user: "iter NN pushed; annotate and back out, then say `go`."
+
+### Principles
+
+- **The trigger is the user's permission.** Don't ask "should I render?"
+  after every interpret turn.
+- **Wrappers stay dumb.** Chain them by their existing CLI shapes; do
+  NOT introduce a new wrapper that bundles the loop body. The
+  orchestrator is the loop driver, not a wrapper.
+- **Disk is the source of truth for cross-turn state.** Chat context
+  is for the active turn only. If a question can be answered by
+  reading the session folder, read the session folder.
+- **Compose by delta, not from scratch.** The next mockup HTML
+  preserves the prior mockup's structural skeleton and modifies only
+  what `user_intent` asks to change. Restart from scratch only when
+  `user_intent` explicitly requests it.
+- **JSON parse failure: surface, don't silently proceed.** Show the
+  raw response in chat and ask the user to retry or supply a manual
+  paraphrase. Never guess from a malformed response.
+- **Wrapper failures surface verbatim.** Pass through stderr to chat
+  so the user can see what rmapi / Playwright / PyMuPDF reported. No
+  paraphrasing of error messages.
+
+## Cold-start (per-session bootstrap-lite)
+
+On a fresh session - when no current session folder exists - run
+bootstrap-lite. The full bootstrap-dialogue slice (design-language
+briefing, lock-file check, resume-vs-fresh prompt) is deferred; this
+is the minimum viable preamble that gets iter 00 onto the tablet.
+
+1. `rmapi ls` precondition (exit-status only; no contents into
+   context). Surface the auth-expired path verbatim if it fails.
+2. If `.tmp/sketch-brainstorm/config.json` is absent, ask once where
+   on the reMarkable cloud this project's brainstorms should live.
+   Save the answer as `{"cloud_path": "<the user's answer>"}` -
+   single-key JSON, additive shape (future slices add keys, never
+   rename `cloud_path`).
+3. Ask the topic. Derive a kebab-case slug silently (lowercase,
+   replace non-alphanumerics with `-`, collapse repeats, trim).
+4. Ask: *"Initial description for the first sketch, or blank page?"*
+5. Cloud collision check: `rmapi ls <cloud-path>/<slug>`. On exit 0,
+   prompt the user: resume / rename / "I've deleted the previous
+   one, check again". See the feature spec's "Bootstrap and
+   chat-launch > step 5a" for the branch behaviors.
+6. Run
+   `bash bootstrap-session.sh --slug <slug> --topic "<topic>"
+   [--description "<description>"]`.
+   Capture the printed session-folder path on stdout.
+7. Compose `mockups/<slug>-00.html`: description-driven mockup body
+   when a description was supplied, empty `<main>` otherwise.
+8. Render and push:
+   `render-html-to-pdf.sh ... --iteration 00 ... --prerender-out`
+   then `push-to-tablet.sh ... --cloud-folder <cloud-path>/<slug>`.
+9. Tell the user: *"iter 00 pushed; annotate and back out, then say
+   `go`."*
+
+### Principles
+
+- **Bootstrap-lite is the smallest viable preamble.** Don't expand
+  its question count beyond what's needed to render iter 00. The
+  full bootstrap-dialogue slice is what handles design-language
+  briefing, lock check, and resume-vs-fresh.
+- **Atomic session-folder creation.** Run `bootstrap-session.sh` only
+  after the user has answered all bootstrap-lite questions and the
+  collision check has passed. If the user aborts mid-bootstrap, no
+  orphan folder appears.
+
+## Smoke test (post-impl validation)
+
+A six-step end-to-end exercise the user runs once after the slice
+lands to validate it:
+
+1. Start a fresh session by sending a triggering message in chat (e.g.,
+   "let's brainstorm a UI on the tablet for <topic>" or "push a sketch
+   to remarkable for <topic>"). Confirm bootstrap-lite asks the
+   expected questions, runs the collision check, creates the session
+   folder, renders `<slug>-00.pdf`, pushes to cloud.
+2. Open `<slug>-00.pdf` on the tablet; sketch a small annotation
+   (one circle, one arrow, one text note in the notes region); mark
+   the Finish-turn checkbox; back out to the file picker.
+3. In chat, type `go`. Confirm:
+   - rmapi ls + pull executes
+   - render-strokes + composite produce expected outputs in the
+     session folder
+   - interpret subagent dispatches and `parse-interpret-json.mjs`
+     accepts the response
+   - design-state.md gains a `## Iteration 01` section
+   - `mockups/<slug>-01.html` is composed
+   - `<slug>-01.pdf` renders and pushes
+   - `prerender/<slug>-01-page1.png` and `-page2.png` exist
+4. Confirm `<slug>-01.pdf` landed on the tablet's file picker.
+5. Open it; annotate again; type `go`. Confirm iter02 produces.
+6. Negative test: with a still-active session, try to start another
+   session with the same topic. Confirm the resume-vs-rename prompt
+   fires and offers all three documented branches.
+
+### Crash-recovery test
+
+Manually delete `<cloud-path>/<slug>/<slug>-01.pdf` from cloud after
+step 4. Run `go` again. Expected: orchestrator should re-render and
+re-push iter 01 (NOT advance to iter 02), because the iter counter
+resolves from cloud listing - orphan local artifacts are
+overwritten on the next render.
