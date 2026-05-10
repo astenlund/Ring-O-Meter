@@ -267,7 +267,20 @@ is the minimum viable preamble that gets iter 00 onto the tablet.
    on the reMarkable cloud this project's brainstorms should live.
    Save the answer as `{"cloud_path": "<the user's answer>"}` -
    single-key JSON, additive shape (future slices add keys, never
-   rename `cloud_path`).
+   rename `cloud_path`). Then ensure every segment of `cloud_path`
+   exists on the cloud: `rmapi mkdir` is single-level only (no
+   `--parents`), so walk the segments and `rmapi mkdir` each one,
+   tolerating the literal `entry already exists` error - match the
+   exact phrase, not a substring, because the missing-parent error
+   reads `directory doesn't exist` and a loose match would silently
+   swallow it (see push-to-tablet.sh's `mkdir_stderr` block for the
+   precedent). Normalize the path before walking: trim whitespace,
+   strip leading and trailing slashes, collapse `//` runs, and skip
+   the cloud-root case (empty result has no `rmapi mkdir` target).
+   Runs only on this config-absent branch; later sessions skip the
+   whole step, and later pushes need only the leaf `<slug>` under
+   the now-existing parent tree, which push-to-tablet.sh handles
+   directly.
 3. Ask the topic. Derive a kebab-case slug silently (lowercase,
    replace non-alphanumerics with `-`, collapse repeats, trim).
 4. Ask: *"Initial description for the first sketch, or blank page?"*
