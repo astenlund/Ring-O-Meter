@@ -83,6 +83,15 @@ html, body {
   color: #909090;
 }
 
+/* Legend page title: same overall placement as the topic + iter
+   header on page 1, but no inline iter label and no spacing
+   reservation for one. */
+.header-legend {
+  /* Inherits font and centering from .header-topic. The legend
+     page never carries an iter label, so no .header-iter span
+     follows; nothing more needed here today. */
+}
+
 /* Chrome footer: bottom of page, identical on both pages. Hosts the
    Finish-turn checkbox (and End-session / mode-switch boxes when those
    layer in). The checkbox column is right-aligned so the user's pen
