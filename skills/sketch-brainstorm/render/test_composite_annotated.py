@@ -35,6 +35,7 @@ from unittest.mock import MagicMock
 _HERE = Path(__file__).resolve().parent
 _COMPOSITE_PY = _HERE / "composite-annotated.py"
 _RENDER_STROKES_PY = _HERE / "render-strokes.py"
+_PRERENDER_PAGES_PY = _HERE / "prerender-pages.py"
 
 
 def _load_kebab_module(module_name, file_path):
@@ -55,6 +56,7 @@ sys.modules.setdefault("rmscene.scene_items", MagicMock())
 
 composite_mod = _load_kebab_module("composite_annotated_under_test", _COMPOSITE_PY)
 render_strokes_mod = _load_kebab_module("render_strokes_under_test", _RENDER_STROKES_PY)
+prerender_pages_mod = _load_kebab_module("prerender_pages_under_test", _PRERENDER_PAGES_PY)
 
 
 class PagePatternTests(unittest.TestCase):
@@ -129,20 +131,23 @@ class CollectStrokesPagesTests(unittest.TestCase):
 
 
 class ResolutionConstantsTests(unittest.TestCase):
-    """Both python-side modules must agree on the Paper Pro viewport.
+    """All three python-side modules must agree on the Paper Pro viewport.
     Drift here silently shifts strokes off-position relative to the
-    rendered mockup."""
+    rendered mockup, or makes prerender PNGs disagree with composite
+    PNGs about pixel dimensions."""
 
     def test_page_width_matches(self):
         self.assertEqual(composite_mod.PAGE_W, render_strokes_mod.PAGE_W)
+        self.assertEqual(composite_mod.PAGE_W, prerender_pages_mod.PAGE_W)
 
     def test_page_height_matches(self):
         self.assertEqual(composite_mod.PAGE_H, render_strokes_mod.PAGE_H)
+        self.assertEqual(composite_mod.PAGE_H, prerender_pages_mod.PAGE_H)
 
     def test_page_dimensions_are_paper_pro(self):
         # 1620x2160 is the reMarkable Paper Pro viewport. The Node-side
         # render.mjs hardcodes the same; this test only catches drift
-        # across the python files. If render.mjs changes, both python
+        # across the python files. If render.mjs changes, all three
         # modules must change in lockstep and this test stays green.
         self.assertEqual(composite_mod.PAGE_W, 1620)
         self.assertEqual(composite_mod.PAGE_H, 2160)
