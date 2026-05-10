@@ -3,8 +3,9 @@
 Template for dispatching a fresh interpretation subagent on a turn's
 annotated composite PNGs. The orchestrator (Claude in main chat)
 substitutes the bracketed tokens, dispatches via the Agent tool with
-`subagent_type: general-purpose`, and consumes the returned
-`user_intent` text for the next iteration.
+`subagent_type: general-purpose`, and parses the returned JSON block
+(`user_intent`, `design_state_delta`, `per_page_observations`) to
+drive the next iteration.
 
 The subagent is fresh per turn (no reused agent). All multimodal raster
 data lives in the subagent's context; the parent receives only the
@@ -14,14 +15,14 @@ from biasing the next interpretation.
 
 ## Tokens
 
-- `{COMPOSITE_PATHS}` — newline-bullet list of absolute paths to the
+- `{COMPOSITE_PATHS}`: newline-bullet list of absolute paths to the
   annotated composite PNGs, one per annotated page. Produced by
   `composite-annotated.sh`.
-- `{VOCAB_PATH}` — absolute path to `vocabulary.md` (the global
+- `{VOCAB_PATH}`: absolute path to `vocabulary.md` (the global
   gesture vocabulary). Project-local extension at
   `.claude/sketch-brainstorm-vocab.md` should be appended to the list
   if present.
-- `{TOPIC}` — the current session's topic (one short phrase the user
+- `{TOPIC}`: the current session's topic (one short phrase the user
   set when launching the brainstorm). Helps the subagent disambiguate
   intent against an existing context.
 
@@ -35,7 +36,10 @@ vocab extension), drop the line entirely; do not leave the literal
 You are interpreting a user's pen annotations on a UI mockup. The user
 sketched on a reMarkable tablet to give feedback on the current
 iteration; your job is to distill what they want for the next
-iteration into 1-3 sentences of plain English.
+iteration into a structured JSON block: a short `user_intent`
+summary, a `design_state_delta` body of markdown for the design
+log, and `per_page_observations` for debugging. See "Output format"
+below for the exact schema.
 
 ## Session topic
 
@@ -95,8 +99,9 @@ element.
 
 Identify each stroke cluster on each page, locate which region it
 falls in, and apply the region-appropriate interpretation rule.
-Compose the per-cluster intents into one short summary describing
-what the user wants in the next iteration.
+Compose the per-cluster intents into the three output fields
+described in "Output format" below: a short `user_intent`, a
+`design_state_delta` body, and `per_page_observations`.
 
 ## Reasoning approach
 
@@ -121,8 +126,9 @@ what the user wants in the next iteration.
 6. **Anomalous-region strokes** (header, chrome footer except the
    Finish-turn checkbox, page-2 legend): flag as anomalies; the
    user does not normally annotate these regions.
-7. Synthesize the per-cluster intents into one user_intent
-   paragraph.
+7. Synthesize the per-cluster intents into the three output fields
+   described in "Output format" below: a short `user_intent`, a
+   `design_state_delta` body, and `per_page_observations`.
 
 ## Failure modes
 
@@ -158,28 +164,33 @@ what was annotated. The user disambiguates on the next iteration if
 your reading was wrong; that loop only works if you flag the
 ambiguity rather than pick silently.
 
-## Output
+## Output format
 
-Return your response in this exact structure:
+Return EXACTLY one fenced JSON block. No preamble, no postscript, no
+explanation outside the block.
 
-```
-## Per-page observations
-
-- Page 1: <one or two sentences naming the strokes and their
-  attribution>
-- Page 2: <same>
-- ... (one bullet per composite PNG read)
-
-## user_intent
-
-<1-3 sentences. This is what the parent uses to drive the next
-iteration. Lead with the strongest, clearest change. Name any
-ambiguities or vocabulary mismatches inline.>
+```json
+{
+  "user_intent": "...",
+  "design_state_delta": "...",
+  "per_page_observations": ["page 1: ...", "page 2: ..."]
+}
 ```
 
-Keep the per-page observations terse; their job is to expose your
-attribution decisions for human review, not to re-describe the
-mockup. The user_intent paragraph is the load-bearing output.
+`user_intent`: 1-3 sentences in plain prose, addressed to the
+person composing the next iteration (e.g., "user wants the cancel
+button larger and moved closer to save; the dim slider should ramp
+continuously rather than in tick-marks").
+
+`design_state_delta`: body markdown only (paragraphs, lists, links)
+describing what was decided in this turn. Do NOT emit a heading; the
+orchestrator wraps the body with `## Iteration NN` before appending
+to design-state.md. Keep under ~300 words.
+
+`per_page_observations`: array of one-line observations, one per
+rendered page that was annotated. Skip pages without annotations.
+This field is informational; the orchestrator surfaces it for
+debugging and discards after the next iteration ships.
 ````
 
 ## How the orchestrator uses this
@@ -202,25 +213,20 @@ mockup. The user_intent paragraph is the load-bearing output.
    per-call topic + composite paths in the prompt; the subagent reads
    the PNGs and vocabulary itself via its own Read tool.
 
-3. The subagent returns text containing per-page observations and a
-   `user_intent` paragraph. The orchestrator extracts the
-   `user_intent` and consumes it as the input to the next iteration's
-   render. Per-page observations are kept for the user to spot-check
-   if a turn went sideways, then discarded after the next iteration
-   ships.
+3. The subagent returns one fenced JSON block with `user_intent`,
+   `design_state_delta`, and `per_page_observations`. The orchestrator
+   parses the block, consumes `user_intent` as the input to the next
+   iteration's render, appends `design_state_delta` to design-state.md
+   wrapped under an `## Iteration NN` heading, and surfaces
+   `per_page_observations` for debugging before discarding after the
+   next iteration ships.
 
 ## Future expansion
 
-When the iter01+ loop and design-state.md slices land, this prompt
-gains:
+Slices still ahead of this prompt:
 
 - A `{DESIGN_STATE}` token carrying the `design-state.md` head, so
   the subagent has prior-iteration context.
-- A structured JSON output schema (`user_intent`,
-  `design_state_delta`, `slug_suggestion`) replacing the
-  text-only shape above. The text shape is the v1 MVP.
-
-Don't pre-build the JSON shape now: the iter01+ slice is the only
-consumer of `design_state_delta` and the bootstrap-dialogue slice is
-the only consumer of `slug_suggestion`. Shipping them ahead would
-freeze the schema before its consumers exist.
+- A `slug_suggestion` field (consumed by the bootstrap-dialogue
+  slice). Shipping it ahead would freeze the schema before its
+  consumer exists.
