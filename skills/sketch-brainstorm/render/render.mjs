@@ -25,6 +25,17 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PATH = join(SCRIPT_DIR, 'page-template.html');
 const TEMP_HTML_PATH = '.tmp/sketch-brainstorm/test/render-input.html';
 
+export function formatIterationLabel(iteration, subtopic) {
+  if (!/^\d{2}$/.test(iteration)) {
+    throw new Error(
+      `--iteration must be a two-digit zero-padded number (00-99); got: ${iteration}`,
+    );
+  }
+  const subtopicSegment = subtopic ? `: ${subtopic}` : '';
+
+  return `${subtopicSegment} #${iteration}`;
+}
+
 function fail(message) {
   console.error(`render.mjs: ${message}`);
   process.exit(1);
@@ -104,6 +115,7 @@ async function main() {
     options: {
       topic: { type: 'string' },
       iteration: { type: 'string' },
+      subtopic: { type: 'string' },
       out: { type: 'string' },
       'mockup-html': { type: 'string' },
     },
@@ -114,7 +126,7 @@ async function main() {
     fail('--topic is required');
   }
   if (!values.iteration) {
-    fail('--iteration is required');
+    fail('--iteration is required (two-digit zero-padded number, e.g. 00, 01, 05)');
   }
   if (!values.out) {
     fail('--out is required');
@@ -124,20 +136,7 @@ async function main() {
   const template = await readFile(TEMPLATE_PATH, 'utf8');
   const mockupHtml = await readMockupHtml(values['mockup-html']);
 
-  // CLI keeps 'seed' / 'iter01' / 'iter02' as the canonical iteration
-  // identifiers (filenames, references, design-state lookups all use
-  // the long form). The header label sits inline after the topic as
-  // ' #NN' (with leading space, both # and digits styled grey). Seed
-  // renders as empty so the title shows just the topic.
-  const iterMatch = /^iter(\d+)$/.exec(values.iteration);
-  let headerIteration;
-  if (values.iteration === 'seed') {
-    headerIteration = '';
-  } else if (iterMatch) {
-    headerIteration = ` #${iterMatch[1]}`;
-  } else {
-    headerIteration = ` ${values.iteration}`;
-  }
+  const headerIteration = formatIterationLabel(values.iteration, values.subtopic);
 
   const rendered = substituteTokens(template, {
     topic: values.topic,
@@ -202,7 +201,10 @@ async function main() {
     await browser.close();
   }
 
-  console.log(`render.mjs: wrote ${outPath}`);
+  console.error(`render.mjs: wrote ${outPath}`);
 }
 
-await main();
+// Run main() only when invoked directly, not when imported as a module.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main();
+}
