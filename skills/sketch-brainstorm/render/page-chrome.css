@@ -182,6 +182,24 @@ html, body {
   overflow: hidden;
 }
 
+/* Default centering for the substituted mockup_html slot. A mockup
+   whose outer wrapper uses flex centering without an explicit height
+   collapses to its natural content height and floats up against the
+   header; this wrapper fills the region's content box so that
+   centered mockups land centered. Column direction means multi-sibling
+   mockup HTML stacks vertically as a centered group instead of laying
+   out row-wise. A mockup that wants top-anchored content can override
+   on its own root (align-self: flex-start, or override justify-content
+   on this wrapper). */
+.mockup-region-center {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
 /* --- Notes regions (shared) --- */
 
 .notes-region {
