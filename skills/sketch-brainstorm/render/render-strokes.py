@@ -105,7 +105,11 @@ def main():
     skill_root = Path(__file__).resolve().parent.parent
     calibration_json = skill_root / "calibration.json"
     if calibration_json.exists():
-        calibration_data = json.loads(calibration_json.read_text(encoding="utf-8"))
+        try:
+            calibration_data = json.loads(calibration_json.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            print(f"calibration.json is not valid JSON ({e}); re-run derive-calibration.sh", file=sys.stderr)
+            sys.exit(1)
         scale = calibration_data.get("scale")
         if not isinstance(scale, (int, float)) or scale <= 0:
             print("calibration.json missing or invalid 'scale'; re-run derive-calibration.sh", file=sys.stderr)

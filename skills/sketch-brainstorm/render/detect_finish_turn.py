@@ -120,7 +120,7 @@ def page_uuids_from_manifest(rm_dir):
             file=sys.stderr,
         )
         sys.exit(1)
-    return [p.get("id") or "" for p in pages]
+    return [p.get("id") for p in pages]
 
 
 def detect(rm_dir, scale):
