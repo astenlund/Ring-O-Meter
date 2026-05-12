@@ -5,6 +5,7 @@ absent. When present, render-strokes.py reads its scale and skips the
 union-bounds derivation. See `_rm_strokes.py` for the shared parser
 and the .rm coordinate-system contract.
 """
+import json
 import math
 import sys
 from pathlib import Path
@@ -12,7 +13,6 @@ from pathlib import Path
 from _rm_strokes import (
     PAGE_W,
     PAGE_H,
-    PEN_COLORS,
     collect_lines,
     ordered_rm_files,
 )
@@ -93,21 +93,36 @@ def main():
 
     pairs = ordered_rm_files(rm_dir)
     all_lines = {rm: collect_lines(rm) for _, rm in pairs}
-    bounds = union_bounds(all_lines)
 
-    if not math.isfinite(bounds[2]):
-        print("warning: no strokes found in any .rm file; writing empty SVGs", file=sys.stderr)
-        for pdf_index, rm_file in pairs:
-            out_svg = out_dir / f"strokes-page{pdf_index + 1}.svg"
-            render_svg([], 1.0, out_svg)
-        return
-
-    scale = derive_scale(bounds)
-    print(f"bounds: x=({bounds[0]:.0f}..{bounds[2]:.0f}) y=({bounds[1]:.0f}..{bounds[3]:.0f})")
-    print(f"derived scale: {scale:.4f}")
+    # Prefer the firmware-versioned scale from calibration.json over
+    # the per-call auto-fit. Auto-fit is known-loose for tight stroke
+    # clusters (the original docstring above explains why); the
+    # calibrated scale is geometrically correct across all stroke
+    # layouts. Fall back to auto-fit if calibration.json is absent
+    # (e.g., on a fresh clone before the user has run the ceremony).
+    skill_root = Path(__file__).resolve().parent.parent
+    calibration_json = skill_root / "calibration.json"
+    if calibration_json.exists():
+        scale = json.loads(calibration_json.read_text(encoding="utf-8"))["scale"]
+        print(f"using calibrated scale: {scale:.4f}")
+    else:
+        bounds = union_bounds(all_lines)
+        if not math.isfinite(bounds[2]):
+            print("warning: no strokes found in any .rm file; writing empty SVGs", file=sys.stderr)
+            for pdf_index, rm_file in pairs:
+                out_svg = out_dir / f"strokes-page{pdf_index + 1}.svg"
+                render_svg([], 1.0, out_svg)
+            return
+        scale = derive_scale(bounds)
+        print(
+            f"calibration.json absent; falling back to auto-fit "
+            f"(known-loose for tight stroke clusters; run derive-calibration.sh)",
+            file=sys.stderr,
+        )
+        print(f"bounds: x=({bounds[0]:.0f}..{bounds[2]:.0f}) y=({bounds[1]:.0f}..{bounds[3]:.0f})")
+        print(f"derived scale: {scale:.4f}")
 
     for pdf_index, rm_file in pairs:
-        # PDF page numbers are 1-based; redir.value is 0-based.
         out_svg = out_dir / f"strokes-page{pdf_index + 1}.svg"
         render_svg(all_lines[rm_file], scale, out_svg)
         print(f"{rm_file.name} -> {out_svg.name}: {len(all_lines[rm_file])} polylines")
