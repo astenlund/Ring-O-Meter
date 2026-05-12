@@ -66,8 +66,16 @@ def compute_centroid(points):
 def collect_centroids(rm_dir):
     """Return a list of (cx, cy) centroids, one per stroke across
     all .rm files in rm_dir, in stroke-encounter order."""
+    pages = ordered_rm_files(rm_dir)
+    if len(pages) > 1:
+        print(
+            f"warning: calibration archive has {len(pages)} annotated pages; "
+            f"expected 1. Extra pages contribute extra strokes and will likely "
+            f"trigger a count-mismatch error.",
+            file=sys.stderr,
+        )
     centroids = []
-    for _, rm_file in ordered_rm_files(rm_dir):
+    for _, rm_file in pages:
         for _color, _width, pts in collect_lines(rm_file):
             centroids.append(compute_centroid(pts))
 

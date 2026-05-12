@@ -105,7 +105,11 @@ def main():
     skill_root = Path(__file__).resolve().parent.parent
     calibration_json = skill_root / "calibration.json"
     if calibration_json.exists():
-        scale = json.loads(calibration_json.read_text(encoding="utf-8"))["scale"]
+        calibration_data = json.loads(calibration_json.read_text(encoding="utf-8"))
+        scale = calibration_data.get("scale")
+        if not isinstance(scale, (int, float)) or scale <= 0:
+            print("calibration.json missing or invalid 'scale'; re-run derive-calibration.sh", file=sys.stderr)
+            sys.exit(1)
         print(f"using calibrated scale: {scale:.4f}")
         if not any(all_lines.values()):
             print("warning: no strokes found in any .rm file; writing empty SVGs", file=sys.stderr)

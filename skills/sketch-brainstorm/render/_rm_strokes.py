@@ -146,9 +146,9 @@ def ordered_rm_files(rm_dir: Path) -> list[tuple[int, Path]]:
     if not ordered:
         rm_files_found = sorted(rm_dir.glob("*.rm"))
         if rm_files_found:
+            reason = "not found" if not content_file.exists() else "unrecognised schema"
             print(
-                f"warning: {content_file.name} did not yield a page order "
-                f"(missing or unrecognised schema); falling back to "
+                f"warning: {content_file.name} {reason}; falling back to "
                 f"alphabetical filename sort (page order may be wrong)",
                 file=sys.stderr,
             )

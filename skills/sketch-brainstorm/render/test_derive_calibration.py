@@ -13,10 +13,8 @@ scipy for the Hungarian assignment, so it requires the venv.
 Run via the venv's python:
   skills/sketch-brainstorm/.venv/Scripts/python.exe \\
     skills/sketch-brainstorm/render/test_derive_calibration.py
-or:
-  bash skills/sketch-brainstorm/render-strokes.sh /dev/null /tmp/_ 2>/dev/null || true
-  # (any wrapper invocation bootstraps the venv; then run this test
-  #  with the venv's python directly)
+Bootstrap the venv first by running any skill wrapper (e.g. render-strokes.sh),
+then re-run with the venv's python directly.
 """
 import json
 import os
