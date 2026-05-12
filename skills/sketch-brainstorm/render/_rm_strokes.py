@@ -131,7 +131,15 @@ def ordered_rm_files(rm_dir: Path) -> list[tuple[int, Path]]:
     content_file = rm_dir.parent / f"{rm_dir.name}.content"
     ordered = []
     if content_file.exists():
-        data = json.loads(content_file.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(content_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            print(
+                f"warning: {content_file.name} contains invalid JSON ({e}); "
+                f"falling back to alphabetical filename sort",
+                file=sys.stderr,
+            )
+            data = {}
         ordered = _page_order_modern(rm_dir, data)
         if not ordered:
             ordered = _page_order_legacy(rm_dir, data)

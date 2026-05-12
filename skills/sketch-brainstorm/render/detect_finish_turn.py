@@ -39,7 +39,11 @@ def load_calibration(skill_root):
             file=sys.stderr,
         )
         sys.exit(1)
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        print(f"calibration.json is not valid JSON ({e}); re-run derive-calibration.sh", file=sys.stderr)
+        sys.exit(1)
 
 
 def inverse_transform_box(pdf_box, scale):
