@@ -1,83 +1,21 @@
 """Render reMarkable .rm v6 strokes as SVG overlays for each page.
 
-The .rm coordinate system is center-origin in x, top-origin in y, and
-recorded at higher resolution than the PDF renders at. The exact scale
-varies by device firmware, so we auto-fit: scan the union of all
-strokes' bounds across all pages, derive the scale that maps that
-bounding box onto the 1620x2160 viewport without warping aspect ratio,
-and apply that scale uniformly. Strokes that fall outside the page
-extent (e.g., the user wrote off-canvas) get clipped naturally by the
-SVG viewBox.
-
-Auto-fit caveat: the derivation assumes the strokes' union bounds are
-roughly representative of the page extent. When strokes are tightly
-clustered in a small region (e.g., a Finish-turn-only annotation with
-no other marks on the page) the bounds are not representative and the
-derived scale is loose, displacing the strokes from where they were
-drawn. The proper fix is to calibrate against a pinned reference -
-the Finish-turn checkbox at `(1540, 2100) 40x40`  # checkbox-coords
-(authoritative coordinates are in .finish-turn-checkbox in
-page-chrome.css; update both if the box moves) is the natural landmark - and use a fixed
-device-firmware-versioned scale instead of auto-fitting per call.
-Punted to a later slice; auto-fit works well enough for spread-out
-annotations, which dominate the iteration loop.
-
-Page ordering: .rm filenames are random UUIDs, so alphabetical sort
-scrambles annotations relative to PDF page order. The .rmdoc archive's
-sibling <doc-uuid>.content file lists pages in authoring order with a
-`redir.value` field giving each page's index in the underlying PDF.
-We read that mapping so each strokes-pageN.svg lands on the matching
-PDF page on composite. Falling back to alphabetical if .content is
-missing surfaces a warning rather than failing silently.
+Auto-fit is still the fallback scale source when calibration.json is
+absent. When present, render-strokes.py reads its scale and skips the
+union-bounds derivation. See `_rm_strokes.py` for the shared parser
+and the .rm coordinate-system contract.
 """
 import math
-from pathlib import Path
-import json
 import sys
+from pathlib import Path
 
-from rmscene import read_tree, scene_items
-
-PAGE_W = 1620
-PAGE_H = 2160
-
-PEN_COLORS = {
-    # rmscene.scene_items.PenColor enum -> on-screen hex.
-    # Preserving color is load-bearing: the vocabulary uses red for
-    # Remove and green for Add as optional emphasis. Flattening to
-    # black makes those gestures unreadable from the composite.
-    0: "#000000",   # BLACK
-    1: "#888888",   # GRAY
-    2: "#ffffff",   # WHITE
-    3: "#e0c020",   # YELLOW
-    4: "#1b8b40",   # GREEN
-    5: "#e060a0",   # PINK
-    6: "#2060d0",   # BLUE
-    7: "#d22020",   # RED
-    8: "#888888",   # GRAY_OVERLAP (highlighter-like grey)
-    9: "#fff080",   # HIGHLIGHT (translucent yellow rendered opaque)
-    10: "#1b8b40",  # GREEN_2
-    11: "#20c0c0",  # CYAN
-    12: "#c020c0",  # MAGENTA
-    13: "#e0c020",  # YELLOW_2
-}
-
-
-def collect_lines(rm_file: Path) -> list[tuple[str, float, list[tuple[float, float]]]]:
-    """Return a list of (color, width, points) tuples for all strokes."""
-    with open(rm_file, "rb") as f:
-        tree = read_tree(f)
-    lines = []
-    for node in tree.walk():
-        if isinstance(node, scene_items.Line):
-            raw_color = getattr(node, "color", 0)
-            if raw_color not in PEN_COLORS:
-                print(f"warning: unknown pen color {raw_color!r}; rendering as black", file=sys.stderr)
-            color = PEN_COLORS.get(raw_color, PEN_COLORS[0])
-            width = max(1.0, getattr(node, "thickness_scale", 1.0) * 2)
-            pts = [(p.x, p.y) for p in node.points]
-            if len(pts) >= 2:  # single-point polylines are invisible in SVG
-                lines.append((color, width, pts))
-    return lines
+from _rm_strokes import (
+    PAGE_W,
+    PAGE_H,
+    PEN_COLORS,
+    collect_lines,
+    ordered_rm_files,
+)
 
 
 def union_bounds(
@@ -143,94 +81,6 @@ def render_svg(
         + "</svg>"
     )
     out_svg.write_text(svg, encoding="utf-8")
-
-
-def _page_order_modern(rm_dir, data):
-    """formatVersion>=2 style: cPages.pages[] objects with id + redir."""
-    cpages = data.get("cPages") or {}
-    pages = cpages.get("pages") or []
-    ordered = []
-    for i, page in enumerate(pages):
-        page_id = page.get("id")
-        redir = (page.get("redir") or {}).get("value")
-        if page_id is None:
-            continue
-        rm_file = rm_dir / f"{page_id}.rm"
-        if not rm_file.exists():
-            # No .rm file means the page has no annotations; skip
-            # silently. Composites for those pages stay strokes-free.
-            continue
-        # Fall back to i (the page's position in the authoring list) rather
-        # than len(ordered) so unannotated pages that were skipped above do
-        # not collapse the index and cause two annotated pages to map to the
-        # same output slot.
-        if redir is not None and not isinstance(redir, int):
-            print(
-                f"warning: page {i} redir.value has unexpected type "
-                f"{type(redir).__name__!r} (expected int); "
-                f"falling back to position {i}",
-                file=sys.stderr,
-            )
-            redir = None
-        pdf_index = redir if isinstance(redir, int) else i
-        ordered.append((pdf_index, rm_file))
-
-    return ordered
-
-
-def _page_order_legacy(rm_dir, data):
-    """formatVersion 1 style: top-level pages[] + redirectionPageMap[]."""
-    page_ids = data.get("pages") or []
-    redir_map = data.get("redirectionPageMap") or []
-    ordered = []
-    for i, page_id in enumerate(page_ids):
-        if not isinstance(page_id, str):
-            continue
-        rm_file = rm_dir / f"{page_id}.rm"
-        if not rm_file.exists():
-            continue
-        pdf_index = redir_map[i] if i < len(redir_map) and isinstance(redir_map[i], int) else i
-        ordered.append((pdf_index, rm_file))
-
-    return ordered
-
-
-def ordered_rm_files(rm_dir: Path) -> list[tuple[int, Path]]:
-    """Return [(pdf_page_index, rm_file)] in PDF-page order.
-
-    Reads the .rmdoc archive's <doc-uuid>.content sibling file (where
-    rm_dir.name is the doc UUID). Two schemas observed in the wild:
-    formatVersion>=2 puts the page list at cPages.pages[] with
-    structured id+redir entries; formatVersion 1 puts a plain list of
-    page UUIDs at top-level `pages` and a parallel int list at
-    `redirectionPageMap` for the PDF-page mapping. Falls back to
-    alphabetical filename sort with a warning if neither schema
-    produces pages.
-    """
-    content_file = rm_dir.parent / f"{rm_dir.name}.content"
-    ordered = []
-    if content_file.exists():
-        data = json.loads(content_file.read_text(encoding="utf-8"))
-        ordered = _page_order_modern(rm_dir, data)
-        if not ordered:
-            ordered = _page_order_legacy(rm_dir, data)
-    if not ordered:
-        # Only fall back to alphabetical sort when .rm files actually exist
-        # in the directory. If they do, the content file was missing or its
-        # schema was not recognised - warn the caller. If they don't, all
-        # pages are genuinely unannotated; no warning or fallback is needed.
-        rm_files_found = sorted(rm_dir.glob("*.rm"))
-        if rm_files_found:
-            print(
-                f"warning: {content_file.name} did not yield a page order "
-                f"(missing or unrecognised schema); falling back to "
-                f"alphabetical filename sort (page order may be wrong)",
-                file=sys.stderr,
-            )
-            ordered = list(enumerate(rm_files_found))
-    ordered.sort(key=lambda pair: pair[0])
-
-    return ordered
 
 
 def main():
