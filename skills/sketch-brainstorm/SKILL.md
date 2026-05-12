@@ -37,7 +37,7 @@ Not yet implemented (deferred to follow-up plans):
 
 - Auth bootstrap (`setup-rmapi.sh`, `~/.rmapi` token, deny rules, PreToolUse hook); both transport wrappers assume the machine is already paired
 - Bootstrap dialogue (precondition check, topic prompt, cloud path resolution, design-language briefing)
-- Background polling script and pixel-region checkbox sentinel (color-aware detection sampled from the pre-render baseline)
+- Stroke-region checkbox detector calibration ceremony (`derive-calibration.py`, 5-dot PDF, `calibration.json`) and detector script (`detect-finish-turn.sh`); background polling script wrapping the detector with the stdout `READY:NN` protocol
 - Multi-sketch iterations (N rendered sketches plus a trailing legend page, for side-by-side alternatives)
 - Verify-before-push (visual sanity check on the rendered output before pushing)
 - B&W and Wireframe render modes (Color is current default and only mode)

@@ -9,3 +9,6 @@ pymupdf>=1.24,<2
 # Image compositing (alpha-blend pixmap -> pixmap) for combining the
 # rasterized PDF page with the rasterized stroke overlay.
 Pillow>=10,<12
+# Minimum-weight one-to-one assignment (Hungarian algorithm) for the
+# calibration ceremony's centroid-to-dot matching in derive-calibration.py.
+scipy>=1.9,<2
