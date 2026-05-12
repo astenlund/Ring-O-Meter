@@ -25,8 +25,7 @@ from _rm_strokes import PAGE_W, collect_lines
 # pinned in page-chrome.css and remarkable-tablet-brainstorm.md.
 FINISH_TURN_BOX_PDF = (1540.0, 2100.0, 40.0, 40.0)  # x, y, w, h
 
-# Hybrid hit-test threshold: at least N stroke points inside the
-# box's .rm rectangle to qualify as a mark.
+# heuristic: stroke point count required to count as a box mark
 MIN_POINTS_INSIDE = 3
 
 
@@ -67,22 +66,25 @@ def count_points_inside(points, box_rm):
     for x, y in points:
         if x_min <= x <= x_max and y_min <= y <= y_max:
             n += 1
+            if n >= MIN_POINTS_INSIDE:
+                break
     return n
 
 
-def page_count_from_manifest(rm_dir):
-    """Read the rendered page count from the .content manifest.
+def page_uuids_from_manifest(rm_dir):
+    """Return page UUIDs from the .content manifest in manifest order.
 
     The manifest sits next to rm_dir (at <doc-uuid>.content where
-    rm_dir.name is the doc UUID). We use len(cPages.pages[]) - the
-    full list before any .rm-existence filter. Do NOT use the
-    top-level `pageCount` field; it is 0 for documents that were
+    rm_dir.name is the doc UUID). We use cPages.pages[] WITHOUT filtering
+    for .rm-file existence -- this is intentional: per_page must cover every
+    rendered page regardless of annotation presence. (This differs from
+    _rm_strokes.ordered_rm_files, which skips unannotated pages for rendering.)
+    Do NOT use the top-level `pageCount` field; it is 0 for documents that were
     pushed but never opened.
 
-    Returns (page_count, page_uuids) where page_uuids[i] is the
-    UUID string for the i-th rendered page (i is 0-based, matches
-    cPages.pages[] order). On absence/invalid/missing-key, exits
-    non-zero with a diagnostic.
+    Returns page_uuids where page_uuids[i] is the UUID string for the i-th
+    rendered page (i is 0-based, matches cPages.pages[] order). On
+    absence/invalid/missing-key, exits non-zero with a diagnostic.
     """
     content_path = rm_dir.parent / f"{rm_dir.name}.content"
     if not content_path.exists():
@@ -107,16 +109,14 @@ def page_count_from_manifest(rm_dir):
             file=sys.stderr,
         )
         sys.exit(1)
-    page_uuids = [p.get("id", "") for p in pages]
-
-    return len(pages), page_uuids
+    return [p.get("id") or "" for p in pages]
 
 
 def detect(rm_dir, scale):
     """Run the detector against rm_dir at the given scale. Returns
     the JSON payload as a dict."""
     box_rm = inverse_transform_box(FINISH_TURN_BOX_PDF, scale)
-    page_count, page_uuids = page_count_from_manifest(rm_dir)
+    page_uuids = page_uuids_from_manifest(rm_dir)
     per_page = []
     any_marked = False
     for i, uuid in enumerate(page_uuids):

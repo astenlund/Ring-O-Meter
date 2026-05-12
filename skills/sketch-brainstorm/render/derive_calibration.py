@@ -9,8 +9,10 @@ a single uniform scale from the median of per-dot ratios, and
 verifies the result by re-projecting each centroid through the
 derived transform.
 
-On success, writes calibration.json next to itself. On failure,
-emits a per-dot diagnostic on stderr and exits non-zero.
+On success, writes calibration.json to the caller-supplied output path
+(derive-calibration.sh passes skills/sketch-brainstorm/calibration.json
+by convention). On failure, emits a per-dot diagnostic on stderr and
+exits non-zero.
 
 Algorithm details (see remarkable-tablet-brainstorm.md "Hand-off
 protocol: stroke-region checkbox detector > Calibration ceremony"
@@ -32,10 +34,11 @@ from pathlib import Path
 
 from scipy.optimize import linear_sum_assignment
 
-from _rm_strokes import PAGE_W, PAGE_H, collect_lines, ordered_rm_files
+from _rm_strokes import PAGE_W, collect_lines, ordered_rm_files
 
-# Expected dot positions in PDF coordinates. Keep names short for
-# diagnostic clarity ("TL: 1.2 px ok; TR: 5.4 px FAIL").
+# LOCKSTEP with calibration-template.html .dot style="left:Xpx; top:Ypx".
+# If you change the margin or move any dot in the template, update the
+# matching coordinates here and re-run the calibration ceremony.
 EXPECTED_DOTS = [
     ("TL", 150.0, 150.0),
     ("TR", 1470.0, 150.0),
@@ -44,9 +47,9 @@ EXPECTED_DOTS = [
     ("C", 810.0, 1080.0),
 ]
 
-BOOTSTRAP_SCALE = 0.45  # see spec D6: bootstrap tolerance is wide
-ASYMMETRY_THRESHOLD = 0.02
-RESIDUAL_THRESHOLD_PX = 3.0
+BOOTSTRAP_SCALE = 0.45  # heuristic: bootstrap tolerance is wide (safe for ~0.30-0.65 real scales; see spec D6)
+ASYMMETRY_THRESHOLD = 0.02  # heuristic: max tolerated x/y scale ratio before calibration is rejected
+RESIDUAL_THRESHOLD_PX = 3.0  # heuristic: max per-dot re-projection error to accept calibration
 
 
 def compute_centroid(points):
@@ -110,16 +113,22 @@ def derive_scale(pairs):
     """Compute scale_x (median over corner pairs only) and scale_y
     (median over all five pairs), then return their average.
 
-    The center dot has centroid_rm_x ≈ 0, which would make
-    (expected_pdf_x - 810) / centroid_rm_x degenerate. Skip pairs
-    where expected_pdf_x == 810 from the scale_x ratio set.
+    The center dot (label "C") has centroid_rm_x ≈ 0, which makes the
+    x-ratio (ex - PAGE_W/2) / cx degenerate. Skip pairs where ex equals
+    PAGE_W/2 from the scale_x ratio set.
+
+    For x_ratios (4 corner dots), sorted()[len//2] picks the upper-middle
+    value (index 2 of 4) rather than averaging the two middles. This is a
+    deliberate floor-median; it produced correct calibration (residuals
+    0.04-1.10 px) and is consistent with the spec's "median over 4 corner
+    ratios" intent. For y_ratios (5 dots), len//2 = 2 is the exact middle.
 
     Raises ValueError on asymmetric scale (> ASYMMETRY_THRESHOLD).
     """
     x_ratios = []
     y_ratios = []
     for _label, (ex, ey), (cx, cy) in pairs:
-        if ex != 810.0:  # skip center dot for scale_x
+        if ex != PAGE_W / 2:  # skip center dot for scale_x
             x_ratios.append((ex - PAGE_W / 2) / cx)
         y_ratios.append(ey / cy)
     scale_x = sorted(x_ratios)[len(x_ratios) // 2]

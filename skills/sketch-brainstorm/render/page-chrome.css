@@ -149,8 +149,8 @@ html, body {
    detector inverse-transforms this rectangle into .rm coordinates
    (rm_x = (pdf_x - 810) / scale, rm_y = pdf_y / scale) and hit-tests
    stroke points against it. Do not change the footer geometry or this
-   offset pair without updating the detector's inverse-transform in
-   lockstep. */
+   offset pair without updating FINISH_TURN_BOX_PDF in
+   render/detect_finish_turn.py in lockstep. */
 .finish-turn-checkbox {
   position: absolute;
   bottom: 20px;
