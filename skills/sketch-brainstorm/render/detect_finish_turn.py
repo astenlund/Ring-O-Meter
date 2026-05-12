@@ -21,6 +21,8 @@ from pathlib import Path
 
 from _rm_strokes import PAGE_W, collect_lines
 
+# LOCKSTEP with page-chrome.css .finish-turn-checkbox dimensions.
+# Do not change either without updating the other.
 # Finish-turn box in PDF coordinates. Load-bearing constant -
 # pinned in page-chrome.css and remarkable-tablet-brainstorm.md.
 FINISH_TURN_BOX_PDF = (1540.0, 2100.0, 40.0, 40.0)  # x, y, w, h
@@ -30,7 +32,7 @@ MIN_POINTS_INSIDE = 3
 
 
 def load_calibration(skill_root):
-    """Load skill_root / calibration.json. Exits non-zero on absence."""
+    """Load and validate skill_root / calibration.json. Exits non-zero on any problem."""
     path = skill_root / "calibration.json"
     if not path.exists():
         print(
@@ -40,10 +42,15 @@ def load_calibration(skill_root):
         )
         sys.exit(1)
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         print(f"calibration.json is not valid JSON ({e}); re-run derive-calibration.sh", file=sys.stderr)
         sys.exit(1)
+    scale = data.get("scale")
+    if not isinstance(scale, (int, float)) or scale <= 0:
+        print("calibration.json missing or invalid 'scale'; re-run derive-calibration.sh", file=sys.stderr)
+        sys.exit(1)
+    return data
 
 
 def inverse_transform_box(pdf_box, scale):
@@ -63,16 +70,16 @@ def inverse_transform_box(pdf_box, scale):
     return rm_x_min, rm_x_max, rm_y_min, rm_y_max
 
 
-def count_points_inside(points, box_rm):
-    """Return how many of `points` fall inside the .rm box."""
+def enough_points_inside(points, box_rm):
+    """Return True if at least MIN_POINTS_INSIDE of `points` lie inside the .rm box."""
     x_min, x_max, y_min, y_max = box_rm
     n = 0
     for x, y in points:
         if x_min <= x <= x_max and y_min <= y <= y_max:
             n += 1
             if n >= MIN_POINTS_INSIDE:
-                break
-    return n
+                return True
+    return False
 
 
 def page_uuids_from_manifest(rm_dir):
@@ -136,7 +143,7 @@ def detect(rm_dir, scale):
         lines = collect_lines(rm_file)
         hit_count = 0
         for _color, _width, pts in lines:
-            if count_points_inside(pts, box_rm) >= MIN_POINTS_INSIDE:
+            if enough_points_inside(pts, box_rm):
                 hit_count += 1
         page_marked = hit_count > 0
         if page_marked:
