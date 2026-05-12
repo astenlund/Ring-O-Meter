@@ -30,6 +30,12 @@ from rmscene import read_tree, scene_items
 PAGE_W = 1620
 PAGE_H = 2160
 
+# Skill root + calibration.json path. Centralized so consumers don't
+# duplicate the `parent.parent` walk; if the layout ever changes, only
+# one site needs updating.
+SKILL_ROOT = Path(__file__).resolve().parent.parent
+CALIBRATION_JSON = SKILL_ROOT / "calibration.json"
+
 PEN_COLORS = {
     # rmscene.scene_items.PenColor enum -> on-screen hex.
     # Preserving color is load-bearing: the vocabulary uses red for

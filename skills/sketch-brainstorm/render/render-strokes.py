@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from _rm_strokes import (
+    CALIBRATION_JSON,
     PAGE_W,
     PAGE_H,
     collect_lines,
@@ -100,13 +101,9 @@ def main():
     # calibrated scale is geometrically correct across all stroke
     # layouts. Fall back to auto-fit if calibration.json is absent
     # (e.g., on a fresh clone before the user has run the ceremony).
-    # This module lives at skills/sketch-brainstorm/render/render-strokes.py,
-    # so the skill root is two parents up.
-    skill_root = Path(__file__).resolve().parent.parent
-    calibration_json = skill_root / "calibration.json"
-    if calibration_json.exists():
+    if CALIBRATION_JSON.exists():
         try:
-            calibration_data = json.loads(calibration_json.read_text(encoding="utf-8"))
+            calibration_data = json.loads(CALIBRATION_JSON.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
             print(f"calibration.json is not valid JSON ({e}); re-run derive-calibration.sh", file=sys.stderr)
             sys.exit(1)
