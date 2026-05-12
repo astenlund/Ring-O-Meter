@@ -44,7 +44,7 @@ EXPECTED_DOTS = [
     ("TR", 1470.0, 150.0),
     ("BL", 150.0, 2010.0),
     ("BR", 1470.0, 2010.0),
-    ("C", 810.0, 1080.0),
+    ("C", PAGE_W / 2, 1080.0),
 ]
 
 BOOTSTRAP_SCALE = 0.45  # heuristic: bootstrap tolerance is wide (safe for ~0.30-0.65 real scales; see spec D6)
@@ -127,9 +127,13 @@ def derive_scale(pairs):
     """
     x_ratios = []
     y_ratios = []
-    for _label, (ex, ey), (cx, cy) in pairs:
-        if ex != PAGE_W / 2:  # skip center dot for scale_x
+    for label, (ex, ey), (cx, cy) in pairs:
+        if label != "C":  # skip center dot: rm-x ≈ 0 makes the x-ratio degenerate
+            if cx == 0:
+                raise ValueError(f"degenerate centroid at {label}: cx=0; stroke may cross the center axis")
             x_ratios.append((ex - PAGE_W / 2) / cx)
+        if cy == 0:
+            raise ValueError(f"degenerate centroid at {label}: cy=0; stroke may be at the page top edge")
         y_ratios.append(ey / cy)
     scale_x = sorted(x_ratios)[len(x_ratios) // 2]
     scale_y = sorted(y_ratios)[len(y_ratios) // 2]
