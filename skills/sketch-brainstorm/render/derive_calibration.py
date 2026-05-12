@@ -37,10 +37,10 @@ from _rm_strokes import PAGE_W, PAGE_H, collect_lines, ordered_rm_files
 # Expected dot positions in PDF coordinates. Keep names short for
 # diagnostic clarity ("TL: 1.2 px ok; TR: 5.4 px FAIL").
 EXPECTED_DOTS = [
-    ("TL", 100.0, 100.0),
-    ("TR", 1520.0, 100.0),
-    ("BL", 100.0, 2060.0),
-    ("BR", 1520.0, 2060.0),
+    ("TL", 150.0, 150.0),
+    ("TR", 1470.0, 150.0),
+    ("BL", 150.0, 2010.0),
+    ("BR", 1470.0, 2010.0),
     ("C", 810.0, 1080.0),
 ]
 
