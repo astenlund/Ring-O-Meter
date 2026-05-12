@@ -100,11 +100,15 @@ def main():
     # calibrated scale is geometrically correct across all stroke
     # layouts. Fall back to auto-fit if calibration.json is absent
     # (e.g., on a fresh clone before the user has run the ceremony).
+    # This module lives at skills/sketch-brainstorm/render/render-strokes.py,
+    # so the skill root is two parents up.
     skill_root = Path(__file__).resolve().parent.parent
     calibration_json = skill_root / "calibration.json"
     if calibration_json.exists():
         scale = json.loads(calibration_json.read_text(encoding="utf-8"))["scale"]
         print(f"using calibrated scale: {scale:.4f}")
+        if not any(all_lines.values()):
+            print("warning: no strokes found in any .rm file; writing empty SVGs", file=sys.stderr)
     else:
         bounds = union_bounds(all_lines)
         if not math.isfinite(bounds[2]):

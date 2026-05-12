@@ -19,6 +19,7 @@ or:
   #  with the venv's python directly)
 """
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -59,7 +60,12 @@ def _extract_rm_dir(rmdoc_path, target_dir):
     archives have a nested <doc-uuid>/ subdirectory containing the
     per-page .rm files.
     """
+    target_dir = Path(target_dir).resolve()
     with zipfile.ZipFile(rmdoc_path) as z:
+        for member in z.namelist():
+            member_path = (target_dir / member).resolve()
+            if not str(member_path).startswith(str(target_dir) + os.sep):
+                raise RuntimeError(f"zip slip detected: {member!r} would escape target dir")
         z.extractall(target_dir)
     # Find the nested <doc-uuid>/ subdirectory.
     for entry in target_dir.iterdir():

@@ -22,7 +22,6 @@ underlying PDF. We read that mapping so consumers can land each
 page's data on the matching PDF page.
 """
 import json
-import math
 import sys
 from pathlib import Path
 
@@ -84,8 +83,10 @@ def _page_order_modern(rm_dir, data):
             continue
         rm_file = rm_dir / f"{page_id}.rm"
         if not rm_file.exists():
-            # No .rm file means the page has no annotations; skip
-            # silently. Composites for those pages stay strokes-free.
+            # No .rm file means the page has no annotations; skip for
+            # rendering. Note: detect_finish_turn.page_uuids_from_manifest
+            # intentionally does NOT apply this filter so per_page length
+            # matches the manifest's full page count regardless of .rm presence.
             continue
         if redir is not None and not isinstance(redir, int):
             print(
@@ -111,6 +112,7 @@ def _page_order_legacy(rm_dir, data):
             continue
         rm_file = rm_dir / f"{page_id}.rm"
         if not rm_file.exists():
+            # Same filter as _page_order_modern; see note there.
             continue
         pdf_index = redir_map[i] if i < len(redir_map) and isinstance(redir_map[i], int) else i
         ordered.append((pdf_index, rm_file))
