@@ -7,13 +7,12 @@ description: Round-trip UI brainstorm loop with a reMarkable tablet. Use when th
 
 A skill for design-iteration with handwritten annotations on a reMarkable tablet. The user sketches reactions on the tablet, Claude reads the marks and emits the next mockup.
 
-## STATUS: closed loop with bootstrap-lite + structured interpret JSON
+## STATUS: closed loop + stroke-region detector + calibration ceremony
 
-Round-trip ships end-to-end: bootstrap-lite cold-start, orchestrator-driven
-loop body (pull -> render-strokes -> composite -> interpret -> compose next
-mockup -> render+push), structured-JSON interpret output, single growing
-`design-state.md` per session. Polling, verify-before-push, full bootstrap
-dialogue, compression, and multi-sketch are deferred to follow-up slices.
+Round-trip ships end-to-end and the stroke-region Finish-turn detector
++ one-time calibration ceremony are in place. Polling, full bootstrap
+dialogue, verify-before-push, compression, and multi-sketch are still
+deferred to follow-up slices.
 
 - `render-html-to-pdf.sh` produces a two-page PDF at the Paper Pro viewport from a parametrised HTML template. Page 1 is the mockup page (header, mockup region, small notes area, chrome footer with the Finish-turn checkbox); page 2 is the legend page (header, vocabulary legend, larger notes area, mirrored chrome footer). The user can append further pages on the tablet for long-form notes (handled by the future interpretation slice). `--subtopic` (forward-compat for multi-sketch) and `--prerender-out <dir>` (captures per-page PNGs to feed verify-before-push when it lands).
 - `push-to-tablet.sh` uploads a rendered PDF to a named cloud folder via `rmapi put --force`. Owns just the upload step; cloud-path composition (project root + per-session slug) belongs to the future bootstrap-dialogue slice that calls this wrapper.
@@ -68,6 +67,15 @@ auto-detecting the user's tablet back-out.
 - `render/prerender-pages.py` -- PyMuPDF-based PDF-to-PNG rasterizer; invoked by `render-html-to-pdf.sh`'s `--prerender-out` flag to feed the deferred verify-before-push slice.
 - `bootstrap-session.sh` -- creates the per-session local folder skeleton and primes `design-state.md` with frontmatter + `## Iteration 00`. Idempotent.
 - `parse-interpret-json.mjs` -- shell-callable JSON parse + validate helper for the interpret subagent's response. Authoritative schema lives at the top of this file.
+- `derive-calibration.sh` -- bash wrapper for the one-time calibration ceremony; runs derive_calibration.py against a pulled five-dot calibration rm-dir to produce calibration.json.
+- `render/derive_calibration.py` -- calibration derivation: five-centroid Hungarian assignment, median scale derivation, asymmetry + residual verification, writes calibration.json.
+- `detect-finish-turn.sh` -- bash wrapper for the per-turn detector.
+- `render/detect_finish_turn.py` -- stroke-region detector: reads calibration.json, inverse-transforms the Finish-turn PDF rectangle to .rm coordinates, hit-tests strokes, emits structured JSON.
+- `render/_rm_strokes.py` -- shared .rm parser (PAGE_W/PAGE_H constants, PEN_COLORS, collect_lines, ordered_rm_files). Single source of truth for the .rm coordinate system.
+- `calibration.json` -- committed at the skill root; firmware-versioned scale produced by the calibration ceremony. Refreshed only when firmware changes invalidate the constant.
+- `test-fixtures/calibration-paper-pro-fw<version>.rmdoc` -- captured reference .rmdoc from the calibration ceremony; consumed by test_derive_calibration.py's fixture smoke test.
+- `render/test_detect_finish_turn.py` -- JSON-shape test for the detector (stubs rmscene; runs stdlib-only).
+- `render/test_derive_calibration.py` -- fixture smoke test for the calibration derivation (uses the committed .rmdoc + the venv).
 - `interpret-prompt.md` -- prompt template for the interpretation subagent (read by the orchestrator; not directly executable).
 - `test_interpret_parse.mjs` -- node:test cases for `parseInterpretResponse` (happy path, CRLF, missing/wrong-type fields, malformed JSON).
 - `test_bootstrap_session.sh` -- bash test for `bootstrap-session.sh` (folder skeleton, frontmatter, idempotency re-run, negative-input rejection).
@@ -185,6 +193,44 @@ CLI flags:
 For each `strokes-pageN.svg` present in the strokes-dir, the wrapper writes one `composite-pageN.png` showing the rendered mockup at full Paper Pro resolution (1620x2160) with the user's strokes overlaid in their original colors at their original positions. Pages without strokes are skipped silently because the interpretation subagent only needs to read pages that carry user annotations.
 
 Per-machine setup: same as `render-strokes.sh` (the two wrappers share the venv). First run on a machine without the venv bootstraps automatically; later runs detect requirements.txt drift via the sentinel hash and rebootstrap if a dep changed.
+
+## Calibration ceremony
+
+A one-time per-firmware ritual that pins the `.rm`-to-PDF scale constant in `calibration.json`. Triggered by user phrases like "calibrate the detector", "recalibrate", or "run calibration".
+
+Flow:
+
+1. Render the calibration PDF from `render/calibration-template.html` (single page, no chrome, five reference dots).
+2. Push to the cloud via `push-to-tablet.sh` (under `<project-cloud-path>/_calibration/` if configured, otherwise ask the user where to push).
+3. Tell the user: *"Calibration sheet pushed. Mark each dot with a short pen stroke (one stroke per dot), then back out to the file picker and say `done`."*
+4. After `done`, pull via `pull-from-tablet.sh`.
+5. Run `derive-calibration.sh <rm-dir> <firmware-note> calibration.json`. On rejection, the orchestrator surfaces the diagnostic AND a clear-page retry instruction (tap the three-dot toolbar menu, select "Clear page", re-mark, retry).
+6. On success, commit `calibration.json` and the captured `.rmdoc` as `test-fixtures/calibration-paper-pro-fw<version>.rmdoc`.
+7. Remove the cloud calibration doc via `rmapi rm`.
+
+The full algorithm (count guard, Hungarian assignment, median scale derivation, 2% asymmetry gate, 3 px residual verification) is documented in the feature spec at `.claude/features/remarkable-tablet-brainstorm.md`.
+
+## Detect entry point
+
+After pulling an annotated `.rmdoc` archive with `pull-from-tablet.sh` and extracting it, check whether the user marked the Finish-turn box:
+
+```
+bash skills/sketch-brainstorm/detect-finish-turn.sh <rm-dir>
+```
+
+`<rm-dir>` is the directory inside the extracted `.rmdoc` archive that contains the per-page `<uuid>.rm` files (typically the directory named after the document UUID). The wrapper bootstraps the shared venv on first run.
+
+Output: a single JSON line on stdout, exit 0 on a clean run regardless of result. JSON shape:
+
+```
+{"marked":true,"per_page":[{"page":1,"marked":false,"hit_strokes":0,"total_strokes":4},{"page":2,"marked":true,"hit_strokes":1,"total_strokes":2}]}
+```
+
+`marked` is the OR across pages (mirrored-box behaviour). `per_page` always covers every rendered page (length comes from the `.content` manifest's `cPages.pages[]`, not from `.rm` file presence); pages with no `.rm` file get synthesized entries with `hit_strokes:0, total_strokes:0`.
+
+Exit non-zero is reserved for script errors: missing `calibration.json`, malformed rm-dir, unreadable `.content` manifest, rmscene exception. A clean "no marks detected" still exits 0 with `"marked":false`.
+
+Per-machine setup: same as `render-strokes.sh` (Python + the shared venv; bootstrapped on first wrapper invocation).
 
 ## Interpretation entry point
 
