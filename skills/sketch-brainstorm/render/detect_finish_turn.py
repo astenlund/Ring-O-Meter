@@ -19,7 +19,7 @@ import json
 import sys
 from pathlib import Path
 
-from _rm_strokes import PAGE_W, collect_lines
+from _rm_strokes import CALIBRATION_JSON, PAGE_W, collect_lines
 
 # LOCKSTEP with page-chrome.css .finish-turn-checkbox dimensions.
 # Do not change either without updating the other.
@@ -31,18 +31,17 @@ FINISH_TURN_BOX_PDF = (1540.0, 2100.0, 40.0, 40.0)  # x, y, w, h
 MIN_POINTS_INSIDE = 3
 
 
-def load_calibration(skill_root):
-    """Load and validate skill_root / calibration.json. Exits non-zero on any problem."""
-    path = skill_root / "calibration.json"
-    if not path.exists():
+def load_calibration():
+    """Load and validate CALIBRATION_JSON. Exits non-zero on any problem."""
+    if not CALIBRATION_JSON.exists():
         print(
-            f"calibration.json not found at {path}; "
+            f"calibration.json not found at {CALIBRATION_JSON}; "
             f"run derive-calibration.sh first",
             file=sys.stderr,
         )
         sys.exit(1)
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(CALIBRATION_JSON.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         print(f"calibration.json is not valid JSON ({e}); re-run derive-calibration.sh", file=sys.stderr)
         sys.exit(1)
@@ -169,11 +168,7 @@ def main():
     if not rm_dir.is_dir():
         print(f"rm-dir not a directory: {rm_dir}", file=sys.stderr)
         sys.exit(1)
-    # calibration.json lives at the skill root; the detector module is
-    # at skills/sketch-brainstorm/render/detect_finish_turn.py, so the
-    # skill root is two parents up.
-    skill_root = Path(__file__).resolve().parent.parent
-    calibration = load_calibration(skill_root)
+    calibration = load_calibration()
     scale = calibration["scale"]
     payload = detect(rm_dir, scale)
     print(json.dumps(payload))
