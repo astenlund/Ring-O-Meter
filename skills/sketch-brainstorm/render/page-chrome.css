@@ -10,9 +10,9 @@
  * rendered pages: (x=1540, y=2100) 40x40 px on the 1620x2160 viewport. /* checkbox-coords */
  * Bottom-aligned in the footer with a 60 px slot above reserved for
  * the future End-session checkbox sibling. The polling slice's
- * variance detector will crop this rectangle from both rendered pages
- * of the pulled annotated PDF; either firing means the user finished
- * the turn.
+ * stroke-region detector inverse-transforms this rectangle into .rm
+ * coordinates and hit-tests user stroke points against it (≥3 points
+ * inside = marked); either page firing means the user finished the turn.
  */
 
 @page {
@@ -145,11 +145,12 @@ html, body {
    1620x2160 viewport (footer is bottom:0, height:160, width:1620, so
    bottom:20 -> page-y 2100 and right:40 -> page-x 1540). Leaves a
    60 px band above for the future End-session checkbox sibling. The
-   *rendered* pixel coordinates are load-bearing: the future polling
-   slice crops this rectangle from both pages of the pulled annotated
-   PDF and runs pixel-variance detection on it to decide whether the
-   user marked it. Do not change the footer geometry or this offset
-   pair without updating the polling slice in lockstep. */
+   *rendered* pixel coordinates are load-bearing: the stroke-region
+   detector inverse-transforms this rectangle into .rm coordinates
+   (rm_x = (pdf_x - 810) / scale, rm_y = pdf_y / scale) and hit-tests
+   stroke points against it. Do not change the footer geometry or this
+   offset pair without updating the detector's inverse-transform in
+   lockstep. */
 .finish-turn-checkbox {
   position: absolute;
   bottom: 20px;
