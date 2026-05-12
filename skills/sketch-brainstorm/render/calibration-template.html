@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: 1620px 2160px; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1620px; height: 2160px; background: #ffffff; }
+  .page { position: relative; width: 1620px; height: 2160px; overflow: hidden; }
+  .dot {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    margin-left: -12px;
+    margin-top: -12px;
+  }
+  .dot svg { display: block; width: 24px; height: 24px; }
+  .instruction {
+    position: absolute;
+    top: 1600px;
+    left: 0;
+    width: 1620px;
+    text-align: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 32px;
+    color: #444;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <!-- Four corner dots (100 px margin from each page edge) + one
+       sanity-center dot. Each dot is a 12 px-radius circle (2 px
+       stroke, white fill) with an 8-px-per-arm black cross. Anchors
+       use top-left offset, so the dot's actual *center* lands at the
+       coordinates listed (margin offsets shift the SVG so center,
+       not top-left corner, sits at left/top). -->
+  <div class="dot" style="left: 100px; top: 100px;">
+    <svg viewBox="-12 -12 24 24" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="0" cy="0" r="12" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+      <line x1="-8" y1="0" x2="8" y2="0" stroke="#000000" stroke-width="1.5"/>
+      <line x1="0" y1="-8" x2="0" y2="8" stroke="#000000" stroke-width="1.5"/>
+    </svg>
+  </div>
+  <div class="dot" style="left: 1520px; top: 100px;">
+    <svg viewBox="-12 -12 24 24" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="0" cy="0" r="12" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+      <line x1="-8" y1="0" x2="8" y2="0" stroke="#000000" stroke-width="1.5"/>
+      <line x1="0" y1="-8" x2="0" y2="8" stroke="#000000" stroke-width="1.5"/>
+    </svg>
+  </div>
+  <div class="dot" style="left: 100px; top: 2060px;">
+    <svg viewBox="-12 -12 24 24" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="0" cy="0" r="12" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+      <line x1="-8" y1="0" x2="8" y2="0" stroke="#000000" stroke-width="1.5"/>
+      <line x1="0" y1="-8" x2="0" y2="8" stroke="#000000" stroke-width="1.5"/>
+    </svg>
+  </div>
+  <div class="dot" style="left: 1520px; top: 2060px;">
+    <svg viewBox="-12 -12 24 24" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="0" cy="0" r="12" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+      <line x1="-8" y1="0" x2="8" y2="0" stroke="#000000" stroke-width="1.5"/>
+      <line x1="0" y1="-8" x2="0" y2="8" stroke="#000000" stroke-width="1.5"/>
+    </svg>
+  </div>
+  <div class="dot" style="left: 810px; top: 1080px;">
+    <svg viewBox="-12 -12 24 24" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="0" cy="0" r="12" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+      <line x1="-8" y1="0" x2="8" y2="0" stroke="#000000" stroke-width="1.5"/>
+      <line x1="0" y1="-8" x2="0" y2="8" stroke="#000000" stroke-width="1.5"/>
+    </svg>
+  </div>
+  <div class="instruction">Mark each dot. Back out to the file picker when done.</div>
+</div>
+</body>
+</html>
