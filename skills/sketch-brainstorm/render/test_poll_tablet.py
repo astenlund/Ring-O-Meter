@@ -9,10 +9,12 @@ Run:
 or:
   python -m unittest discover -s skills/sketch-brainstorm/render -p "test_*.py"
 """
+import io
 import json
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -334,6 +336,13 @@ class ModeWinnerPropagationTests(unittest.TestCase):
 class RunLifecycleTests(unittest.TestCase):
     """End-to-end coverage of run(): emit lines and finally-block lock cleanup."""
 
+    def _run_with_stdout(self, **kwargs):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = poll_tablet.run(**kwargs)
+
+        return rc, buf.getvalue()
+
     def test_run_emits_ready_and_releases_lock_on_finish_turn(self):
         # Arrange: signature changes on each tick so pull_detect_fn fires.
         with tempfile.TemporaryDirectory() as tmp:
@@ -351,7 +360,7 @@ class RunLifecycleTests(unittest.TestCase):
                 )
 
             # Act
-            rc = poll_tablet.run(
+            rc, out = self._run_with_stdout(
                 cloud_doc="x",
                 iter_nn="00",
                 pulls_dir=pulls,
@@ -361,8 +370,9 @@ class RunLifecycleTests(unittest.TestCase):
                 pull_detect_fn=fake_pull_detect,
             )
 
-            # Assert: clean exit, lock released, no .tmp sidecar.
+            # Assert: emits READY, clean exit, lock released, no .tmp sidecar.
             self.assertEqual(rc, 0)
+            self.assertIn("READY:00", out)
             self.assertFalse(lock.exists())
             self.assertFalse(lock.with_name(lock.name + ".tmp").exists())
 
@@ -384,7 +394,7 @@ class RunLifecycleTests(unittest.TestCase):
                 )
 
             # Act
-            rc = poll_tablet.run(
+            rc, out = self._run_with_stdout(
                 cloud_doc="x",
                 iter_nn="00",
                 pulls_dir=pulls,
@@ -394,8 +404,10 @@ class RunLifecycleTests(unittest.TestCase):
                 pull_detect_fn=both_marked,
             )
 
-            # Assert
+            # Assert: STOP is emitted (not READY), confirming precedence.
             self.assertEqual(rc, 0)
+            self.assertIn("STOP:00", out)
+            self.assertNotIn("READY:00", out)
             self.assertFalse(lock.exists())
 
 

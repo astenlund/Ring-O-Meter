@@ -25,7 +25,6 @@ respawning across chats reads from there.
 import argparse
 import json
 import os
-import re
 import signal
 import subprocess
 import sys
@@ -36,9 +35,7 @@ from pathlib import Path
 from typing import Callable, Optional, Tuple
 
 from _atomic_write import atomic_write_text
-from _chrome_boxes import VALID_MODES
-
-_ITER_NN_RE = re.compile(r"\d{2}")
+from _chrome_boxes import ITER_NN_RE, VALID_MODES
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
@@ -290,8 +287,8 @@ def parse_args(argv):
         help=f"Seconds between polls (default {DEFAULT_POLL_INTERVAL_S}).",
     )
     args = p.parse_args(argv)
-    if not _ITER_NN_RE.fullmatch(args.iter):
-        p.error(f"--iter must be two decimal digits; got {args.iter!r}")
+    if not ITER_NN_RE.fullmatch(args.iter):
+        p.error(f"--iter must be at least two decimal digits; got {args.iter!r}")
 
     return args
 
@@ -306,7 +303,7 @@ def main(argv=None):
             lock_file=args.lock_file,
             poll_interval_s=args.poll_interval,
         )
-    except Exception as e:
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError) as e:
         print(f"poll_tablet: {e}", file=sys.stderr)
         return 1
 
