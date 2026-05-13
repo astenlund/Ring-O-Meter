@@ -147,6 +147,32 @@ class WriteDesignStateTests(unittest.TestCase):
             self.assertIn("current_mode: bw", content)
             self.assertNotIn("\r\n", content)
 
+    def test_overwriting_middle_section_preserves_blank_line_separator(self):
+        # Overwriting an iter section that has a sibling below it must
+        # leave the blank-line separator between sections intact;
+        # otherwise the next read finds two headings on adjacent lines.
+        with tempfile.TemporaryDirectory() as tmp:
+            session = Path(tmp)
+            _seed_session(
+                session,
+                iterations=[("00", "first"), ("01", "second"), ("02", "third")],
+            )
+            write_design_state.write(
+                session_dir=session, iter_nn="01", mode="color", delta="rewritten",
+            )
+            content = (session / "design-state.md").read_text(encoding="utf-8")
+            self.assertIn("rewritten\n\n## Iteration 02", content)
+
+    def test_missing_session_dir_raises_filenotfounderror(self):
+        # Caller error: passing a nonexistent --session-dir must surface
+        # as FileNotFoundError, not a cryptic .tmp write failure.
+        with tempfile.TemporaryDirectory() as tmp:
+            absent = Path(tmp) / "no-such-session"
+            with self.assertRaises(FileNotFoundError):
+                write_design_state.write(
+                    session_dir=absent, iter_nn="00", mode="color", delta="x",
+                )
+
     def test_fresh_file_has_blank_line_after_frontmatter(self):
         # When design-state.md doesn't exist yet, the prepended frontmatter
         # should be followed by a blank line, matching bootstrap-session.sh.

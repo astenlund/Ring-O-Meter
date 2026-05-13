@@ -14,13 +14,15 @@
 #       --pulls-dir .tmp/sketch-brainstorm/sessions/<date>-<slug>/pulls/ \
 #       --lock-file .tmp/sketch-brainstorm/poller.lock
 #
-# On READY: emits 'READY:05' and exits 0. The orchestrator dispatches
-# interpretation, renders/pushes the next iter, and respawns this script
-# with the new --iter / --cloud-doc.
+# Emits one of:
+#   READY:05                  - Finish-turn marked, no mode switch
+#   READY:05:mode=bw          - Finish-turn marked, mode-switch winner
+#   STOP:05                   - End-session marked
+# and exits 0. The orchestrator dispatches interpretation, renders/pushes
+# the next iter, and respawns this script with the new --iter / --cloud-doc.
 #
-# This slice owns READY only. STOP (End-session checkbox), ERROR
-# taxonomy with exponential backoff, and bootstrap-side spawn integration
-# are documented in the feature spec as separate slices.
+# ERROR taxonomy with exponential backoff and bootstrap-side spawn
+# integration are documented in the feature spec as separate slices.
 #
 # Windows note: invoke via Git Bash or WSL.
 
