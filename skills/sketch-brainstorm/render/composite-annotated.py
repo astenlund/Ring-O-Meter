@@ -69,15 +69,14 @@ def rasterize_svg(svg_path: Path) -> Image.Image:
     2160, so the SVG document's page rect already matches the target
     resolution; the matrix collapses to identity in the common case.
     Compute it explicitly so a future viewBox change is absorbed.
+
+    Raises RuntimeError on SVG-open failure; caller (main) translates
+    to non-zero exit + diagnostic.
     """
     try:
         doc = fitz.open(svg_path)
     except Exception as exc:
-        print(
-            f"composite-annotated.py: failed to open SVG '{svg_path}': {exc}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise RuntimeError(f"failed to open SVG '{svg_path}': {exc}") from exc
     try:
         page = doc[0]  # SVGs render as single-page documents in fitz
         zoom_x = PAGE_W / page.rect.width
@@ -158,7 +157,11 @@ def main():
         for page_number, svg_path in svgs:
             # strokes-pageN encodes 1-based; fitz uses 0-based.
             pdf_image = rasterize_pdf_page(pdf_doc, page_number - 1)
-            svg_image = rasterize_svg(svg_path)
+            try:
+                svg_image = rasterize_svg(svg_path)
+            except RuntimeError as exc:
+                print(f"composite-annotated.py: {exc}", file=sys.stderr)
+                sys.exit(1)
             composite = composite_page(pdf_image, svg_image)
             out_path = out_dir / f"composite-page{page_number}.png"
             composite.save(out_path, format="PNG")

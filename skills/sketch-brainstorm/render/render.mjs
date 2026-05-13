@@ -31,9 +31,12 @@ const TEMPLATE_PATH = join(SCRIPT_DIR, 'page-template.html');
 const TEMP_HTML_PATH = '.tmp/sketch-brainstorm/test/render-input.html';
 
 export function formatIterationLabel(iteration, subtopic) {
-  if (!/^\d{2}$/.test(iteration)) {
+  // LOCKSTEP with ITER_NN_RE in render/_chrome_boxes.py. Two-digit
+  // minimum (rejects single-digit input that the section regex
+  // cannot match) but no upper bound (sessions can exceed 99 iters).
+  if (!/^\d{2,}$/.test(iteration)) {
     throw new Error(
-      `--iteration must be a two-digit zero-padded number (00-99); got: ${iteration}`,
+      `--iteration must be at least two decimal digits (e.g. 00, 100); got: ${iteration}`,
     );
   }
   const subtopicSegment = subtopic ? `: ${subtopic}` : '';
