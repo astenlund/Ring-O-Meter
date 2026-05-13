@@ -39,6 +39,7 @@ DS="$SESSION_DIR/design-state.md"
 
 grep -q "^slug: warmup-gate$" "$DS" || { echo "fail: slug missing in frontmatter" >&2; exit 1; }
 grep -q "^topic: warmup gate settings panel$" "$DS" || { echo "fail: topic missing" >&2; exit 1; }
+grep -q "^current_mode: color$" "$DS" || { echo "fail: design-state.md missing 'current_mode: color' frontmatter" >&2; exit 1; }
 grep -q "^## Iteration 00$" "$DS" || { echo "fail: ## Iteration 00 heading missing" >&2; exit 1; }
 grep -q "warmup confirmation gate" "$DS" || { echo "fail: description not embedded" >&2; exit 1; }
 

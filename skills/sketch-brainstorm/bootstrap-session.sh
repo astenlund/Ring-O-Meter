@@ -79,6 +79,7 @@ if [[ ! -f "$DS" ]]; then
     printf 'slug: %s\n' "$SLUG"
     printf 'topic: %s\n' "$TOPIC"
     printf 'created: %s\n' "$CREATED"
+    printf 'current_mode: color\n'
     printf '%s\n' '---'
     printf '\n'
     printf '## Iteration 00\n\n'
