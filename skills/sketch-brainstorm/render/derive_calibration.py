@@ -202,7 +202,7 @@ def main():
             "usage: derive_calibration.py <rm-dir> <firmware-note> <output-json>",
             file=sys.stderr,
         )
-        sys.exit(1)
+        return 1
     rm_dir = Path(sys.argv[1])
     firmware_note = sys.argv[2]
     output_json = Path(sys.argv[3])
@@ -213,13 +213,15 @@ def main():
         # table). Surface to stderr as-is; the orchestrator forwards to
         # chat alongside the clear-page retry instruction.
         print(str(e), file=sys.stderr)
-        sys.exit(1)
+        return 1
     output_json.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(
         f"scale: {payload['scale']} (residuals max "
         f"{max(payload['residuals_px'].values()):.2f} px)"
     )
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

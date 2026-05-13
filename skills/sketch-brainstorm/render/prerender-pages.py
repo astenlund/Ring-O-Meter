@@ -14,8 +14,7 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
-PAGE_W = 1620
-PAGE_H = 2160
+from _rm_strokes import PAGE_H, PAGE_W
 
 
 def main(argv: list[str] | None = None) -> int:
