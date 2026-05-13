@@ -110,11 +110,11 @@ class PollOnceTests(unittest.TestCase):
     def _fake_signature_fn(self, sig):
         return lambda _cloud_doc: sig
 
-    def _fake_pull_detect_fn(self, marked, calls):
+    def _fake_pull_detect_fn(self, result, calls):
         def fn(_cloud_doc, _pulls_dir):
             calls.append(1)
 
-            return marked
+            return result
 
         return fn
 
@@ -123,62 +123,130 @@ class PollOnceTests(unittest.TestCase):
         # Arrange
         sig = poll_tablet.Signature(version=3, modified_client="2026-05-13T12:00:00Z")
         pull_calls = []
+        marked_result = poll_tablet.DetectionResult(
+            finish_turn_marked=True, end_session_marked=False,
+        )
 
         # Act
-        new_sig, marked = poll_tablet.poll_once(
+        new_sig, result = poll_tablet.poll_once(
             cloud_doc="x",
             pulls_dir=Path("/unused"),
             last_sig=sig,
             signature_fn=self._fake_signature_fn(sig),
-            pull_detect_fn=self._fake_pull_detect_fn(True, pull_calls),
+            pull_detect_fn=self._fake_pull_detect_fn(marked_result, pull_calls),
         )
 
         # Assert
         self.assertEqual(new_sig, sig)
-        self.assertFalse(marked)
+        self.assertFalse(result.finish_turn_marked)
+        self.assertFalse(result.end_session_marked)
         self.assertEqual(pull_calls, [], "pull must not run on an idle iteration")
 
-    def test_changed_signature_unmarked_returns_false(self):
-        """Cloud doc changed but Finish-turn box not marked: return False, update signature."""
+    def test_changed_signature_unmarked_returns_all_false(self):
+        """Cloud doc changed but no control box marked: return all-false, update signature."""
         # Arrange
         prev = poll_tablet.Signature(version=3, modified_client="2026-05-13T12:00:00Z")
         curr = poll_tablet.Signature(version=4, modified_client="2026-05-13T12:01:00Z")
         pull_calls = []
+        unmarked_result = poll_tablet.DetectionResult(
+            finish_turn_marked=False, end_session_marked=False,
+        )
 
         # Act
-        new_sig, marked = poll_tablet.poll_once(
+        new_sig, result = poll_tablet.poll_once(
             cloud_doc="x",
             pulls_dir=Path("/unused"),
             last_sig=prev,
             signature_fn=self._fake_signature_fn(curr),
-            pull_detect_fn=self._fake_pull_detect_fn(False, pull_calls),
+            pull_detect_fn=self._fake_pull_detect_fn(unmarked_result, pull_calls),
         )
 
         # Assert
         self.assertEqual(new_sig, curr)
-        self.assertFalse(marked)
+        self.assertFalse(result.finish_turn_marked)
+        self.assertFalse(result.end_session_marked)
         self.assertEqual(pull_calls, [1], "pull must run when the signature changes")
 
-    def test_changed_signature_marked_returns_true(self):
-        """Cloud doc changed and Finish-turn box marked: return True."""
+    def test_changed_signature_finish_turn_marked(self):
+        """Cloud doc changed and Finish-turn box marked: result reflects it."""
         # Arrange
         prev = poll_tablet.Signature(version=3, modified_client="2026-05-13T12:00:00Z")
         curr = poll_tablet.Signature(version=4, modified_client="2026-05-13T12:01:00Z")
         pull_calls = []
+        marked_result = poll_tablet.DetectionResult(
+            finish_turn_marked=True, end_session_marked=False,
+        )
 
         # Act
-        new_sig, marked = poll_tablet.poll_once(
+        new_sig, result = poll_tablet.poll_once(
             cloud_doc="x",
             pulls_dir=Path("/unused"),
             last_sig=prev,
             signature_fn=self._fake_signature_fn(curr),
-            pull_detect_fn=self._fake_pull_detect_fn(True, pull_calls),
+            pull_detect_fn=self._fake_pull_detect_fn(marked_result, pull_calls),
         )
 
         # Assert
         self.assertEqual(new_sig, curr)
-        self.assertTrue(marked)
+        self.assertTrue(result.finish_turn_marked)
+        self.assertFalse(result.end_session_marked)
         self.assertEqual(pull_calls, [1])
+
+
+class StopEmissionTests(unittest.TestCase):
+    """End-session detection drives STOP:<NN> emission."""
+
+    def test_end_session_marked_propagates_through_poll_once(self):
+        # Arrange
+        prev = poll_tablet.Signature(version=3, modified_client="2026-05-13T12:00:00Z")
+        curr = poll_tablet.Signature(version=4, modified_client="2026-05-13T12:00:30Z")
+        pull_calls = []
+
+        def fake_detect(_cloud_doc, _pulls_dir):
+            pull_calls.append(1)
+
+            return poll_tablet.DetectionResult(
+                finish_turn_marked=False, end_session_marked=True,
+            )
+
+        # Act
+        new_sig, result = poll_tablet.poll_once(
+            cloud_doc="x",
+            pulls_dir=Path("/unused"),
+            last_sig=prev,
+            signature_fn=lambda _: curr,
+            pull_detect_fn=fake_detect,
+        )
+
+        # Assert
+        self.assertEqual(new_sig, curr)
+        self.assertTrue(result.end_session_marked)
+        self.assertFalse(result.finish_turn_marked)
+        self.assertEqual(pull_calls, [1])
+
+    def test_end_session_takes_precedence_over_finish_turn(self):
+        """Both boxes marked in same turn: End-session wins; Finish-turn flag still surfaced."""
+        # Arrange
+        prev = poll_tablet.Signature(version=3, modified_client="2026-05-13T12:00:00Z")
+        curr = poll_tablet.Signature(version=4, modified_client="2026-05-13T12:00:30Z")
+
+        def fake_detect(_cloud_doc, _pulls_dir):
+            return poll_tablet.DetectionResult(
+                finish_turn_marked=True, end_session_marked=True,
+            )
+
+        # Act
+        _new_sig, result = poll_tablet.poll_once(
+            cloud_doc="x",
+            pulls_dir=Path("/unused"),
+            last_sig=prev,
+            signature_fn=lambda _: curr,
+            pull_detect_fn=fake_detect,
+        )
+
+        # Assert: both flags carry through; precedence ordering lives in run()'s emit block.
+        self.assertTrue(result.end_session_marked)
+        self.assertTrue(result.finish_turn_marked)
 
 
 if __name__ == "__main__":
