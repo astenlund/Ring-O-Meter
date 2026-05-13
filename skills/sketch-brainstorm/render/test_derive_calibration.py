@@ -6,7 +6,7 @@ This catches geometry-math regressions cheaply; per the design
 spec's testing strategy, this is the only behavior-level test
 shipped for the derivation.
 
-Unlike test_detect_finish_turn.py (which stubs rmscene), this
+Unlike test_detect_marks.py (which stubs rmscene), this
 test actually parses the real .rmdoc through rmscene and uses
 scipy for the Hungarian assignment, so it requires the venv.
 

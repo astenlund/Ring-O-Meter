@@ -10,7 +10,7 @@ Stubs rmscene + calibration.json + the .content manifest so the test
 runs stdlib-only without the venv and without any real .rm file.
 
 Run:
-  python skills/sketch-brainstorm/render/test_detect_finish_turn.py
+  python skills/sketch-brainstorm/render/test_detect_marks.py
 or:
   python -m unittest discover -s skills/sketch-brainstorm/render -p "test_*.py"
 """
@@ -28,7 +28,7 @@ sys.path.insert(0, str(_HERE))
 sys.modules.setdefault("rmscene", MagicMock())
 sys.modules.setdefault("rmscene.scene_items", MagicMock())
 
-import detect_finish_turn  # noqa: E402
+import detect_marks  # noqa: E402
 
 _EXPECTED_BOX_NAMES = {"finish_turn", "end_session", "mode_color", "mode_bw", "mode_wireframe"}
 
@@ -60,8 +60,8 @@ class JsonShapeTests(unittest.TestCase):
             tmp_path = Path(tmp)
             _write_manifest(tmp_path, "doc-uuid", ["page-uuid-1", "page-uuid-2"])
             rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1", "page-uuid-2"])
-            with patch.object(detect_finish_turn, "collect_lines", return_value=[]):
-                payload = detect_finish_turn.detect(rm_dir, scale=0.45)
+            with patch.object(detect_marks, "collect_lines", return_value=[]):
+                payload = detect_marks.detect(rm_dir, scale=0.45)
         self.assertEqual(set(payload.keys()), {"per_page"})
         self.assertIsInstance(payload["per_page"], list)
 
@@ -72,8 +72,8 @@ class JsonShapeTests(unittest.TestCase):
             _write_manifest(tmp_path, "doc-uuid", ["page-uuid-1"])
             rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1"])
 
-            with patch.object(detect_finish_turn, "collect_lines", return_value=[]):
-                output = detect_finish_turn.detect(rm_dir, scale=0.45)
+            with patch.object(detect_marks, "collect_lines", return_value=[]):
+                output = detect_marks.detect(rm_dir, scale=0.45)
 
         self.assertIn("per_page", output)
         self.assertEqual(len(output["per_page"]), 1)
@@ -94,8 +94,8 @@ class JsonShapeTests(unittest.TestCase):
             rm_dir.mkdir()
             (rm_dir / "p1.rm").touch()
             (rm_dir / "p2.rm").touch()
-            with patch.object(detect_finish_turn, "collect_lines", return_value=[]):
-                payload = detect_finish_turn.detect(rm_dir, scale=0.45)
+            with patch.object(detect_marks, "collect_lines", return_value=[]):
+                payload = detect_marks.detect(rm_dir, scale=0.45)
         self.assertEqual(len(payload["per_page"]), 3)
         # Synthesized entry for never-opened page has all-zero boxes.
         third = payload["per_page"][2]
@@ -123,8 +123,8 @@ class JsonShapeTests(unittest.TestCase):
                     # gives capsule area ~180 .rm^2, above the 100 threshold.
                     return [("#000", 4.0, [(1650, 4700), (1660, 4710), (1670, 4720), (1680, 4730)])]
                 return [("#000", 2.0, [(0, 0), (10, 10)])]
-            with patch.object(detect_finish_turn, "collect_lines", side_effect=fake_collect):
-                payload = detect_finish_turn.detect(rm_dir, scale=0.45)
+            with patch.object(detect_marks, "collect_lines", side_effect=fake_collect):
+                payload = detect_marks.detect(rm_dir, scale=0.45)
         self.assertFalse(payload["per_page"][0]["boxes"]["finish_turn"]["marked"])
         self.assertTrue(payload["per_page"][1]["boxes"]["finish_turn"]["marked"])
 
@@ -141,9 +141,9 @@ class CapsuleAreaQualificationTests(unittest.TestCase):
             # 5 .rm length, W=4 -> ~20 .rm^2 capsule area, below 100 threshold.
             tiny_stroke = ("#000000", 4.0, [(-50.0, 44.0), (-43.0, 44.0)])
 
-            with patch.object(detect_finish_turn, "collect_lines", return_value=[tiny_stroke]):
+            with patch.object(detect_marks, "collect_lines", return_value=[tiny_stroke]):
                 # Act
-                output = detect_finish_turn.detect(rm_dir, scale=0.45)
+                output = detect_marks.detect(rm_dir, scale=0.45)
 
         # Assert
         self.assertFalse(output["per_page"][0]["boxes"]["finish_turn"]["marked"])
@@ -160,9 +160,9 @@ class CapsuleAreaQualificationTests(unittest.TestCase):
             _write_manifest(tmp_path, "doc-uuid", ["page-uuid-1"])
             rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1"])
 
-            with patch.object(detect_finish_turn, "collect_lines", return_value=[tap_stroke]):
+            with patch.object(detect_marks, "collect_lines", return_value=[tap_stroke]):
                 # Act
-                output = detect_finish_turn.detect(rm_dir, scale=0.45)
+                output = detect_marks.detect(rm_dir, scale=0.45)
 
         # Assert: caps_fraction=1, area = pi*15^2 ~ 707; passes 100 threshold.
         self.assertTrue(output["per_page"][0]["boxes"]["finish_turn"]["marked"])
@@ -178,8 +178,8 @@ class CapsuleAreaQualificationTests(unittest.TestCase):
             _write_manifest(tmp_path, "doc-uuid", ["page-uuid-1"])
             rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1"])
 
-            with patch.object(detect_finish_turn, "collect_lines", return_value=[big_stroke]):
-                output = detect_finish_turn.detect(rm_dir, scale=0.45)
+            with patch.object(detect_marks, "collect_lines", return_value=[big_stroke]):
+                output = detect_marks.detect(rm_dir, scale=0.45)
 
         boxes = output["per_page"][0]["boxes"]
         self.assertTrue(boxes["end_session"]["marked"])

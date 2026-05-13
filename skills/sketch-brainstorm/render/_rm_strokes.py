@@ -192,7 +192,7 @@ def _page_order_modern(rm_dir, data):
         rm_file = rm_dir / f"{page_id}.rm"
         if not rm_file.exists():
             # No .rm file means the page has no annotations; skip for
-            # rendering. Note: detect_finish_turn.page_uuids_from_manifest
+            # rendering. Note: detect_marks.page_uuids_from_manifest
             # intentionally does NOT apply this filter so per_page length
             # matches the manifest's full page count regardless of .rm presence.
             continue

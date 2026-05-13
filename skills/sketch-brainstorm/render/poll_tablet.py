@@ -36,7 +36,7 @@ from typing import Callable, Tuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
-DETECT_WRAPPER = SKILL_DIR / "detect-finish-turn.sh"
+DETECT_WRAPPER = SKILL_DIR / "detect-marks.sh"
 PULL_WRAPPER = SKILL_DIR / "pull-from-tablet.sh"
 
 # heuristic: polling cadence keeps the prompt cache warm (5-minute TTL)
