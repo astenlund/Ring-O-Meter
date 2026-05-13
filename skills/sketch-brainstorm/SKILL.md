@@ -36,7 +36,7 @@ Not yet implemented (deferred to follow-up plans):
 
 - Auth bootstrap (`setup-rmapi.sh`, `~/.rmapi` token, deny rules, PreToolUse hook); both transport wrappers assume the machine is already paired
 - Bootstrap dialogue (precondition check, topic prompt, cloud path resolution, design-language briefing)
-- Stroke-region checkbox detector calibration ceremony (`derive-calibration.py`, 5-dot PDF, `calibration.json`) and detector script (`detect-finish-turn.sh`); background polling script wrapping the detector with the stdout `READY:NN` protocol
+- Stroke-region checkbox detector calibration ceremony (`derive-calibration.py`, 5-dot PDF, `calibration.json`) and detector script (`detect-marks.sh`); background polling script wrapping the detector with the stdout `READY:NN` protocol
 - Multi-sketch iterations (N rendered sketches plus a trailing legend page, for side-by-side alternatives)
 - Verify-before-push (visual sanity check on the rendered output before pushing)
 - B&W and Wireframe render modes (Color is current default and only mode)
@@ -69,12 +69,12 @@ auto-detecting the user's tablet back-out.
 - `parse-interpret-json.mjs` -- shell-callable JSON parse + validate helper for the interpret subagent's response. Authoritative schema lives at the top of this file.
 - `derive-calibration.sh` -- bash wrapper for the one-time calibration ceremony; runs derive_calibration.py against a pulled five-dot calibration rm-dir to produce calibration.json.
 - `render/derive_calibration.py` -- calibration derivation: five-centroid Hungarian assignment, median scale derivation, asymmetry + residual verification, writes calibration.json.
-- `detect-finish-turn.sh` -- bash wrapper for the per-turn detector.
-- `render/detect_finish_turn.py` -- stroke-region detector: reads calibration.json, inverse-transforms the Finish-turn PDF rectangle to .rm coordinates, hit-tests strokes, emits structured JSON.
+- `detect-marks.sh` -- bash wrapper for the per-turn detector.
+- `render/detect_marks.py` -- stroke-region detector: reads calibration.json, inverse-transforms each registered checkbox PDF rectangle to .rm coordinates, hit-tests strokes, emits structured JSON keyed by box name (finish_turn, end_session, mode_color, mode_bw, mode_wireframe).
 - `render/_rm_strokes.py` -- shared .rm parser (PAGE_W/PAGE_H constants, PEN_COLORS, collect_lines, ordered_rm_files). Single source of truth for the .rm coordinate system.
 - `calibration.json` -- committed at the skill root; firmware-versioned scale produced by the calibration ceremony. Refreshed only when firmware changes invalidate the constant.
 - `test-fixtures/calibration-paper-pro-fw<version>.rmdoc` -- captured reference .rmdoc from the calibration ceremony; consumed by test_derive_calibration.py's fixture smoke test.
-- `render/test_detect_finish_turn.py` -- JSON-shape test for the detector (stubs rmscene; runs stdlib-only).
+- `render/test_detect_marks.py` -- JSON-shape test for the detector (stubs rmscene; runs stdlib-only).
 - `render/test_derive_calibration.py` -- fixture smoke test for the calibration derivation (uses the committed .rmdoc + the venv).
 - `interpret-prompt.md` -- prompt template for the interpretation subagent (read by the orchestrator; not directly executable).
 - `test_interpret_parse.mjs` -- node:test cases for `parseInterpretResponse` (happy path, CRLF, missing/wrong-type fields, malformed JSON).
@@ -212,10 +212,10 @@ The full algorithm (count guard, Hungarian assignment, median scale derivation, 
 
 ## Detect entry point
 
-After pulling an annotated `.rmdoc` archive with `pull-from-tablet.sh` and extracting it, check whether the user marked the Finish-turn box:
+After pulling an annotated `.rmdoc` archive with `pull-from-tablet.sh` and extracting it, check which chrome checkboxes the user marked:
 
 ```
-bash skills/sketch-brainstorm/detect-finish-turn.sh <rm-dir>
+bash skills/sketch-brainstorm/detect-marks.sh <rm-dir>
 ```
 
 `<rm-dir>` is the directory inside the extracted `.rmdoc` archive that contains the per-page `<uuid>.rm` files (typically the directory named after the document UUID). The wrapper bootstraps the shared venv on first run.

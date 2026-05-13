@@ -173,7 +173,7 @@ def detect(rm_dir, scale):
 def main():
     if len(sys.argv) != 2:
         print(
-            "usage: detect_finish_turn.py <rm-dir>",
+            "usage: detect_marks.py <rm-dir>",
             file=sys.stderr,
         )
         sys.exit(1)
