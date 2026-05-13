@@ -91,7 +91,7 @@ def render_svg(
 def main():
     if len(sys.argv) != 3:
         print(f"usage: {sys.argv[0]} <rm-dir> <out-dir>", file=sys.stderr)
-        sys.exit(1)
+        return 1
     rm_dir = Path(sys.argv[1])
     out_dir = Path(sys.argv[2])
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -110,7 +110,7 @@ def main():
             scale = load_calibration()["scale"]
         except CalibrationError as e:
             print(str(e), file=sys.stderr)
-            sys.exit(1)
+            return 1
         print(f"using calibrated scale: {scale:.4f}")
         if not any(all_lines.values()):
             print("warning: no strokes found in any .rm file; writing empty SVGs", file=sys.stderr)
@@ -121,7 +121,7 @@ def main():
             for pdf_index, rm_file in pairs:
                 out_svg = out_dir / f"strokes-page{pdf_index + 1}.svg"
                 render_svg([], 1.0, out_svg)
-            return
+            return 0
         scale = derive_scale(bounds)
         print(
             f"calibration.json absent; falling back to auto-fit "
@@ -136,6 +136,8 @@ def main():
         render_svg(all_lines[rm_file], scale, out_svg)
         print(f"{rm_file.name} -> {out_svg.name}: {len(all_lines[rm_file])} polylines")
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -93,7 +93,15 @@ def detect_page(rm_file, scale):
     """
     boxes = {}
     # Materialize once: the box loop below re-iterates strokes per box.
-    strokes = list(collect_lines(rm_file)) if rm_file is not None and rm_file.exists() else []
+    # Wrap rmscene parse failures into a typed exception so main() can
+    # produce a clean diagnostic instead of a raw library traceback.
+    if rm_file is not None and rm_file.exists():
+        try:
+            strokes = list(collect_lines(rm_file))
+        except Exception as e:
+            raise ManifestError(f"failed to parse {rm_file.name}: {e}") from e
+    else:
+        strokes = []
     for box_name, pdf_box in BOX_REGISTRY.items():
         rm_box = inverse_transform_box(pdf_box, scale)
         total_area = 0.0

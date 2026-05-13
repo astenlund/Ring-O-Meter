@@ -28,7 +28,16 @@ REQUIREMENTS="$SCRIPT_DIR/requirements.txt"
 ensure_skill_venv "test.sh"
 
 if [ "$#" -eq 0 ]; then
-    exec "$VENV_PYTHON" -m unittest discover -s "$SCRIPT_DIR/render" -p "test_*.py"
+    "$VENV_PYTHON" -m unittest discover -s "$SCRIPT_DIR/render" -p "test_*.py"
+    # Node-side tests run after Python; both are required for a green
+    # bar so cross-language contract regressions surface here.
+    if command -v node >/dev/null 2>&1; then
+        node --test "$SCRIPT_DIR/render"/test_*.mjs
+    else
+        echo "test.sh: node not on PATH; skipping .mjs tests" >&2
+    fi
+
+    exit 0
 fi
 
 # With args (verbose flags, module names, or fully-qualified test ids),
