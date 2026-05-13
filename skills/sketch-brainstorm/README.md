@@ -86,6 +86,7 @@ The full design is documented in the host project's feature backlog at `.claude/
 - `poll-tablet.sh` -- bash wrapper for the background polling daemon; emits `READY:<NN>` on stdout when the user marks Finish-turn.
 - `render/poll_tablet.py` -- polling daemon implementation; lock file with heartbeat, `rmapi stat`-driven change detection, detector dispatch.
 - `render/test_poll_tablet.py` -- unit tests for the poller (stdlib-only, no venv needed).
+- `test.sh` -- bash wrapper that runs the Python test suite via the skill venv. `bash test.sh` runs all; pass `test_<module>` or a dotted test id to filter.
 - `_lib.sh` -- internal bash helpers sourced by other wrappers (rmapi auth precondition, shared Python venv bootstrap with requirements.txt drift detection).
 - `render/render-strokes.py` -- converts per-page `.rm` stroke files to SVG overlays.
 - `render-strokes.sh` -- bash wrapper for the inbound stroke-rendering pipeline.
