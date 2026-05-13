@@ -36,6 +36,37 @@ PAGE_H = 2160
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 CALIBRATION_JSON = SKILL_ROOT / "calibration.json"
 
+class CalibrationError(Exception):
+    """Raised when calibration.json is missing, invalid, or unparseable."""
+
+
+def load_calibration():
+    """Load and validate CALIBRATION_JSON.
+
+    Raises CalibrationError on missing file, invalid JSON, or invalid
+    scale value. Callers translate to a non-zero exit + diagnostic in
+    their `main()`.
+    """
+    if not CALIBRATION_JSON.exists():
+        raise CalibrationError(
+            f"calibration.json not found at {CALIBRATION_JSON}; "
+            f"run derive-calibration.sh first"
+        )
+    try:
+        data = json.loads(CALIBRATION_JSON.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise CalibrationError(
+            f"calibration.json is not valid JSON ({e}); re-run derive-calibration.sh"
+        ) from e
+    scale = data.get("scale")
+    if not isinstance(scale, (int, float)) or scale <= 0:
+        raise CalibrationError(
+            "calibration.json missing or invalid 'scale'; re-run derive-calibration.sh"
+        )
+
+    return data
+
+
 PEN_COLORS = {
     # rmscene.scene_items.PenColor enum -> on-screen hex.
     # Preserving color is load-bearing: the vocabulary uses red for

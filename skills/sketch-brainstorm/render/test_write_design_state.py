@@ -163,6 +163,18 @@ class WriteDesignStateTests(unittest.TestCase):
             content = (session / "design-state.md").read_text(encoding="utf-8")
             self.assertIn("rewritten\n\n## Iteration 02", content)
 
+    def test_rejects_malformed_iter_nn(self):
+        # A single-digit iter_nn produces a heading the section regex
+        # cannot match on the next call, leading to silent re-append
+        # instead of overwrite. Must raise rather than silently corrupt.
+        with tempfile.TemporaryDirectory() as tmp:
+            session = Path(tmp)
+            _seed_session(session)
+            with self.assertRaises(ValueError):
+                write_design_state.write(
+                    session_dir=session, iter_nn="1", mode="color", delta="x",
+                )
+
     def test_missing_session_dir_raises_filenotfounderror(self):
         # Caller error: passing a nonexistent --session-dir must surface
         # as FileNotFoundError, not a cryptic .tmp write failure.

@@ -203,6 +203,12 @@ async function main() {
     // settled before page.pdf() snapshots. Default 'load' fires too early
     // and the PDF can capture fallback fonts.
     await page.goto(fileUrl, { waitUntil: 'networkidle' });
+    // Mode stylesheets are injected via addStyleTag's `path` option, which
+    // reads from the absolute SCRIPT_DIR location directly. The earlier
+    // page-chrome.css copy-then-link pattern is required only for the
+    // <link rel="stylesheet" href="..."> in the template (file:// load
+    // needs the sheet adjacent to the temp HTML); addStyleTag bypasses
+    // that, so no copy step is needed for mode sheets.
     if (currentMode === 'bw') {
       // Style injection is synchronous; no fonts in this sheet, so no
       // networkidle wait needed before page.pdf().

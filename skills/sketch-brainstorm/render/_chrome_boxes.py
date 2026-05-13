@@ -30,17 +30,13 @@ MODE_COLOR_BOX_PDF     = (80.0,  2100.0, 40.0, 40.0)
 MODE_BW_BOX_PDF        = (240.0, 2100.0, 40.0, 40.0)
 MODE_WIREFRAME_BOX_PDF = (400.0, 2100.0, 40.0, 40.0)
 
-# Canonical render-mode tuple. Mirrored as `VALID_MODES` in `render.mjs`
-# (JS cannot import from Python); a contract test in
-# `test_render_format.mjs` asserts the two stay in sync.
+# Canonical render-mode tuple. Mirrored as `VALID_MODES` in
+# `render.mjs` (JS cannot import from Python); both sides carry a
+# LOCKSTEP comment naming each other.
 VALID_MODES = ("color", "bw", "wireframe")
 
-# Mode-switch box names in BOX_REGISTRY. Order matches VALID_MODES so
-# `MODE_BOX_NAMES[i]` corresponds to `VALID_MODES[i]`.
-MODE_BOX_NAMES = tuple(f"mode_{m}" for m in VALID_MODES)
-
 # Detector box registry: maps box names to PDF rectangles. Mode-switch
-# entries are ordered to match MODE_BOX_NAMES.
+# entries follow VALID_MODES order.
 BOX_REGISTRY = {
     "finish_turn":    FINISH_TURN_BOX_PDF,
     "end_session":    END_SESSION_BOX_PDF,

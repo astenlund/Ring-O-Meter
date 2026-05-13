@@ -14,7 +14,9 @@ from _rm_strokes import (
     CALIBRATION_JSON,
     PAGE_W,
     PAGE_H,
+    CalibrationError,
     collect_lines,
+    load_calibration,
     ordered_rm_files,
 )
 
@@ -105,13 +107,9 @@ def main():
     # (e.g., on a fresh clone before the user has run the ceremony).
     if CALIBRATION_JSON.exists():
         try:
-            calibration_data = json.loads(CALIBRATION_JSON.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            print(f"calibration.json is not valid JSON ({e}); re-run derive-calibration.sh", file=sys.stderr)
-            sys.exit(1)
-        scale = calibration_data.get("scale")
-        if not isinstance(scale, (int, float)) or scale <= 0:
-            print("calibration.json missing or invalid 'scale'; re-run derive-calibration.sh", file=sys.stderr)
+            scale = load_calibration()["scale"]
+        except CalibrationError as e:
+            print(str(e), file=sys.stderr)
             sys.exit(1)
         print(f"using calibrated scale: {scale:.4f}")
         if not any(all_lines.values()):
