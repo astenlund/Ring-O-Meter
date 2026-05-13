@@ -300,6 +300,31 @@ body iteration:
   so the user can see what rmapi / Playwright / PyMuPDF reported. No
   paraphrasing of error messages.
 
+## State persistence
+
+`design-state.md` carries two pieces of state main chat reads and writes per turn:
+1. The `## Iteration NN` heading for the latest iter (durable cross-turn memory).
+2. The `current_mode` frontmatter field (`color | bw | wireframe`).
+
+Both update **atomically** per turn via write-to-temp + rename:
+
+1. Generate the new file content (frontmatter with updated `current_mode`,
+   plus all existing iteration sections plus the new `## Iteration NN`).
+2. Write to `design-state.md.tmp` in the same directory.
+3. `mv design-state.md.tmp design-state.md` (rename is atomic on POSIX
+   and atomic-in-practice on NTFS for same-volume same-directory renames).
+
+This is load-bearing for the iter-number staleness check used in
+cross-machine resume (see `.claude/features/remarkable-tablet-brainstorm.md`
+> "Render modes" > "State encoding"): a crash between the heading write
+and the `current_mode` write would let the staleness comparison silently
+miss the divergence. Atomic rename guarantees either-both-or-neither.
+
+When main chat handles a poller notification:
+- `READY:<NN>` (no mode suffix): carry `current_mode` forward; update heading.
+- `READY:<NN>:mode=<X>`: set `current_mode: X`; update heading.
+- `STOP:<NN>`: write nothing further to `design-state.md`; run close-session ceremony.
+
 ## Cold-start (per-session bootstrap-lite)
 
 On a fresh session - when no current session folder exists - run
