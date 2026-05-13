@@ -327,6 +327,46 @@ When main chat handles a poller notification:
 
 Main chat invokes `bash write-design-state.sh --session-dir <path> --iter NN --mode <color|bw|wireframe>` with the iter's content delta on stdin per turn. The helper handles the write-to-temp + rename internally; main chat does not need to orchestrate the atomic-write step manually.
 
+## Resume flow
+
+When main chat resumes a session (chat restart, fresh machine, etc.),
+the active mode comes from one of three sources in priority order:
+
+1. **`current_mode` field in `design-state.md` frontmatter** -- primary.
+   If present and valid (`color | bw | wireframe`), use it.
+
+2. **Color default -- short-circuit** -- used in two cases:
+   - The field is absent from frontmatter (v1-era or pre-migration session).
+   - The frontmatter is unparseable YAML (corrupt or partial-write).
+
+   In both cases, main chat sets `current_mode: color`, writes a fresh
+   frontmatter on the next render, and surfaces a warning in chat noting
+   the recovery. No pixel-read fallback runs because there's no prior
+   mode to recover.
+
+3. **Pixel-read fallback** -- fires only when `current_mode` is present
+   AND the iter-number staleness check trips (i.e., `design-state.md`'s
+   last `## Iteration NN` is behind the cloud's latest `<slug>-NN.pdf`).
+   The flow is:
+
+   1. Pull the latest cloud PDF into a local working directory via
+      `pull-from-tablet.sh --cloud-doc <slug>/<slug>-NN --out-dir ...`.
+   2. Locate the extracted `<doc-uuid>.pdf` inside the rmdoc dir.
+   3. Invoke: `bash skills/sketch-brainstorm/read-prefill.sh <path-to-pulled-pdf>`.
+
+   (Pull-then-read split: the helper is intentionally PDF-path-driven so
+   it stays a single-responsibility utility; the bootstrap-dialogue slice
+   will own the full orchestration including the pull step. For now main
+   chat orchestrates the two-step sequence directly.)
+
+   On clean detection, the helper emits `{"active_mode": "..."}` on
+   stdout and exits 0. On rasterization failure or ambiguous sample,
+   the helper exits non-zero -- main chat then falls back to Color and
+   surfaces a warning, same as the field-absence path.
+
+The iter-number comparison data is the same data bootstrap uses for
+iter-counter resolution; no additional rmapi call is needed.
+
 ## Cold-start (per-session bootstrap-lite)
 
 On a fresh session - when no current session folder exists - run
