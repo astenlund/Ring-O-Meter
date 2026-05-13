@@ -90,15 +90,19 @@ The full design is documented in the host project's feature backlog at `.claude/
 - `render/test_poll_tablet.py` -- unit tests for the poller (stdlib-only, no venv needed).
 - `detect-marks.sh` -- bash wrapper for the per-turn checkbox detector; emits structured JSON keyed by box name.
 - `render/detect_marks.py` -- capsule-area mark detector; reports per-box `area_rm_sq` + `marked` across all pages.
+- `render/_chrome_boxes.py` -- dependency-free shared data module: BOX_REGISTRY (5-box PDF coordinates), VALID_MODES, ITER_NN_RE. Importable from both venvs.
+- `render/_geometry.py` -- capsule-area geometry primitives; stdlib-only (math only). Extracted so test_geometry.py runs without the venv.
+- `render/_atomic_write.py` -- atomic_write_text helper (write-to-temp + os.replace); shared by poll_tablet and write_design_state.
+- `render/_rm_strokes.py` -- shared .rm parser: PAGE_W/PAGE_H, PEN_COLORS, collect_lines, ordered_rm_files, CalibrationError, load_calibration.
 - `render/test_detect_marks.py` -- unit tests for the detector (stdlib-only with rmscene stubbed).
-- `render/test_geometry.py` -- unit tests for capsule-area geometry helpers (stdlib-only with rmscene stubbed).
+- `render/test_geometry.py` -- unit tests for capsule-area geometry helpers; stdlib-only (imports _geometry.py directly; no venv or rmscene stub required).
 - `write-design-state.sh` -- bash wrapper for the atomic design-state.md update (frontmatter + iter-section replace-or-append + write-temp + rename).
 - `render/write_design_state.py` -- implementation of the atomic write helper.
 - `render/test_write_design_state.py` -- unit tests for write-design-state (stdlib-only).
 - `read-prefill.sh` -- bash wrapper for the cross-machine resume helper; pixel-samples the cloud PDF's pre-filled mode-switch box and prints the active mode.
 - `render/read_prefill.py` -- implementation of read-prefill (venv-required: PyMuPDF + Pillow).
 - `render/test_read_prefill.py` -- unit tests for read-prefill (venv-required).
-- `test.sh` -- bash wrapper that runs the Python test suite via the skill venv. `bash test.sh` runs all; pass `test_<module>` or a dotted test id to filter.
+- `test.sh` -- bash wrapper that runs the Python test suite (via the skill venv) followed by the Node test suite (`test_*.mjs`). `bash test.sh` runs both; pass `test_<module>` or a dotted test id to target a Python subset.
 - `_lib.sh` -- internal bash helpers sourced by other wrappers (rmapi auth precondition, shared Python venv bootstrap with requirements.txt drift detection).
 - `render/render-strokes.py` -- converts per-page `.rm` stroke files to SVG overlays.
 - `render-strokes.sh` -- bash wrapper for the inbound stroke-rendering pipeline.

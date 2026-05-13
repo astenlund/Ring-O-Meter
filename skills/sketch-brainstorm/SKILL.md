@@ -82,8 +82,11 @@ auto-detecting the user's tablet back-out.
 - `read-prefill.sh` -- bash wrapper for the pixel-read pre-fill helper used by the resume flow's mode-recovery fallback.
 - `render/read_prefill.py` -- rasterizes a pulled PDF and reads a known pixel sample to infer the active mode; emits `{"active_mode": "..."}` on success.
 - `render/test_read_prefill.py` -- unit tests for the pixel-read mode inference.
-- `render/test_geometry.py` -- capsule-area tests covering the union-area computation used by the stroke-region detector.
-- `render/_rm_strokes.py` -- shared .rm parser (PAGE_W/PAGE_H constants, PEN_COLORS, collect_lines, ordered_rm_files). Single source of truth for the .rm coordinate system.
+- `render/test_geometry.py` -- capsule-area geometry tests; stdlib-only (imports _geometry.py directly; no venv or rmscene stub required).
+- `render/_chrome_boxes.py` -- dependency-free shared data module: BOX_REGISTRY (5-box PDF coordinates), VALID_MODES tuple, ITER_NN_RE regex. Importable from both venvs (rmscene-equipped and fitz-equipped) without transitive deps.
+- `render/_geometry.py` -- capsule-area geometry primitives (capsule_area, _liang_barsky_clip, _point_in_box); stdlib-only (math only). Extracted from _rm_strokes so test_geometry.py runs without the venv.
+- `render/_atomic_write.py` -- atomic_write_text helper (write-to-temp + os.replace); shared by poll_tablet.write_lock and write_design_state.write.
+- `render/_rm_strokes.py` -- shared .rm parser: PAGE_W/PAGE_H constants, PEN_COLORS, collect_lines, ordered_rm_files, CalibrationError, load_calibration. Single source of truth for the .rm coordinate system and calibration loading.
 - `calibration.json` -- committed at the skill root; firmware-versioned scale produced by the calibration ceremony. Refreshed only when firmware changes invalidate the constant.
 - `test-fixtures/calibration-paper-pro-fw<version>.rmdoc` -- captured reference .rmdoc from the calibration ceremony; consumed by test_derive_calibration.py's fixture smoke test.
 - `render/test_detect_marks.py` -- JSON-shape test for the detector (stubs rmscene; runs stdlib-only).
