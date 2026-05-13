@@ -101,9 +101,12 @@ def fetch_signature(cloud_doc: str) -> Signature:
 def _resolve_mode_winner(per_page) -> Optional[str]:
     """Apply radio-button winner-takes-all on the mode-switch trio.
 
-    Aggregate area per box across pages via max (per the output contract).
-    Return the box's short name (e.g. "bw") if any box is marked and a
-    unique winner exists; None on no marks or ties.
+    Two distinct cross-page aggregations apply here, matching the
+    output contract:
+      - `marked` collapses across pages with OR (any page qualifies).
+      - `area_rm_sq` collapses across pages with max (for tiebreak).
+    Returns the box's short name if any box is marked and a unique
+    area-winner exists; None on no marks or ties.
     """
     per_mode_max = {short: 0.0 for short in VALID_MODES}
     qualifying = []
@@ -152,7 +155,12 @@ def pull_and_detect(cloud_doc: str, pulls_dir: Path) -> DetectionResult:
         capture_output=True,
         text=True,
     )
-    rm_dir = pull.stdout.strip().splitlines()[-1]
+    pull_lines = pull.stdout.strip().splitlines()
+    if not pull_lines:
+        raise RuntimeError("pull-from-tablet.sh produced no output (rm-dir path missing)")
+    rm_dir = pull_lines[-1]
+    if not Path(rm_dir).is_dir():
+        raise RuntimeError(f"pull-from-tablet.sh emitted non-directory rm_dir: {rm_dir!r}")
     detect = subprocess.run(
         ["bash", str(DETECT_WRAPPER), rm_dir],
         check=True,
@@ -303,7 +311,7 @@ def main(argv=None):
             lock_file=args.lock_file,
             poll_interval_s=args.poll_interval,
         )
-    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError) as e:
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, RuntimeError) as e:
         print(f"poll_tablet: {e}", file=sys.stderr)
         return 1
 

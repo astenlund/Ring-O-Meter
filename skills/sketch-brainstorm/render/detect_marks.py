@@ -122,23 +122,22 @@ def detect(rm_dir, scale):
 
 def main():
     if len(sys.argv) != 2:
-        print(
-            "usage: detect_marks.py <rm-dir>",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        print("usage: detect_marks.py <rm-dir>", file=sys.stderr)
+        return 1
     rm_dir = Path(sys.argv[1])
     if not rm_dir.is_dir():
         print(f"rm-dir not a directory: {rm_dir}", file=sys.stderr)
-        sys.exit(1)
+        return 1
     try:
         calibration = load_calibration()
         payload = detect(rm_dir, calibration["scale"])
-    except (CalibrationError, ManifestError) as e:
+    except (CalibrationError, ManifestError, OSError) as e:
         print(str(e), file=sys.stderr)
-        sys.exit(1)
+        return 1
     print(json.dumps(payload))
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
