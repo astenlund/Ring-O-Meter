@@ -47,16 +47,44 @@ def _load_kebab_module(module_name, file_path):
     return module
 
 
-# Stub the heavy native deps so module load doesn't require the venv.
-sys.modules.setdefault("fitz", MagicMock())
-sys.modules.setdefault("PIL", MagicMock())
-sys.modules.setdefault("PIL.Image", MagicMock())
-sys.modules.setdefault("rmscene", MagicMock())
-sys.modules.setdefault("rmscene.scene_items", MagicMock())
-
-composite_mod = _load_kebab_module("composite_annotated_under_test", _COMPOSITE_PY)
-render_strokes_mod = _load_kebab_module("render_strokes_under_test", _RENDER_STROKES_PY)
-prerender_pages_mod = _load_kebab_module("prerender_pages_under_test", _PRERENDER_PAGES_PY)
+# Stub the heavy native deps for the kebab-module load only. The stubs
+# are installed in sys.modules just long enough to satisfy each loaded
+# module's `import fitz` / `from PIL import Image` / `import rmscene`,
+# then sys.modules is restored before this file finishes loading.
+# The kebab-modules capture their own references to the MagicMock
+# objects during exec_module, so test methods still see the mocks via
+# composite_mod.fitz, render_strokes_mod.PIL, etc. Restoring sys.modules
+# is load-time-scoped (try/finally) rather than test-execution-scoped
+# (tearDownModule) because `unittest discover` loads ALL test files
+# before running any tests; a test-execution-scoped restore would leak
+# the stubs into sibling files loaded between this file's load and its
+# tearDownModule fire (test_prerender_pages.py is the canary).
+_STUB_MODULE_NAMES = ("fitz", "PIL", "PIL.Image", "rmscene", "rmscene.scene_items")
+_originals = {name: sys.modules.get(name) for name in _STUB_MODULE_NAMES}
+_pre_load_modules = set(sys.modules.keys())
+for _name in _STUB_MODULE_NAMES:
+    sys.modules[_name] = MagicMock()
+try:
+    composite_mod = _load_kebab_module("composite_annotated_under_test", _COMPOSITE_PY)
+    render_strokes_mod = _load_kebab_module("render_strokes_under_test", _RENDER_STROKES_PY)
+    prerender_pages_mod = _load_kebab_module("prerender_pages_under_test", _PRERENDER_PAGES_PY)
+finally:
+    # Restore the explicit stubs to their pre-existing state.
+    for _name, _original in _originals.items():
+        if _original is None:
+            sys.modules.pop(_name, None)
+        else:
+            sys.modules[_name] = _original
+    # Drop transitively-loaded helpers (e.g., _rm_strokes) whose module
+    # namespaces captured stubbed rmscene / PIL functions. Their cached
+    # presence in sys.modules would otherwise hand siblings like
+    # test_derive_calibration.py a stub-tainted import. The kebab-modules
+    # themselves also get dropped here, which is fine: the locals
+    # composite_mod / render_strokes_mod / prerender_pages_mod still
+    # hold their references for this file's own tests.
+    for _name in set(sys.modules.keys()) - _pre_load_modules:
+        if _name not in _STUB_MODULE_NAMES:
+            sys.modules.pop(_name, None)
 
 
 class PagePatternTests(unittest.TestCase):
