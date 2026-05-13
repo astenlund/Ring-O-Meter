@@ -16,6 +16,7 @@ the inverse-transform in `detect_marks.inverse_transform_box` and the
 pixel sampling in `read_prefill.read_prefill` both consume these
 values verbatim.
 """
+import re
 
 # Finish-turn box in PDF coordinates: (x, y, w, h).
 FINISH_TURN_BOX_PDF = (1540.0, 2100.0, 40.0, 40.0)
@@ -34,6 +35,14 @@ MODE_WIREFRAME_BOX_PDF = (400.0, 2100.0, 40.0, 40.0)
 # `render.mjs` (JS cannot import from Python); both sides carry a
 # LOCKSTEP comment naming each other.
 VALID_MODES = ("color", "bw", "wireframe")
+
+# Iteration-number format. Two digits is the canonical shape used
+# throughout the protocol (`00`, `05`, `42`); the regex permits more
+# digits so sessions can exceed 99 iterations without a silent cliff,
+# while still rejecting single-digit values that would silently fail
+# the section-overwrite regex in write_design_state.
+ITER_NN_RE = re.compile(r"\d{2,}")
+
 
 # Detector box registry: maps box names to PDF rectangles. Mode-switch
 # entries follow VALID_MODES order.
