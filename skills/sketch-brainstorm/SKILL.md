@@ -35,11 +35,11 @@ deferred to follow-up slices.
 Not yet implemented (deferred to follow-up plans):
 
 - Auth bootstrap (`setup-rmapi.sh`, `~/.rmapi` token, deny rules, PreToolUse hook); both transport wrappers assume the machine is already paired
-- Bootstrap dialogue (precondition check, topic prompt, cloud path resolution, design-language briefing)
-- Stroke-region checkbox detector calibration ceremony (`derive-calibration.py`, 5-dot PDF, `calibration.json`) and detector script (`detect-marks.sh`); background polling script wrapping the detector with the stdout `READY:NN` protocol
-- Multi-sketch iterations (N rendered sketches plus a trailing legend page, for side-by-side alternatives)
+- Full bootstrap dialogue (design-language briefing, lock-file check, resume-vs-fresh prompt); bootstrap-lite ships today
+- ERROR taxonomy + backoff (structured error classes from the poller, retry/backoff policy)
 - Verify-before-push (visual sanity check on the rendered output before pushing)
-- B&W and Wireframe render modes (Color is current default and only mode)
+- Multi-sketch iterations (N rendered sketches plus a trailing legend page, for side-by-side alternatives)
+- Compression of cross-turn state (design-state.md history pruning, archive rollover)
 - Vocabulary lifecycle (weight-based active / archived split, frecency-style scoring) and close-session ceremony
 
 The automated loop ships today: bootstrap-lite + iter01+ render loop +
@@ -54,7 +54,9 @@ auto-detecting the user's tablet back-out.
 - `README.md` -- condensed design rationale for the skill.
 - `vocabulary.md` -- canonical core vocabulary table (gestures and their meanings).
 - `render/page-template.html` -- HTML template with `{{topic}}`, `{{iteration_label}}`, `{{mockup_html}}` tokens.
-- `render/page-chrome.css` -- styles for header strip, notes region, legend, and Finish-turn checkbox.
+- `render/page-chrome.css` -- styles for header strip, notes region, legend, and Finish-turn checkbox (Color mode).
+- `render/page-chrome-bw.css` -- B&W mode stylesheet (monochrome rendering for the page chrome).
+- `render/page-chrome-wireframe.css` -- Wireframe mode stylesheet (outline-only rendering for the page chrome).
 - `render/render.mjs` -- Node ESM script that substitutes tokens, launches Chromium, and writes the PDF.
 - `render-html-to-pdf.sh` -- bash wrapper around `render.mjs`. Outbound render entry point.
 - `push-to-tablet.sh` -- bash wrapper for `rmapi put`; outbound cloud upload entry point.
@@ -71,6 +73,16 @@ auto-detecting the user's tablet back-out.
 - `render/derive_calibration.py` -- calibration derivation: five-centroid Hungarian assignment, median scale derivation, asymmetry + residual verification, writes calibration.json.
 - `detect-marks.sh` -- bash wrapper for the per-turn detector.
 - `render/detect_marks.py` -- stroke-region detector: reads calibration.json, inverse-transforms each registered checkbox PDF rectangle to .rm coordinates, hit-tests strokes, emits structured JSON keyed by box name (finish_turn, end_session, mode_color, mode_bw, mode_wireframe).
+- `poll-tablet.sh` -- bash wrapper for the background poller that wraps the detector and emits the `READY:NN` / `READY:NN:mode=X` / `STOP:NN` protocol on stdout.
+- `render/poll_tablet.py` -- background polling implementation: rmapi-driven pull cadence, detector dispatch, mode/stop signalling.
+- `render/test_poll_tablet.py` -- unit tests for the poller's state machine and signal-emission logic.
+- `write-design-state.sh` -- bash wrapper for the atomic frontmatter + section update helper; reads delta on stdin.
+- `render/write_design_state.py` -- atomic write-to-temp + rename implementation; preserves prior iterations and updates `current_mode` frontmatter.
+- `render/test_write_design_state.py` -- unit tests for the atomic-write helper (frontmatter merge, iteration append, idempotency).
+- `read-prefill.sh` -- bash wrapper for the pixel-read pre-fill helper used by the resume flow's mode-recovery fallback.
+- `render/read_prefill.py` -- rasterizes a pulled PDF and reads a known pixel sample to infer the active mode; emits `{"active_mode": "..."}` on success.
+- `render/test_read_prefill.py` -- unit tests for the pixel-read mode inference.
+- `render/test_geometry.py` -- capsule-area tests covering the union-area computation used by the stroke-region detector.
 - `render/_rm_strokes.py` -- shared .rm parser (PAGE_W/PAGE_H constants, PEN_COLORS, collect_lines, ordered_rm_files). Single source of truth for the .rm coordinate system.
 - `calibration.json` -- committed at the skill root; firmware-versioned scale produced by the calibration ceremony. Refreshed only when firmware changes invalidate the constant.
 - `test-fixtures/calibration-paper-pro-fw<version>.rmdoc` -- captured reference .rmdoc from the calibration ceremony; consumed by test_derive_calibration.py's fixture smoke test.
@@ -223,10 +235,19 @@ bash skills/sketch-brainstorm/detect-marks.sh <rm-dir>
 Output: a single JSON line on stdout, exit 0 on a clean run regardless of result. JSON shape:
 
 ```
-{"marked":true,"per_page":[{"page":1,"marked":false,"hit_strokes":0,"total_strokes":4},{"page":2,"marked":true,"hit_strokes":1,"total_strokes":2}]}
+{"per_page": [
+  {"page": 1, "boxes": {
+    "finish_turn":    {"area_rm_sq": 0.0, "marked": false},
+    "end_session":    {"area_rm_sq": 0.0, "marked": false},
+    "mode_color":     {"area_rm_sq": 0.0, "marked": false},
+    "mode_bw":        {"area_rm_sq": 0.0, "marked": false},
+    "mode_wireframe": {"area_rm_sq": 0.0, "marked": false}
+  }},
+  ...
+]}
 ```
 
-`marked` is the OR across pages (mirrored-box behaviour). `per_page` always covers every rendered page (length comes from the `.content` manifest's `cPages.pages[]`, not from `.rm` file presence); pages with no `.rm` file get synthesized entries with `hit_strokes:0, total_strokes:0`.
+Each per-page entry reports every registered checkbox by name, with the union stroke-capsule `area_rm_sq` inside the box's `.rm`-space rectangle and a `marked` boolean from comparing that area against the per-box threshold. `per_page` always covers every rendered page (length comes from the `.content` manifest's `cPages.pages[]`, not from `.rm` file presence); pages with no `.rm` file get synthesized entries with every box at `area_rm_sq: 0.0, marked: false`.
 
 Exit non-zero is reserved for script errors: missing `calibration.json`, malformed rm-dir, unreadable `.content` manifest, rmscene exception. A clean "no marks detected" still exits 0 with `"marked":false`.
 
@@ -267,14 +288,18 @@ body iteration:
    parse failure, retry once with a "JSON only, no preamble" reminder;
    on a second failure, surface the raw response to chat and ask the
    user for a manual `user_intent` paraphrase.
-5. Append `## Iteration NN\n\n${design_state_delta}\n\n` to
-   `design-state.md`. Surface `per_page_observations` to chat for
-   visibility.
+5. Invoke: `bash skills/sketch-brainstorm/write-design-state.sh
+   --session-dir <session> --iter NN --mode <current_mode>` with the
+   iteration's design-state delta on stdin. The helper performs the
+   atomic frontmatter + section update; main chat does not append
+   manually. Surface `per_page_observations` to chat for visibility.
 6. Compose `mockups/<slug>-NN.html` from `user_intent` + prior mockup
    HTML + `design-state.md`, respecting the design-language CSS.
 7. Run `render-html-to-pdf.sh --topic "<topic>" --iteration NN
-   --mockup-html <mockups/<slug>-NN.html> --out <session>/<slug>-NN.pdf
-   --prerender-out <session>/prerender/`.
+   --mockup-html <mockups/<slug>-NN.html> --current-mode <mode>
+   --out <session>/<slug>-NN.pdf --prerender-out <session>/prerender/`.
+   The mode comes from `design-state.md`'s `current_mode` frontmatter
+   (which step 5 just wrote).
 8. `push-to-tablet.sh --pdf <session>/<slug>-NN.pdf --cloud-folder
    <cloud-path>/<slug>`.
 9. Tell the user: "iter NN pushed; annotate and back out, then say `go`."
