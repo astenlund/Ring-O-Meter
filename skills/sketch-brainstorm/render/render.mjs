@@ -21,6 +21,9 @@ import { parseArgs } from 'node:util';
 const VIEWPORT_WIDTH = 1620;
 const VIEWPORT_HEIGHT = 2160;
 
+const VALID_MODES = ['color', 'bw', 'wireframe'];
+const DEFAULT_MODE = 'color';
+
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PATH = join(SCRIPT_DIR, 'page-template.html');
 const TEMP_HTML_PATH = '.tmp/sketch-brainstorm/test/render-input.html';
@@ -88,6 +91,7 @@ function substituteTokens(template, tokens) {
   return template
     .replaceAll('{{topic}}', escapeHtml(tokens.topic))
     .replaceAll('{{iteration_label}}', escapeHtml(tokens.iteration_label))
+    .replaceAll('{{current_mode}}', escapeHtml(tokens.current_mode))
     .replaceAll('{{mockup_html}}', tokens.mockup_html); // intentionally raw HTML
 }
 
@@ -118,6 +122,7 @@ async function main() {
       subtopic: { type: 'string' },
       out: { type: 'string' },
       'mockup-html': { type: 'string' },
+      'current-mode': { type: 'string' },
     },
     strict: true,
   });
@@ -132,6 +137,13 @@ async function main() {
     fail('--out is required');
   }
 
+  const currentMode = values['current-mode'] ?? DEFAULT_MODE;
+  if (!VALID_MODES.includes(currentMode)) {
+    fail(
+      `--current-mode must be one of ${VALID_MODES.join(', ')}; got: ${currentMode}`,
+    );
+  }
+
   const playwright = loadPlaywright();
   const template = await readFile(TEMPLATE_PATH, 'utf8');
   const mockupHtml = await readMockupHtml(values['mockup-html']);
@@ -141,6 +153,7 @@ async function main() {
   const rendered = substituteTokens(template, {
     topic: values.topic,
     iteration_label: headerIteration,
+    current_mode: currentMode,
     mockup_html: mockupHtml,
   });
 

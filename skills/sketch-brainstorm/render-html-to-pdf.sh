@@ -15,6 +15,10 @@
 # Optional flags:
 #   --subtopic <string>      forward-compat for multi-sketch headers
 #   --mockup-html <path>     path to file with mockup HTML body
+#   --current-mode <mode>    active render mode: color (default), bw, wireframe.
+#                            Drives the chrome footer's mode-switch pre-fill
+#                            so cross-machine pixel detection can recover the
+#                            active mode from a rendered page.
 #   --prerender-out <dir>    after PDF, also export per-page PNGs as
 #                            <basename>-page1.png, ...-page2.png
 #
@@ -73,6 +77,7 @@ TOPIC=""
 ITERATION=""
 SUBTOPIC=""
 MOCKUP_HTML=""
+CURRENT_MODE="color"
 OUT=""
 PRERENDER_OUT=""
 
@@ -90,6 +95,9 @@ while [[ $# -gt 0 ]]; do
     --mockup-html)
       [[ $# -ge 2 ]] || { echo "render-html-to-pdf.sh: --mockup-html requires a value" >&2; exit 1; }
       MOCKUP_HTML="$2"; shift 2;;
+    --current-mode)
+      [[ $# -ge 2 ]] || { echo "render-html-to-pdf.sh: --current-mode requires a value" >&2; exit 1; }
+      CURRENT_MODE="$2"; shift 2;;
     --out)
       [[ $# -ge 2 ]] || { echo "render-html-to-pdf.sh: --out requires a value" >&2; exit 1; }
       OUT="$2"; shift 2;;
@@ -104,8 +112,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Build node argv: --topic, --iteration, --out are required by render.mjs;
-# --subtopic and --mockup-html are forwarded only when set.
-NODE_ARGS=( --topic "$TOPIC" --iteration "$ITERATION" --out "$OUT" )
+# --subtopic, --mockup-html, and --current-mode are forwarded only when set.
+# --current-mode always has a value (defaults to color above), so always
+# forward it; render.mjs validates against the allowed set.
+NODE_ARGS=( --topic "$TOPIC" --iteration "$ITERATION" --out "$OUT" --current-mode "$CURRENT_MODE" )
 if [[ -n "$SUBTOPIC" ]]; then
   NODE_ARGS+=( --subtopic "$SUBTOPIC" )
 fi

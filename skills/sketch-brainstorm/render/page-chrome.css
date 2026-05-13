@@ -240,6 +240,24 @@ html, body {
   border-radius: 4px;
 }
 
+/* Pre-fill paint: the active mode's checkbox is filled with a solid
+   contrast color (no glyph; matches the user's chosen visual style).
+   The render.mjs supplies the active mode via [data-current-mode] on
+   .mode-switch-row, and the descendant selector targets that mode's
+   checkbox. The fill is render-mode-independent (B&W filter scope
+   leaves the chrome footer unfiltered), so cold-path pixel detection
+   reads the same dominant color regardless of which render mode is
+   active.
+
+   Color choice: dark gold (#a08020). Visible against white-paper
+   background, distinct from pen ink colors (black/grey/red/blue), and
+   robust against the device's dithered greyscale rendering. */
+.mode-switch-row[data-current-mode="color"]     .mode-switch-checkbox[data-mode="color"],
+.mode-switch-row[data-current-mode="bw"]        .mode-switch-checkbox[data-mode="bw"],
+.mode-switch-row[data-current-mode="wireframe"] .mode-switch-checkbox[data-mode="wireframe"] {
+  background: #a08020;
+}
+
 /* --- Page 1: mockup page --- */
 
 /* Mockup region: large area between header and small notes region.
