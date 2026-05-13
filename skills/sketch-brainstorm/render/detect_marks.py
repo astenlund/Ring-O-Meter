@@ -7,9 +7,7 @@ strokes via _rm_strokes.collect_lines(), and hit-test each stroke
 against the box region. A stroke is "on the box" when its capsule
 area inside the box meets MIN_AREA_RM_SQ; a box is "marked" when at
 least one stroke qualifies. Per-page output reports every registered
-box even if its PDF rectangle is not yet defined (mode-switch boxes
-are forward-spec; they always report area_rm_sq=0.0, marked=false
-until the mode-switch boxes ship and their PDF constants land).
+box.
 
 Output: a single JSON line on stdout, exit 0 on a clean run
 regardless of result. Exit non-zero is reserved for script errors
@@ -32,15 +30,20 @@ FINISH_TURN_BOX_PDF = (1540.0, 2100.0, 40.0, 40.0)  # x, y, w, h
 # End-session box in PDF coordinates. (x, y, w, h) = (1540, 2040, 40, 40).
 END_SESSION_BOX_PDF = (1540.0, 2040.0, 40.0, 40.0)
 
+# LOCKSTEP with page-chrome.css .mode-switch-row / .mode-switch-checkbox.
+# Mode-switch trio: three 40x40 boxes in the left half of the chrome
+# footer, horizontally at x=80, 240, 400 / y=2100 on each page.
+MODE_COLOR_BOX_PDF     = (80.0,  2100.0, 40.0, 40.0)
+MODE_BW_BOX_PDF        = (240.0, 2100.0, 40.0, 40.0)
+MODE_WIREFRAME_BOX_PDF = (400.0, 2100.0, 40.0, 40.0)
+
 # Box registry: detector reports per-box area for every entry here.
-# Mode-switch trio is forward-spec; PDF constants land when the
-# mode-switch boxes ship.
 BOX_REGISTRY = {
-    "finish_turn": FINISH_TURN_BOX_PDF,
-    "end_session": END_SESSION_BOX_PDF,
-    "mode_color": None,      # filled in when the mode-switch boxes ship
-    "mode_bw": None,
-    "mode_wireframe": None,
+    "finish_turn":    FINISH_TURN_BOX_PDF,
+    "end_session":    END_SESSION_BOX_PDF,
+    "mode_color":     MODE_COLOR_BOX_PDF,
+    "mode_bw":        MODE_BW_BOX_PDF,
+    "mode_wireframe": MODE_WIREFRAME_BOX_PDF,
 }
 
 # heuristic: minimum capsule area (in .rm^2) for a stroke to qualify
@@ -132,19 +135,14 @@ def page_uuids_from_manifest(rm_dir):
 def detect_page(rm_file, scale):
     """Per-page detection: returns a {box_name: {area_rm_sq, marked}} dict.
 
-    Iterates every entry in BOX_REGISTRY so the output schema is stable
-    even when a box's PDF rectangle is not yet defined (those entries
-    default to zero/unmarked). When rm_file is None or missing, strokes
-    is empty and every box's loop body skips the threshold check,
-    yielding {area_rm_sq: 0.0, marked: False}.
+    Iterates every entry in BOX_REGISTRY. When rm_file is None or
+    missing, strokes is empty and every box's loop body skips the
+    threshold check, yielding {area_rm_sq: 0.0, marked: False}.
     """
     boxes = {}
     # Materialize once: the box loop below re-iterates strokes per box.
     strokes = list(collect_lines(rm_file)) if rm_file is not None and rm_file.exists() else []
     for box_name, pdf_box in BOX_REGISTRY.items():
-        if pdf_box is None:
-            boxes[box_name] = {"area_rm_sq": 0.0, "marked": False}
-            continue
         rm_box = inverse_transform_box(pdf_box, scale)
         total_area = 0.0
         marked = False

@@ -167,6 +167,27 @@ class CapsuleAreaQualificationTests(unittest.TestCase):
         # Assert: caps_fraction=1, area = pi*15^2 ~ 707; passes 100 threshold.
         self.assertTrue(output["per_page"][0]["boxes"]["finish_turn"]["marked"])
 
+    def test_mode_bw_marked_isolated(self):
+        # Arrange: stroke clearly inside the B&W box, not in others.
+        # B&W at PDF (240, 2100) 40x40 -> .rm at scale 0.45:
+        # rm_x: (240-810)/0.45 .. (280-810)/0.45 = -1267 .. -1178
+        # rm_y: 2100/0.45 .. 2140/0.45 = 4667 .. 4756
+        bw_stroke = ("#000000", 30.0, [(-1222.0, 4711.0)])
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _write_manifest(tmp_path, "doc-uuid", ["page-uuid-1"])
+            rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1"])
+
+            with patch.object(detect_marks, "collect_lines", return_value=[bw_stroke]):
+                output = detect_marks.detect(rm_dir, scale=0.45)
+
+        boxes = output["per_page"][0]["boxes"]
+        self.assertTrue(boxes["mode_bw"]["marked"])
+        self.assertFalse(boxes["mode_color"]["marked"])
+        self.assertFalse(boxes["mode_wireframe"]["marked"])
+        self.assertFalse(boxes["finish_turn"]["marked"])
+        self.assertFalse(boxes["end_session"]["marked"])
+
     def test_end_session_marked_by_qualifying_stroke(self):
         # Arrange: stroke that lands clearly inside the End-session box.
         # End-session at PDF (1540, 2040) 40x40 -> .rm box at scale 0.45:
