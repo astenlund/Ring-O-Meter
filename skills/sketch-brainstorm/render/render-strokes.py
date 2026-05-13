@@ -67,6 +67,8 @@ def render_svg(
 ) -> None:
     polylines = []
     for color, width, pts in lines:
+        if len(pts) < 2:
+            continue  # 1-point strokes are detector input, not visible SVG
         coords = " ".join(
             f"{px:.1f},{py:.1f}" for px, py in (rm_to_page(x, y, scale) for x, y in pts)
         )
