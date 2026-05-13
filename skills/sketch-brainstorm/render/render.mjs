@@ -206,6 +206,9 @@ async function main() {
       // networkidle wait needed before page.pdf().
       await page.addStyleTag({ path: join(SCRIPT_DIR, 'page-chrome-bw.css') });
     }
+    if (currentMode === 'wireframe') {
+      await page.addStyleTag({ path: join(SCRIPT_DIR, 'page-chrome-wireframe.css') });
+    }
     // printBackground: true so CSS backgrounds (header strip fill, legend
     // panel fill, checkbox border) actually render. Without it the
     // chrome region prints white.

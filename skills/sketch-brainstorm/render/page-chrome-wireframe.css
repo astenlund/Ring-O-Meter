@@ -1,0 +1,36 @@
+/*
+ * page-chrome-wireframe.css
+ *
+ * Wireframe mode: flattens mockup region visuals to bordered rectangles
+ * and grey text. Layout, spacing, font metrics, and responsive behavior
+ * stay accurate; only the surface skin changes. Best for early-stage
+ * layout argument before color decisions exist.
+ *
+ * Scope: mockup region on page 1 only. Header, notes region, chrome
+ * footer, and legend page stay unfiltered (same as B&W). Cold-path
+ * pixel-read on the chrome footer pre-fill stays color-accurate.
+ */
+.mockup-region * {
+  background: #ffffff !important;
+  color: #555 !important;
+  border-color: #888 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  background-image: none !important;
+}
+
+.mockup-region img,
+.mockup-region picture,
+.mockup-region svg {
+  background: #ffffff !important;
+  border: 2px dashed #888 !important;
+  outline: none !important;
+}
+
+.mockup-region button,
+.mockup-region input,
+.mockup-region select,
+.mockup-region textarea {
+  border: 2px solid #888 !important;
+  background: #ffffff !important;
+}
