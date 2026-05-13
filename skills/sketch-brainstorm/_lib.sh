@@ -14,8 +14,8 @@
 # wrapper (push, pull) verbatim. The QUICK_WINS-trigger rule for the
 # sibling `find_repo_root` extraction (extract when a second consumer
 # arrives) applies here once the second consumer landed; the pull
-# wrapper made it the second consumer of the auth shape. Future
-# wrappers (a `setup-rmapi.sh` helper, a polling daemon) will reuse
+# wrapper made it the second consumer of the auth shape. The polling
+# daemon is now the third; a future `setup-rmapi.sh` helper will reuse
 # this same precondition.
 
 # require_python <wrapper-name>
