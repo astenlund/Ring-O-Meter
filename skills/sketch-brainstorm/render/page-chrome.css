@@ -11,8 +11,10 @@
  * Bottom-aligned in the footer with a 60 px slot above reserved for
  * the future End-session checkbox sibling. The polling slice's
  * stroke-region detector inverse-transforms this rectangle into .rm
- * coordinates and hit-tests user stroke points against it (≥3 points
- * inside = marked); either page firing means the user finished the turn.
+ * coordinates and computes each stroke's capsule area inside it
+ * (clipped centerline length * W + half-disc caps); a stroke
+ * qualifies when its area meets the registered threshold (~100 .rm^2).
+ * Either page firing means the user finished the turn.
  */
 
 @page {
