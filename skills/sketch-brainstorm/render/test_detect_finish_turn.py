@@ -1,10 +1,10 @@
-"""JSON-shape test for the stroke-region Finish-turn detector.
+"""JSON-shape test for the stroke-region checkbox detector.
 
 The only test we ship for the detector itself (per the design spec's
 testing strategy: synthetic-fixture tests on the geometry math add
 little value; the high-risk failure modes are real-device edge cases
 this can't catch). This test locks the JSON output contract - the
-keys and types that the future polling-loop slice will read.
+keys and types that the polling-loop slice reads.
 
 Stubs rmscene + calibration.json + the .content manifest so the test
 runs stdlib-only without the venv and without any real .rm file.
@@ -29,6 +29,8 @@ sys.modules.setdefault("rmscene", MagicMock())
 sys.modules.setdefault("rmscene.scene_items", MagicMock())
 
 import detect_finish_turn  # noqa: E402
+
+_EXPECTED_BOX_NAMES = {"finish_turn", "end_session", "mode_color", "mode_bw", "mode_wireframe"}
 
 
 def _write_manifest(parent_dir, uuid, page_uuids):
@@ -60,25 +62,27 @@ class JsonShapeTests(unittest.TestCase):
             rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1", "page-uuid-2"])
             with patch.object(detect_finish_turn, "collect_lines", return_value=[]):
                 payload = detect_finish_turn.detect(rm_dir, scale=0.45)
-        self.assertEqual(set(payload.keys()), {"marked", "per_page"})
-        self.assertIsInstance(payload["marked"], bool)
+        self.assertEqual(set(payload.keys()), {"per_page"})
         self.assertIsInstance(payload["per_page"], list)
 
-    def test_per_page_entry_keys(self):
-        """Each per_page entry has the expected keys with correct types."""
+    def test_per_page_boxes_present(self):
+        """Each per_page entry exposes the full BOX_REGISTRY with zero defaults."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             _write_manifest(tmp_path, "doc-uuid", ["page-uuid-1"])
             rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1"])
+
             with patch.object(detect_finish_turn, "collect_lines", return_value=[]):
-                payload = detect_finish_turn.detect(rm_dir, scale=0.45)
-        self.assertEqual(len(payload["per_page"]), 1)
-        entry = payload["per_page"][0]
-        self.assertEqual(set(entry.keys()), {"page", "marked", "hit_strokes", "total_strokes"})
-        self.assertIsInstance(entry["page"], int)
-        self.assertIsInstance(entry["marked"], bool)
-        self.assertIsInstance(entry["hit_strokes"], int)
-        self.assertIsInstance(entry["total_strokes"], int)
+                output = detect_finish_turn.detect(rm_dir, scale=0.45)
+
+        self.assertIn("per_page", output)
+        self.assertEqual(len(output["per_page"]), 1)
+        page = output["per_page"][0]
+        self.assertEqual(page["page"], 1)
+        self.assertIn("boxes", page)
+        self.assertEqual(set(page["boxes"].keys()), _EXPECTED_BOX_NAMES)
+        for name, box in page["boxes"].items():
+            self.assertEqual(box, {"area_rm_sq": 0.0, "marked": False}, f"box {name}")
 
     def test_per_page_length_from_manifest(self):
         """per_page length comes from the manifest, not from .rm file presence."""
@@ -93,15 +97,15 @@ class JsonShapeTests(unittest.TestCase):
             with patch.object(detect_finish_turn, "collect_lines", return_value=[]):
                 payload = detect_finish_turn.detect(rm_dir, scale=0.45)
         self.assertEqual(len(payload["per_page"]), 3)
-        # Synthesized entry for never-opened page has 0 strokes total.
+        # Synthesized entry for never-opened page has all-zero boxes.
         third = payload["per_page"][2]
         self.assertEqual(third["page"], 3)
-        self.assertFalse(third["marked"])
-        self.assertEqual(third["hit_strokes"], 0)
-        self.assertEqual(third["total_strokes"], 0)
+        self.assertEqual(set(third["boxes"].keys()), _EXPECTED_BOX_NAMES)
+        for name, box in third["boxes"].items():
+            self.assertEqual(box, {"area_rm_sq": 0.0, "marked": False}, f"box {name}")
 
-    def test_marked_is_or_across_pages(self):
-        """Top-level `marked` is true iff any page is marked."""
+    def test_qualifying_stroke_marks_only_its_page(self):
+        """Per-page box.marked is true iff a qualifying stroke landed in that box."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             _write_manifest(tmp_path, "doc-uuid", ["p1", "p2"])
@@ -121,9 +125,8 @@ class JsonShapeTests(unittest.TestCase):
                 return [("#000", 2.0, [(0, 0), (10, 10)])]
             with patch.object(detect_finish_turn, "collect_lines", side_effect=fake_collect):
                 payload = detect_finish_turn.detect(rm_dir, scale=0.45)
-        self.assertTrue(payload["marked"])
-        self.assertFalse(payload["per_page"][0]["marked"])
-        self.assertTrue(payload["per_page"][1]["marked"])
+        self.assertFalse(payload["per_page"][0]["boxes"]["finish_turn"]["marked"])
+        self.assertTrue(payload["per_page"][1]["boxes"]["finish_turn"]["marked"])
 
 
 class CapsuleAreaQualificationTests(unittest.TestCase):
@@ -138,13 +141,12 @@ class CapsuleAreaQualificationTests(unittest.TestCase):
             # 5 .rm length, W=4 -> ~20 .rm^2 capsule area, below 100 threshold.
             tiny_stroke = ("#000000", 4.0, [(-50.0, 44.0), (-43.0, 44.0)])
 
-            with patch.object(detect_finish_turn, "collect_lines", return_value=[tiny_stroke]), \
-                 patch.object(detect_finish_turn, "load_calibration", return_value={"scale": 0.45}):
+            with patch.object(detect_finish_turn, "collect_lines", return_value=[tiny_stroke]):
                 # Act
                 output = detect_finish_turn.detect(rm_dir, scale=0.45)
 
         # Assert
-        self.assertFalse(output["marked"])
+        self.assertFalse(output["per_page"][0]["boxes"]["finish_turn"]["marked"])
 
     def test_thick_marker_tap_qualifies(self):
         # Arrange: 1-point stroke with thick marker inside the Finish-turn box.
@@ -158,13 +160,31 @@ class CapsuleAreaQualificationTests(unittest.TestCase):
             _write_manifest(tmp_path, "doc-uuid", ["page-uuid-1"])
             rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1"])
 
-            with patch.object(detect_finish_turn, "collect_lines", return_value=[tap_stroke]), \
-                 patch.object(detect_finish_turn, "load_calibration", return_value={"scale": 0.45}):
+            with patch.object(detect_finish_turn, "collect_lines", return_value=[tap_stroke]):
                 # Act
                 output = detect_finish_turn.detect(rm_dir, scale=0.45)
 
         # Assert: caps_fraction=1, area = pi*15^2 ~ 707; passes 100 threshold.
-        self.assertTrue(output["marked"])
+        self.assertTrue(output["per_page"][0]["boxes"]["finish_turn"]["marked"])
+
+    def test_end_session_marked_by_qualifying_stroke(self):
+        # Arrange: stroke that lands clearly inside the End-session box.
+        # End-session at PDF (1540, 2040) 40x40 -> .rm box at scale 0.45:
+        # rm_x: (1540-810)/0.45 .. (1580-810)/0.45 = ~1622 .. ~1711
+        # rm_y: 2040/0.45 .. 2080/0.45 = ~4533 .. ~4622
+        big_stroke = ("#000000", 30.0, [(1666.0, 4577.0)])
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _write_manifest(tmp_path, "doc-uuid", ["page-uuid-1"])
+            rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1"])
+
+            with patch.object(detect_finish_turn, "collect_lines", return_value=[big_stroke]):
+                output = detect_finish_turn.detect(rm_dir, scale=0.45)
+
+        boxes = output["per_page"][0]["boxes"]
+        self.assertTrue(boxes["end_session"]["marked"])
+        self.assertGreater(boxes["end_session"]["area_rm_sq"], 100.0)
+        self.assertFalse(boxes["finish_turn"]["marked"])
 
 
 if __name__ == "__main__":
