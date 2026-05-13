@@ -201,6 +201,11 @@ async function main() {
     // settled before page.pdf() snapshots. Default 'load' fires too early
     // and the PDF can capture fallback fonts.
     await page.goto(fileUrl, { waitUntil: 'networkidle' });
+    if (currentMode === 'bw') {
+      // Style injection is synchronous; no fonts in this sheet, so no
+      // networkidle wait needed before page.pdf().
+      await page.addStyleTag({ path: join(SCRIPT_DIR, 'page-chrome-bw.css') });
+    }
     // printBackground: true so CSS backgrounds (header strip fill, legend
     // panel fill, checkbox border) actually render. Without it the
     // chrome region prints white.
