@@ -7,15 +7,17 @@
  * layer in). Page 1 is the mockup page; page 2 is the legend page.
  *
  * The Finish-turn checkbox is pinned at the same coordinates on both
- * rendered pages: (x=1540, y=2100) 40x40 px on the 1620x2160 viewport. /* checkbox-coords */
- * Bottom-aligned in the footer with a 60 px slot above reserved for
- * the future End-session checkbox sibling. The polling slice's
- * stroke-region detector inverse-transforms this rectangle into .rm
- * coordinates and computes each stroke's capsule area inside it
- * (clipped centerline length * W + half-disc caps); a stroke
- * qualifies when its area meets the registered threshold (~100 .rm^2).
- * Either page firing means the user finished the turn.
+ * rendered pages: (x=1540, y=2100) 40x40 px on the 1620x2160 viewport.
+ * Bottom-aligned in the footer with a 60 px slot above for the
+ * End-session checkbox sibling (rendered above; see
+ * .end-session-checkbox). The polling slice's stroke-region detector
+ * inverse-transforms this rectangle into .rm coordinates and computes
+ * each stroke's capsule area inside it (clipped centerline length * W
+ * + half-disc caps); a stroke qualifies when its area meets the
+ * registered threshold (~100 .rm^2). Either page firing means the
+ * user finished the turn.
  */
+/* checkbox-coords */
 
 @page {
   size: 1620px 2160px;
@@ -146,7 +148,8 @@ html, body {
    bottom:20 / right:40 so it lands at (x=1540, y=2100) 40x40 px on the
    1620x2160 viewport (footer is bottom:0, height:160, width:1620, so
    bottom:20 -> page-y 2100 and right:40 -> page-x 1540). Leaves a
-   60 px band above for the future End-session checkbox sibling. The
+   60 px band above for the End-session checkbox sibling (rendered
+   above; see `.end-session-checkbox` rule). The
    *rendered* pixel coordinates are load-bearing: the stroke-region
    detector inverse-transforms this rectangle into .rm coordinates
    (rm_x = (pdf_x - 810) / scale, rm_y = pdf_y / scale) and hit-tests
@@ -162,6 +165,35 @@ html, body {
   background: #ffffff;
   border: 3px solid #222;
   border-radius: 4px;
+}
+
+/* End-session checkbox: nested in the chrome-footer at PDF (1540, 2040)
+   40x40 px. Sits 20 px above the Finish-turn box (which is at 2100..2140);
+   bottom:80 + height:40 -> page-y 2040..2080. Right-aligned with
+   Finish-turn so the user's pen lands at the same column regardless
+   of which box they're marking. */
+/* checkbox-coords */
+.end-session-checkbox {
+  position: absolute;
+  bottom: 80px;
+  right: 40px;
+  width: 40px;
+  height: 40px;
+  background: #ffffff;
+  border: 3px solid #222;
+  border-radius: 4px;
+}
+
+.end-session-label {
+  position: absolute;
+  bottom: 82px;
+  right: 100px;
+  height: 40px;
+  line-height: 40px;
+  font-size: 32px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #707070;
 }
 
 /* --- Page 1: mockup page --- */
