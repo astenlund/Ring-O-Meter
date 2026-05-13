@@ -27,6 +27,10 @@ class ManifestError(Exception):
     """Raised when the .content manifest is missing, invalid, or empty."""
 
 
+class StrokeParseError(Exception):
+    """Raised when rmscene fails to parse a `.rm` stroke file."""
+
+
 # heuristic: minimum capsule area (in .rm^2) for a stroke to qualify
 # as a mark on the box. Calibrated against snap-to-straight chords,
 # thick-marker single taps, and palm-rest grazes. See
@@ -99,7 +103,7 @@ def detect_page(rm_file, scale):
         try:
             strokes = list(collect_lines(rm_file))
         except Exception as e:
-            raise ManifestError(f"failed to parse {rm_file.name}: {e}") from e
+            raise StrokeParseError(f"failed to parse {rm_file.name}: {e}") from e
     else:
         strokes = []
     for box_name, pdf_box in BOX_REGISTRY.items():
@@ -139,7 +143,7 @@ def main():
     try:
         calibration = load_calibration()
         payload = detect(rm_dir, calibration["scale"])
-    except (CalibrationError, ManifestError, OSError) as e:
+    except (CalibrationError, ManifestError, StrokeParseError, OSError) as e:
         print(str(e), file=sys.stderr)
         return 1
     print(json.dumps(payload))
