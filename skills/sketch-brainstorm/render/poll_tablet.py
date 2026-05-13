@@ -32,7 +32,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Tuple
+from typing import Callable, Optional, Tuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
@@ -56,14 +56,11 @@ class Signature:
 
 @dataclass(frozen=True)
 class DetectionResult:
-    """Per-event-class detection outcome from one pull + detect pass.
-
-    Extensible: C3 will add `mode_winner: Optional[str]` for the
-    mode-switch winner-takes-all event class.
-    """
+    """Per-event-class detection outcome from one pull + detect pass."""
 
     finish_turn_marked: bool
     end_session_marked: bool
+    mode_winner: Optional[str]  # "color" | "bw" | "wireframe" | None
 
 
 def utc_now_iso() -> str:
@@ -96,6 +93,34 @@ def fetch_signature(cloud_doc: str) -> Signature:
         version=int(data.get("Version", 0)),
         modified_client=str(data.get("ModifiedClient", "")),
     )
+
+
+def _resolve_mode_winner(per_page) -> Optional[str]:
+    """Apply radio-button winner-takes-all on the mode-switch trio.
+
+    Aggregate area per box across pages via max (per the output contract).
+    Return the box's short name (e.g. "bw") if any box is marked and a
+    unique winner exists; None on no marks or ties.
+    """
+    per_mode_max = {}
+    per_mode_marked = {"color": False, "bw": False, "wireframe": False}
+    for page in per_page:
+        for short in ("color", "bw", "wireframe"):
+            box = page["boxes"][f"mode_{short}"]
+            per_mode_max[short] = max(per_mode_max.get(short, 0.0), box["area_rm_sq"])
+            if box["marked"]:
+                per_mode_marked[short] = True
+    qualifying = [s for s in ("color", "bw", "wireframe") if per_mode_marked[s]]
+    if not qualifying:
+        return None
+    if len(qualifying) == 1:
+        return qualifying[0]
+    # Tiebreak: highest area wins; if tied, no switch.
+    qualifying.sort(key=lambda s: per_mode_max[s], reverse=True)
+    if per_mode_max[qualifying[0]] == per_mode_max[qualifying[1]]:
+        return None
+
+    return qualifying[0]
 
 
 def pull_and_detect(cloud_doc: str, pulls_dir: Path) -> DetectionResult:
@@ -131,10 +156,12 @@ def pull_and_detect(cloud_doc: str, pulls_dir: Path) -> DetectionResult:
     pages = data.get("per_page", [])
     finish_turn_marked = any(p["boxes"]["finish_turn"]["marked"] for p in pages)
     end_session_marked = any(p["boxes"]["end_session"]["marked"] for p in pages)
+    mode_winner = _resolve_mode_winner(pages)
 
     return DetectionResult(
         finish_turn_marked=finish_turn_marked,
         end_session_marked=end_session_marked,
+        mode_winner=mode_winner,
     )
 
 
@@ -159,7 +186,7 @@ def release_lock(lock_path: Path) -> None:
         pass
 
 
-_IDLE_RESULT = DetectionResult(finish_turn_marked=False, end_session_marked=False)
+_IDLE_RESULT = DetectionResult(finish_turn_marked=False, end_session_marked=False, mode_winner=None)
 
 
 def poll_once(
@@ -228,7 +255,8 @@ def run(
 
                 return 0
             if result.finish_turn_marked:
-                print(f"READY:{iter_nn}", flush=True)
+                suffix = f":mode={result.mode_winner}" if result.mode_winner else ""
+                print(f"READY:{iter_nn}{suffix}", flush=True)
 
                 return 0
     finally:
