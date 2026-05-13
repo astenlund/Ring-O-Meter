@@ -155,7 +155,7 @@ html, body {
    (rm_x = (pdf_x - 810) / scale, rm_y = pdf_y / scale) and hit-tests
    stroke points against it. Do not change the footer geometry or this
    offset pair without updating FINISH_TURN_BOX_PDF in
-   render/detect_marks.py in lockstep. */
+   render/_chrome_boxes.py in lockstep. */
 .finish-turn-checkbox {
   position: absolute;
   bottom: 20px;
@@ -171,7 +171,9 @@ html, body {
    40x40 px. Sits 20 px above the Finish-turn box (which is at 2100..2140);
    bottom:80 + height:40 -> page-y 2040..2080. Right-aligned with
    Finish-turn so the user's pen lands at the same column regardless
-   of which box they're marking. */
+   of which box they're marking. Do not change the footer geometry or
+   this offset pair without updating END_SESSION_BOX_PDF in
+   render/_chrome_boxes.py in lockstep. */
 /* checkbox-coords */
 .end-session-checkbox {
   position: absolute;
@@ -199,7 +201,11 @@ html, body {
 /* checkbox-coords */
 /* Mode-switch trio: three checkboxes in the left half of the chrome
    footer, at PDF (80, 2100), (240, 2100), (400, 2100) 40x40 each.
-   Labels sit immediately above each box. */
+   Labels sit immediately above each box. Do not change the geometry
+   without updating MODE_*_BOX_PDF in render/_chrome_boxes.py in
+   lockstep; that single Python module backs both the stroke-based
+   detector (detect_marks.py) and the cold-path pixel-read helper
+   (read_prefill.py). */
 .mode-switch-row {
   position: absolute;
   bottom: 20px;

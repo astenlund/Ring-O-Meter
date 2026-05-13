@@ -21,6 +21,8 @@ import { parseArgs } from 'node:util';
 const VIEWPORT_WIDTH = 1620;
 const VIEWPORT_HEIGHT = 2160;
 
+// LOCKSTEP with `_chrome_boxes.VALID_MODES` (Python). Same canonical
+// tuple, duplicated only because JS cannot import from Python.
 const VALID_MODES = ['color', 'bw', 'wireframe'];
 const DEFAULT_MODE = 'color';
 

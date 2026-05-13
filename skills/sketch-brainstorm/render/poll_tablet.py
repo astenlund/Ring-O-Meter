@@ -34,6 +34,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
+from _chrome_boxes import VALID_MODES
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
 DETECT_WRAPPER = SKILL_DIR / "detect-marks.sh"
@@ -102,20 +104,22 @@ def _resolve_mode_winner(per_page) -> Optional[str]:
     Return the box's short name (e.g. "bw") if any box is marked and a
     unique winner exists; None on no marks or ties.
     """
-    per_mode_max = {}
-    per_mode_marked = {"color": False, "bw": False, "wireframe": False}
-    for page in per_page:
-        for short in ("color", "bw", "wireframe"):
+    per_mode_max = {short: 0.0 for short in VALID_MODES}
+    qualifying = []
+    for short in VALID_MODES:
+        marked = False
+        for page in per_page:
             box = page["boxes"][f"mode_{short}"]
-            per_mode_max[short] = max(per_mode_max.get(short, 0.0), box["area_rm_sq"])
+            if box["area_rm_sq"] > per_mode_max[short]:
+                per_mode_max[short] = box["area_rm_sq"]
             if box["marked"]:
-                per_mode_marked[short] = True
-    qualifying = [s for s in ("color", "bw", "wireframe") if per_mode_marked[s]]
+                marked = True
+        if marked:
+            qualifying.append(short)
     if not qualifying:
         return None
     if len(qualifying) == 1:
         return qualifying[0]
-    # Tiebreak: highest area wins; if tied, no switch.
     qualifying.sort(key=lambda s: per_mode_max[s], reverse=True)
     if per_mode_max[qualifying[0]] == per_mode_max[qualifying[1]]:
         return None

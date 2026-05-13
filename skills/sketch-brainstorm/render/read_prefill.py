@@ -21,20 +21,22 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
-# LOCKSTEP with page-chrome.css .mode-switch-row / .mode-switch-checkbox.
-# Mirrors detect_marks.MODE_*_BOX_PDF; kept local to this cold-path
-# helper so it can be invoked without dragging in the stroke-detection
-# module (different runtime context: cloud PDF rasterization, not .rm
-# stroke parsing). Coords are in CSS pixels relative to the 1620 px wide
-# render viewport; read_prefill scales them to the PDF's actual point
-# size at runtime (Chromium emits a 0.75x scaled PDF: 96 CSS DPI -> 72
-# PDF DPI -> page rect 1215.12 x 1620 points for a 1620x2160 px viewport).
+from _chrome_boxes import (
+    MODE_BW_BOX_PDF,
+    MODE_COLOR_BOX_PDF,
+    MODE_WIREFRAME_BOX_PDF,
+    VALID_MODES,
+)
+
+# Coords are in CSS pixels relative to the 1620 px wide render viewport;
+# read_prefill scales them to the PDF's actual point size at runtime
+# (Chromium emits a 0.75x scaled PDF: 96 CSS DPI -> 72 PDF DPI -> page
+# rect 1215.12 x 1620 points for a 1620x2160 px viewport).
 PAGE_WIDTH_CSS = 1620.0
-MODE_BOXES = {
-    "color":     (80.0,  2100.0, 40.0, 40.0),
-    "bw":        (240.0, 2100.0, 40.0, 40.0),
-    "wireframe": (400.0, 2100.0, 40.0, 40.0),
-}
+
+# Keyed by short mode name (VALID_MODES element); paired with the
+# matching PDF box from the shared chrome-box module.
+MODE_BOXES = dict(zip(VALID_MODES, (MODE_COLOR_BOX_PDF, MODE_BW_BOX_PDF, MODE_WIREFRAME_BOX_PDF)))
 
 # heuristic: pixel-luminance threshold below which a pixel counts as
 # "filled" (the dark gold pre-fill rasterizes to luminance ~95 in 0-255).

@@ -22,9 +22,13 @@ import re
 import sys
 from pathlib import Path
 
-VALID_MODES = ("color", "bw", "wireframe")
+from _chrome_boxes import VALID_MODES
+
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
-_ITER_SECTION_RE_TEMPLATE = r"(\n## Iteration {nn}\n.*?)(?=\n## Iteration |\Z)"
+# Lookahead matches any `## ` heading (not just `## Iteration `) so that
+# a future schema addition such as `## Archive` does not get absorbed
+# into the prior iter section and silently deleted on the next write.
+_ITER_SECTION_RE_TEMPLATE = r"(\n## Iteration {nn}\n.*?)(?=\n## |\Z)"
 _ITER_MARKER_RE = re.compile(r"^## Iteration ", re.MULTILINE)
 _CURRENT_MODE_RE = re.compile(r"^current_mode:.*$", re.MULTILINE)
 
@@ -52,7 +56,10 @@ def write(session_dir, iter_nn, mode, delta):
         raise ValueError(f"invalid mode {mode!r}; expected one of {VALID_MODES}")
     _validate_delta(delta)
 
-    path = Path(session_dir) / "design-state.md"
+    session_path = Path(session_dir)
+    if not session_path.is_dir():
+        raise FileNotFoundError(f"session dir not found: {session_path}")
+    path = session_path / "design-state.md"
     content = path.read_text(encoding="utf-8") if path.exists() else ""
     content = content.replace("\r\n", "\n")
 
@@ -73,7 +80,10 @@ def write(session_dir, iter_nn, mode, delta):
     new_section = f"\n## Iteration {iter_nn}\n\n{delta}\n"
     match = section_re.search(content)
     if match:
-        content = content[:match.start()] + new_section.rstrip() + content[match.end():]
+        # Trailing `\n` after rstrip preserves the blank-line separator
+        # between this section and the next; without it the lookahead's
+        # `\n## ` would be consumed leaving sections jammed together.
+        content = content[:match.start()] + new_section.rstrip() + "\n" + content[match.end():]
     else:
         content = content.rstrip() + "\n" + new_section
 

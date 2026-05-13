@@ -18,33 +18,17 @@ import json
 import sys
 from pathlib import Path
 
+from _chrome_boxes import BOX_REGISTRY
 from _rm_strokes import CALIBRATION_JSON, PAGE_W, capsule_area, collect_lines
 
-# LOCKSTEP with page-chrome.css .finish-turn-checkbox dimensions.
-# Do not change either without updating the other.
-# Finish-turn box in PDF coordinates. Load-bearing constant -
-# pinned in page-chrome.css and remarkable-tablet-brainstorm.md.
-FINISH_TURN_BOX_PDF = (1540.0, 2100.0, 40.0, 40.0)  # x, y, w, h
 
-# LOCKSTEP with page-chrome.css .end-session-checkbox dimensions.
-# End-session box in PDF coordinates. (x, y, w, h) = (1540, 2040, 40, 40).
-END_SESSION_BOX_PDF = (1540.0, 2040.0, 40.0, 40.0)
+class CalibrationError(Exception):
+    """Raised when calibration.json is missing, invalid, or unparseable."""
 
-# LOCKSTEP with page-chrome.css .mode-switch-row / .mode-switch-checkbox.
-# Mode-switch trio: three 40x40 boxes in the left half of the chrome
-# footer, horizontally at x=80, 240, 400 / y=2100 on each page.
-MODE_COLOR_BOX_PDF     = (80.0,  2100.0, 40.0, 40.0)
-MODE_BW_BOX_PDF        = (240.0, 2100.0, 40.0, 40.0)
-MODE_WIREFRAME_BOX_PDF = (400.0, 2100.0, 40.0, 40.0)
 
-# Box registry: detector reports per-box area for every entry here.
-BOX_REGISTRY = {
-    "finish_turn":    FINISH_TURN_BOX_PDF,
-    "end_session":    END_SESSION_BOX_PDF,
-    "mode_color":     MODE_COLOR_BOX_PDF,
-    "mode_bw":        MODE_BW_BOX_PDF,
-    "mode_wireframe": MODE_WIREFRAME_BOX_PDF,
-}
+class ManifestError(Exception):
+    """Raised when the .content manifest is missing, invalid, or empty."""
+
 
 # heuristic: minimum capsule area (in .rm^2) for a stroke to qualify
 # as a mark on the box. Calibrated against snap-to-straight chords,
@@ -54,23 +38,28 @@ MIN_AREA_RM_SQ = 100.0
 
 
 def load_calibration():
-    """Load and validate CALIBRATION_JSON. Exits non-zero on any problem."""
+    """Load and validate CALIBRATION_JSON.
+
+    Raises CalibrationError on missing file, invalid JSON, or invalid
+    scale value. Caller (main) translates to non-zero exit + diagnostic.
+    """
     if not CALIBRATION_JSON.exists():
-        print(
+        raise CalibrationError(
             f"calibration.json not found at {CALIBRATION_JSON}; "
-            f"run derive-calibration.sh first",
-            file=sys.stderr,
+            f"run derive-calibration.sh first"
         )
-        sys.exit(1)
     try:
         data = json.loads(CALIBRATION_JSON.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
-        print(f"calibration.json is not valid JSON ({e}); re-run derive-calibration.sh", file=sys.stderr)
-        sys.exit(1)
+        raise CalibrationError(
+            f"calibration.json is not valid JSON ({e}); re-run derive-calibration.sh"
+        ) from e
     scale = data.get("scale")
     if not isinstance(scale, (int, float)) or scale <= 0:
-        print("calibration.json missing or invalid 'scale'; re-run derive-calibration.sh", file=sys.stderr)
-        sys.exit(1)
+        raise CalibrationError(
+            "calibration.json missing or invalid 'scale'; re-run derive-calibration.sh"
+        )
+
     return data
 
 
@@ -108,27 +97,18 @@ def page_uuids_from_manifest(rm_dir):
     """
     content_path = rm_dir.parent / f"{rm_dir.name}.content"
     if not content_path.exists():
-        print(
-            f"content manifest unreadable: {content_path.name} not found",
-            file=sys.stderr,
+        raise ManifestError(
+            f"content manifest unreadable: {content_path.name} not found"
         )
-        sys.exit(1)
     try:
         data = json.loads(content_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
-        print(
-            f"content manifest unreadable: invalid JSON ({e})",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise ManifestError(f"content manifest unreadable: invalid JSON ({e})") from e
     cpages = data.get("cPages") or {}
     pages = cpages.get("pages") or []
     if not pages:
-        print(
-            "content manifest unreadable: cPages.pages missing or empty",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise ManifestError("content manifest unreadable: cPages.pages missing or empty")
+
     return [p.get("id") for p in pages]
 
 
@@ -179,9 +159,12 @@ def main():
     if not rm_dir.is_dir():
         print(f"rm-dir not a directory: {rm_dir}", file=sys.stderr)
         sys.exit(1)
-    calibration = load_calibration()
-    scale = calibration["scale"]
-    payload = detect(rm_dir, scale)
+    try:
+        calibration = load_calibration()
+        payload = detect(rm_dir, calibration["scale"])
+    except (CalibrationError, ManifestError) as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
     print(json.dumps(payload))
 
 
