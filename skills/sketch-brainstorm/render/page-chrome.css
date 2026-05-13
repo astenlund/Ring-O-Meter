@@ -196,6 +196,50 @@ html, body {
   color: #707070;
 }
 
+/* checkbox-coords */
+/* Mode-switch trio: three checkboxes in the left half of the chrome
+   footer, at PDF (80, 2100), (240, 2100), (400, 2100) 40x40 each.
+   Labels sit immediately above each box. */
+.mode-switch-row {
+  position: absolute;
+  bottom: 20px;
+  left: 80px;
+  width: 400px;
+  height: 90px;
+  display: flex;
+  gap: 120px;
+}
+
+.mode-switch-cell {
+  position: relative;
+  width: 40px;
+  height: 90px;
+}
+
+.mode-switch-label {
+  position: absolute;
+  bottom: 50px;
+  left: -40px;
+  width: 120px;
+  height: 28px;
+  font-size: 22px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #707070;
+  text-align: center;
+}
+
+.mode-switch-checkbox {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 40px;
+  height: 40px;
+  background: #ffffff;
+  border: 3px solid #222;
+  border-radius: 4px;
+}
+
 /* --- Page 1: mockup page --- */
 
 /* Mockup region: large area between header and small notes region.
