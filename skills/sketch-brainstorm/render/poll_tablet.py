@@ -1,22 +1,22 @@
 """Background polling daemon for sketch-brainstorm.
 
 Watches the current iteration's reMarkable cloud doc via `rmapi stat`
-and emits a single `READY:<NN>` line on stdout when the user marks
-the Finish-turn checkbox and backs out. Idle iterations emit nothing,
-so notifications correspond one-to-one with events the main chat
-actually needs to handle.
+and emits a single notification line on stdout when the user marks a
+control box and backs out: `READY:<NN>` for Finish-turn, `STOP:<NN>`
+for End-session. Idle iterations emit nothing, so notifications
+correspond one-to-one with events the main chat actually needs to
+handle.
 
-This is the minimum-slice poller: it owns mtime short-circuit, lock
-acquisition with heartbeat, and the READY notification only. End-session
-(`STOP`), mode-switch suffixes, ERROR taxonomy with exponential backoff,
-and bootstrap-side spawn integration are documented in the feature spec
-as separate slices.
+This slice owns mtime short-circuit, lock acquisition with heartbeat,
+and the READY / STOP notifications. Mode-switch suffixes, ERROR
+taxonomy with exponential backoff, and bootstrap-side spawn
+integration are documented in the feature spec as separate slices.
 
 Lifecycle:
   - Birth: spawned by the orchestrator via `Bash(run_in_background=true)`.
   - Run:   refresh + stat each tick; on signature change, pull + detect.
-  - Death: emit `READY:<NN>` and exit 0; or fatal error and exit 1; or
-           SIGINT/SIGTERM from the harness.
+  - Death: emit `READY:<NN>` or `STOP:<NN>` and exit 0; or fatal error
+           and exit 1; or SIGINT/SIGTERM from the harness.
 
 The script intentionally does not try to outlive its parent chat
 session. Durable state is on disk (the session folder, pulls/ archives);
@@ -32,7 +32,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Callable, Tuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
@@ -52,6 +52,18 @@ class Signature:
 
     version: int
     modified_client: str
+
+
+@dataclass(frozen=True)
+class DetectionResult:
+    """Per-event-class detection outcome from one pull + detect pass.
+
+    Extensible: C3 will add `mode_winner: Optional[str]` for the
+    mode-switch winner-takes-all event class.
+    """
+
+    finish_turn_marked: bool
+    end_session_marked: bool
 
 
 def utc_now_iso() -> str:
@@ -86,9 +98,9 @@ def fetch_signature(cloud_doc: str) -> Signature:
     )
 
 
-def pull_and_detect(cloud_doc: str, pulls_dir: Path) -> bool:
-    """Pull the cloud doc and run the Finish-turn detector. Returns True
-    when the top-level `marked` boolean is set on the detector output.
+def pull_and_detect(cloud_doc: str, pulls_dir: Path) -> DetectionResult:
+    """Pull the cloud doc and run the detector. Return per-event-class
+    booleans aggregated across all pages of the nested-boxes JSON schema.
 
     Subprocess output is captured (not streamed) because both wrappers
     write progress / diagnostics on their own channels; the poller's
@@ -116,8 +128,14 @@ def pull_and_detect(cloud_doc: str, pulls_dir: Path) -> bool:
         text=True,
     )
     data = json.loads(detect.stdout)
+    pages = data.get("per_page", [])
+    finish_turn_marked = any(p["boxes"]["finish_turn"]["marked"] for p in pages)
+    end_session_marked = any(p["boxes"]["end_session"]["marked"] for p in pages)
 
-    return bool(data.get("marked", False))
+    return DetectionResult(
+        finish_turn_marked=finish_turn_marked,
+        end_session_marked=end_session_marked,
+    )
 
 
 def write_lock(lock_path: Path, pid: int, started: str, heartbeat: str) -> None:
@@ -141,26 +159,30 @@ def release_lock(lock_path: Path) -> None:
         pass
 
 
+_IDLE_RESULT = DetectionResult(finish_turn_marked=False, end_session_marked=False)
+
+
 def poll_once(
     cloud_doc: str,
     pulls_dir: Path,
     last_sig: Signature,
     signature_fn: Callable[[str], Signature],
-    pull_detect_fn: Callable[[str, Path], bool],
-) -> Tuple[Signature, bool]:
-    """One polling iteration. Returns (new_signature, marked).
+    pull_detect_fn: Callable[[str, Path], DetectionResult],
+) -> Tuple[Signature, DetectionResult]:
+    """One polling iteration. Returns (new_signature, result).
 
     Factored out of the loop so tests can drive it deterministically with
     fake signature_fn / pull_detect_fn. Idle iterations return
-    (last_sig, False) without touching the network beyond the stat call.
+    (last_sig, all-false DetectionResult) without touching the network
+    beyond the stat call.
     """
     current = signature_fn(cloud_doc)
     if current == last_sig:
 
-        return current, False
-    marked = pull_detect_fn(cloud_doc, pulls_dir)
+        return current, _IDLE_RESULT
+    result = pull_detect_fn(cloud_doc, pulls_dir)
 
-    return current, marked
+    return current, result
 
 
 def run(
@@ -170,14 +192,17 @@ def run(
     lock_file: Path,
     poll_interval_s: int,
     signature_fn: Callable[[str], Signature] = fetch_signature,
-    pull_detect_fn: Callable[[str, Path], bool] = pull_and_detect,
+    pull_detect_fn: Callable[[str, Path], DetectionResult] = pull_and_detect,
 ) -> int:
     """Main polling loop. Returns the desired process exit code.
 
-    Exits 0 after emitting a READY:<NN> line. The orchestrator respawns
-    the poller after pushing the next iteration with updated --cloud-doc
-    and --iter; the per-iter respawn shape keeps this slice independent
-    of session-state tracking.
+    Exits 0 after emitting a READY:<NN> or STOP:<NN> line. End-session
+    takes precedence over Finish-turn so a user's explicit End-session
+    mark wins over an incidental concurrent Finish-turn mark in the
+    same turn. The orchestrator respawns the poller after pushing the
+    next iteration with updated --cloud-doc and --iter; the per-iter
+    respawn shape keeps this slice independent of session-state
+    tracking.
     """
     started = utc_now_iso()
     pid = os.getpid()
@@ -195,10 +220,14 @@ def run(
         while True:
             time.sleep(poll_interval_s)
             write_lock(lock_file, pid, started, utc_now_iso())
-            last_sig, marked = poll_once(
+            last_sig, result = poll_once(
                 cloud_doc, pulls_dir, last_sig, signature_fn, pull_detect_fn
             )
-            if marked:
+            if result.end_session_marked:
+                print(f"STOP:{iter_nn}", flush=True)
+
+                return 0
+            if result.finish_turn_marked:
                 print(f"READY:{iter_nn}", flush=True)
 
                 return 0
@@ -208,7 +237,7 @@ def run(
 
 def parse_args(argv):
     p = argparse.ArgumentParser(
-        description="Poll the current iteration's cloud doc; emit READY:<NN> on mark."
+        description="Poll the current iteration's cloud doc; emit READY:<NN> or STOP:<NN> on mark."
     )
     p.add_argument("--cloud-doc", required=True, help="reMarkable cloud doc path (bare name, no .pdf).")
     p.add_argument("--iter", required=True, help="Two-digit iteration number (e.g. 00, 05).")
