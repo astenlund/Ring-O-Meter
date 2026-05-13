@@ -122,7 +122,7 @@ def collect_strokes_pages(strokes_dir: Path) -> list[tuple[int, Path]]:
 def main():
     if len(sys.argv) != 4:
         print(f"usage: {sys.argv[0]} <pdf> <strokes-dir> <out-dir>", file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     pdf_path = Path(sys.argv[1])
     strokes_dir = Path(sys.argv[2])
@@ -131,10 +131,10 @@ def main():
 
     if not pdf_path.is_file():
         print(f"composite-annotated.py: pdf not found: {pdf_path}", file=sys.stderr)
-        sys.exit(1)
+        return 1
     if not strokes_dir.is_dir():
         print(f"composite-annotated.py: strokes-dir not found: {strokes_dir}", file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     svgs = collect_strokes_pages(strokes_dir)
     if not svgs:
@@ -143,7 +143,7 @@ def main():
             f"nothing to composite",
             file=sys.stderr,
         )
-        return
+        return 0
 
     try:
         pdf_doc = fitz.open(pdf_path)
@@ -152,7 +152,7 @@ def main():
             f"composite-annotated.py: failed to open PDF '{pdf_path}': {exc}",
             file=sys.stderr,
         )
-        sys.exit(1)
+        return 1
     try:
         for page_number, svg_path in svgs:
             # strokes-pageN encodes 1-based; fitz uses 0-based.
@@ -161,7 +161,7 @@ def main():
                 svg_image = rasterize_svg(svg_path)
             except RuntimeError as exc:
                 print(f"composite-annotated.py: {exc}", file=sys.stderr)
-                sys.exit(1)
+                return 1
             composite = composite_page(pdf_image, svg_image)
             out_path = out_dir / f"composite-page{page_number}.png"
             composite.save(out_path, format="PNG")
@@ -169,6 +169,8 @@ def main():
     finally:
         pdf_doc.close()
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

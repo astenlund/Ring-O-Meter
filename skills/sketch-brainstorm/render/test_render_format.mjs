@@ -18,11 +18,16 @@ test('empty-string subtopic is equivalent to undefined', () => {
   assert.equal(formatIterationLabel('05', ''), ' #05');
 });
 
-test('rejects single-digit, three-digit, non-numeric, and seed legacy', () => {
-  assert.throws(() => formatIterationLabel('5', undefined), /two-digit/);
-  assert.throws(() => formatIterationLabel('001', undefined), /two-digit/);
-  assert.throws(() => formatIterationLabel('seed', undefined), /two-digit/);
-  assert.throws(() => formatIterationLabel('iter05', undefined), /two-digit/);
+test('rejects single-digit, non-numeric, and seed legacy', () => {
+  assert.throws(() => formatIterationLabel('5', undefined), /two decimal digits/);
+  assert.throws(() => formatIterationLabel('seed', undefined), /two decimal digits/);
+  assert.throws(() => formatIterationLabel('iter05', undefined), /two decimal digits/);
+});
+
+test('accepts three-or-more-digit iterations (sessions past 99)', () => {
+  // Mirrors ITER_NN_RE = `\d{2,}` in _chrome_boxes.py.
+  assert.equal(formatIterationLabel('001', undefined), ' #001');
+  assert.equal(formatIterationLabel('100', undefined), ' #100');
 });
 
 test('subtopic with single quote does not break HTML escape', () => {

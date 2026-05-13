@@ -50,8 +50,12 @@ WINNER_MARGIN = 0.15
 
 def read_prefill(pdf_path: Path) -> str:
     """Open the PDF, sample each mode-switch box region on page 1,
-    return the active mode name. Raises RuntimeError on ambiguous sample."""
-    doc = fitz.open(str(pdf_path))
+    return the active mode name. Raises RuntimeError on rasterization
+    failure or ambiguous sample."""
+    try:
+        doc = fitz.open(str(pdf_path))
+    except Exception as exc:
+        raise RuntimeError(f"failed to open PDF {pdf_path!r}: {exc}") from exc
     try:
         if doc.page_count == 0:
             raise RuntimeError("PDF has no pages")
@@ -66,7 +70,10 @@ def read_prefill(pdf_path: Path) -> str:
         ratios = {}
         for name, (x, y, w, h) in MODE_BOXES.items():
             clip = fitz.Rect(x * scale, y * scale, (x + w) * scale, (y + h) * scale)
-            pix = page.get_pixmap(clip=clip, dpi=100)
+            try:
+                pix = page.get_pixmap(clip=clip, dpi=100)
+            except Exception as exc:
+                raise RuntimeError(f"rasterization failed for {name} box: {exc}") from exc
             total = pix.width * pix.height
             filled = 0
             for py in range(pix.height):
