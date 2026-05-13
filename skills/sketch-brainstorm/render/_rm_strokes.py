@@ -23,6 +23,7 @@ underlying PDF. We read that mapping so consumers can land each
 page's data on the matching PDF page.
 """
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -57,6 +58,107 @@ PEN_COLORS = {
     12: "#c020c0",  # MAGENTA
     13: "#e0c020",  # YELLOW_2
 }
+
+
+def capsule_area(points, width, box):
+    """Compute the visible inked area of a stroke inside a box.
+
+    Models the stroke as a capsule: rectangle along the centerline of
+    width W, plus half-disc caps of radius W/2 at the pen-down and
+    pen-up endpoints. The portion of this shape that falls inside
+    `box` is the visible inked area.
+
+    Args:
+        points: list of (x, y) tuples in .rm coordinates. May be empty,
+            single-point (marker tap), or multi-point.
+        width: stroke width in .rm units (W).
+        box: (x_min, x_max, y_min, y_max) in .rm coordinates.
+
+    Returns:
+        Total capsule area inside box as a float. Returns 0.0 for an
+        empty point list.
+
+    Formula:
+        area = clipped_centerline_length * W + caps_fraction * pi*(W/2)^2
+    where:
+      - clipped_centerline_length is sum of segment portions inside box
+        (Liang-Barsky per segment).
+      - caps_fraction in {0, 1/2, 1} reflects how many of the two
+        terminal endpoints (pen-down, pen-up) fall inside the box
+        inflated by W/2. For 1-point strokes pen-down and pen-up
+        coincide, so caps_fraction collapses to 1 (full disc).
+    """
+    if not points:
+        return 0.0
+
+    x_min, x_max, y_min, y_max = box
+
+    # Clipped centerline length: sum across each (point[i], point[i+1]) segment.
+    clipped_length = 0.0
+    for i in range(len(points) - 1):
+        clipped = _liang_barsky_clip(points[i], points[i + 1], x_min, x_max, y_min, y_max)
+        if clipped is not None:
+            (cx1, cy1), (cx2, cy2) = clipped
+            clipped_length += math.hypot(cx2 - cx1, cy2 - cy1)
+
+    # Cap contributions: box inflated by W/2 on each side; count terminal
+    # endpoints inside the inflated rectangle.
+    inflated = (x_min - width / 2, x_max + width / 2, y_min - width / 2, y_max + width / 2)
+    if len(points) == 1:
+        # 1-point stroke: pen-down and pen-up coincide; a single point
+        # inside the inflated box yields a full disc (caps_fraction = 1).
+        caps_fraction = 1.0 if _point_in_box(points[0], inflated) else 0.0
+    else:
+        n_inside = 0
+        if _point_in_box(points[0], inflated):
+            n_inside += 1
+        if _point_in_box(points[-1], inflated):
+            n_inside += 1
+        caps_fraction = n_inside / 2.0
+
+    cap_area = caps_fraction * math.pi * (width / 2.0) ** 2
+
+    return clipped_length * width + cap_area
+
+
+def _liang_barsky_clip(p1, p2, x_min, x_max, y_min, y_max):
+    """Clip segment (p1, p2) to rectangle [x_min, x_max] x [y_min, y_max].
+
+    Returns clipped endpoints as ((x1', y1'), (x2', y2')) or None if the
+    segment is entirely outside the box. Standard Liang-Barsky.
+    """
+    x1, y1 = p1
+    x2, y2 = p2
+    dx = x2 - x1
+    dy = y2 - y1
+    t0, t1 = 0.0, 1.0
+
+    for p, q in ((-dx, x1 - x_min), (dx, x_max - x1), (-dy, y1 - y_min), (dy, y_max - y1)):
+        if p == 0:
+            if q < 0:
+                return None  # parallel to boundary and outside
+            continue
+        t = q / p
+        if p < 0:
+            if t > t1:
+                return None
+            if t > t0:
+                t0 = t
+        else:
+            if t < t0:
+                return None
+            if t < t1:
+                t1 = t
+
+    return ((x1 + t0 * dx, y1 + t0 * dy), (x1 + t1 * dx, y1 + t1 * dy))
+
+
+def _point_in_box(point, box):
+    """Inclusive containment test."""
+    x, y = point
+    x_min, x_max, y_min, y_max = box
+
+    return x_min <= x <= x_max and y_min <= y <= y_max
 
 
 def collect_lines(rm_file: Path) -> list[tuple[str, float, list[tuple[float, float]]]]:
