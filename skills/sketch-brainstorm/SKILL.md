@@ -325,6 +325,8 @@ When main chat handles a poller notification:
 - `READY:<NN>:mode=<X>`: set `current_mode: X`; update heading.
 - `STOP:<NN>`: write nothing further to `design-state.md`; run close-session ceremony.
 
+Main chat invokes `bash write-design-state.sh --session-dir <path> --iter NN --mode <color|bw|wireframe>` with the iter's content delta on stdin per turn. The helper handles the write-to-temp + rename internally; main chat does not need to orchestrate the atomic-write step manually.
+
 ## Cold-start (per-session bootstrap-lite)
 
 On a fresh session - when no current session folder exists - run
