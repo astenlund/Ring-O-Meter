@@ -124,7 +124,7 @@ class PollOnceTests(unittest.TestCase):
         sig = poll_tablet.Signature(version=3, modified_client="2026-05-13T12:00:00Z")
         pull_calls = []
         marked_result = poll_tablet.DetectionResult(
-            finish_turn_marked=True, end_session_marked=False,
+            finish_turn_marked=True, end_session_marked=False, mode_winner=None,
         )
 
         # Act
@@ -149,7 +149,7 @@ class PollOnceTests(unittest.TestCase):
         curr = poll_tablet.Signature(version=4, modified_client="2026-05-13T12:01:00Z")
         pull_calls = []
         unmarked_result = poll_tablet.DetectionResult(
-            finish_turn_marked=False, end_session_marked=False,
+            finish_turn_marked=False, end_session_marked=False, mode_winner=None,
         )
 
         # Act
@@ -174,7 +174,7 @@ class PollOnceTests(unittest.TestCase):
         curr = poll_tablet.Signature(version=4, modified_client="2026-05-13T12:01:00Z")
         pull_calls = []
         marked_result = poll_tablet.DetectionResult(
-            finish_turn_marked=True, end_session_marked=False,
+            finish_turn_marked=True, end_session_marked=False, mode_winner=None,
         )
 
         # Act
@@ -206,7 +206,7 @@ class StopEmissionTests(unittest.TestCase):
             pull_calls.append(1)
 
             return poll_tablet.DetectionResult(
-                finish_turn_marked=False, end_session_marked=True,
+                finish_turn_marked=False, end_session_marked=True, mode_winner=None,
             )
 
         # Act
@@ -232,7 +232,7 @@ class StopEmissionTests(unittest.TestCase):
 
         def fake_detect(_cloud_doc, _pulls_dir):
             return poll_tablet.DetectionResult(
-                finish_turn_marked=True, end_session_marked=True,
+                finish_turn_marked=True, end_session_marked=True, mode_winner=None,
             )
 
         # Act
@@ -247,6 +247,88 @@ class StopEmissionTests(unittest.TestCase):
         # Assert: both flags carry through; precedence ordering lives in run()'s emit block.
         self.assertTrue(result.end_session_marked)
         self.assertTrue(result.finish_turn_marked)
+
+
+class ResolveModeWinnerTests(unittest.TestCase):
+    """Radio-button winner-takes-all across the mode-switch trio."""
+
+    def _page(self, finish=False, end=False, color=(0.0, False), bw=(0.0, False), wireframe=(0.0, False)):
+        return {
+            "page": 1,
+            "boxes": {
+                "finish_turn":    {"area_rm_sq": 0.0, "marked": finish},
+                "end_session":    {"area_rm_sq": 0.0, "marked": end},
+                "mode_color":     {"area_rm_sq": color[0], "marked": color[1]},
+                "mode_bw":        {"area_rm_sq": bw[0], "marked": bw[1]},
+                "mode_wireframe": {"area_rm_sq": wireframe[0], "marked": wireframe[1]},
+            },
+        }
+
+    def test_single_marked_mode_wins(self):
+        # Arrange
+        per_page = [self._page(bw=(500.0, True))]
+
+        # Act + Assert
+        self.assertEqual(poll_tablet._resolve_mode_winner(per_page), "bw")
+
+    def test_tie_resolves_to_no_switch(self):
+        # Arrange
+        per_page = [self._page(color=(300.0, True), bw=(300.0, True))]
+
+        # Act + Assert
+        self.assertIsNone(poll_tablet._resolve_mode_winner(per_page))
+
+    def test_no_marked_returns_none(self):
+        # Arrange
+        per_page = [self._page()]
+
+        # Act + Assert
+        self.assertIsNone(poll_tablet._resolve_mode_winner(per_page))
+
+    def test_max_across_pages(self):
+        """Aggregation across pages uses max(area_rm_sq); bw's single-page peak beats color."""
+        # Arrange: color marked on both pages; bw marked once with higher single-page area.
+        per_page = [
+            self._page(color=(100.0, True), bw=(0.0, False)),
+            self._page(color=(50.0, True), bw=(150.0, True)),
+        ]
+
+        # Act + Assert: mode_color max = 100; mode_bw max = 150; bw wins.
+        self.assertEqual(poll_tablet._resolve_mode_winner(per_page), "bw")
+
+    def test_three_marked_highest_area_wins(self):
+        # Arrange
+        per_page = [self._page(color=(100.0, True), bw=(200.0, True), wireframe=(150.0, True))]
+
+        # Act + Assert
+        self.assertEqual(poll_tablet._resolve_mode_winner(per_page), "bw")
+
+
+class ModeWinnerPropagationTests(unittest.TestCase):
+    """mode_winner carries through poll_once to the result for the run() emit block."""
+
+    def test_mode_winner_propagates_through_poll_once(self):
+        # Arrange
+        prev = poll_tablet.Signature(version=3, modified_client="2026-05-13T12:00:00Z")
+        curr = poll_tablet.Signature(version=4, modified_client="2026-05-13T12:00:30Z")
+
+        def fake_detect(_cloud_doc, _pulls_dir):
+            return poll_tablet.DetectionResult(
+                finish_turn_marked=True, end_session_marked=False, mode_winner="wireframe",
+            )
+
+        # Act
+        _new_sig, result = poll_tablet.poll_once(
+            cloud_doc="x",
+            pulls_dir=Path("/unused"),
+            last_sig=prev,
+            signature_fn=lambda _: curr,
+            pull_detect_fn=fake_detect,
+        )
+
+        # Assert
+        self.assertTrue(result.finish_turn_marked)
+        self.assertEqual(result.mode_winner, "wireframe")
 
 
 if __name__ == "__main__":
