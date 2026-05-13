@@ -4,9 +4,9 @@ Per pulled rm-dir: read calibration.json, read the .content manifest
 for the rendered page count + page UUIDs, inverse-transform the
 Finish-turn box (PDF (1540, 2100) 40x40) into .rm coordinates, parse
 strokes via _rm_strokes.collect_lines(), and hit-test each stroke
-against the box region. A stroke is "on the box" when at least 3 of
-its points lie inside; the page is "marked" when at least one stroke
-qualifies. The top-level `marked` boolean is the OR across pages
+against the box region. A stroke is "on the box" when its capsule
+area inside the box meets MIN_AREA_RM_SQ; the page is "marked" when
+at least one stroke qualifies. The top-level `marked` boolean is the OR across pages
 (matches the mirrored-box behaviour: either page firing means the
 user finished the turn).
 
@@ -19,7 +19,7 @@ import json
 import sys
 from pathlib import Path
 
-from _rm_strokes import CALIBRATION_JSON, PAGE_W, collect_lines
+from _rm_strokes import CALIBRATION_JSON, PAGE_W, capsule_area, collect_lines
 
 # LOCKSTEP with page-chrome.css .finish-turn-checkbox dimensions.
 # Do not change either without updating the other.
@@ -27,8 +27,11 @@ from _rm_strokes import CALIBRATION_JSON, PAGE_W, collect_lines
 # pinned in page-chrome.css and remarkable-tablet-brainstorm.md.
 FINISH_TURN_BOX_PDF = (1540.0, 2100.0, 40.0, 40.0)  # x, y, w, h
 
-# heuristic: stroke point count required to count as a box mark
-MIN_POINTS_INSIDE = 3
+# heuristic: minimum capsule area (in .rm^2) for a stroke to qualify
+# as a mark on the box. Calibrated against snap-to-straight chords,
+# thick-marker single taps, and palm-rest grazes. See
+# .claude/features/remarkable-tablet-brainstorm.md "Detection algorithm".
+MIN_AREA_RM_SQ = 100.0
 
 
 def load_calibration():
@@ -69,16 +72,10 @@ def inverse_transform_box(pdf_box, scale):
     return rm_x_min, rm_x_max, rm_y_min, rm_y_max
 
 
-def enough_points_inside(points, box_rm):
-    """Return True if at least MIN_POINTS_INSIDE of `points` lie inside the .rm box."""
-    x_min, x_max, y_min, y_max = box_rm
-    n = 0
-    for x, y in points:
-        if x_min <= x <= x_max and y_min <= y <= y_max:
-            n += 1
-            if n >= MIN_POINTS_INSIDE:
-                return True
-    return False
+def stroke_qualifies(points, width, box_rm):
+    """Return True iff the stroke's capsule area inside the box meets
+    the threshold."""
+    return capsule_area(points, width, box_rm) >= MIN_AREA_RM_SQ
 
 
 def page_uuids_from_manifest(rm_dir):
@@ -141,8 +138,8 @@ def detect(rm_dir, scale):
             continue
         lines = collect_lines(rm_file)
         hit_count = 0
-        for _color, _width, pts in lines:
-            if enough_points_inside(pts, box_rm):
+        for _color, width, pts in lines:
+            if stroke_qualifies(pts, width, box_rm):
                 hit_count += 1
         page_marked = hit_count > 0
         if page_marked:

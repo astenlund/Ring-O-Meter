@@ -115,13 +115,56 @@ class JsonShapeTests(unittest.TestCase):
                     # roughly (730/0.45, 770/0.45) x (2100/0.45, 2140/0.45)
                     # = (~1622, ~1711) x (~4667, ~4756). Use 4 points well
                     # inside that range.
-                    return [("#000", 2.0, [(1650, 4700), (1660, 4710), (1670, 4720), (1680, 4730)])]
+                    # Width 4 across ~42 .rm of centerline inside the box
+                    # gives capsule area ~180 .rm^2, above the 100 threshold.
+                    return [("#000", 4.0, [(1650, 4700), (1660, 4710), (1670, 4720), (1680, 4730)])]
                 return [("#000", 2.0, [(0, 0), (10, 10)])]
             with patch.object(detect_finish_turn, "collect_lines", side_effect=fake_collect):
                 payload = detect_finish_turn.detect(rm_dir, scale=0.45)
         self.assertTrue(payload["marked"])
         self.assertFalse(payload["per_page"][0]["marked"])
         self.assertTrue(payload["per_page"][1]["marked"])
+
+
+class CapsuleAreaQualificationTests(unittest.TestCase):
+    """Stroke qualifies iff its capsule area meets the threshold."""
+
+    def test_palm_graze_does_not_qualify(self):
+        # Arrange: tiny stroke whose capsule area is well below threshold.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _write_manifest(tmp_path, "doc-uuid", ["page-uuid-1"])
+            rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1"])
+            # 5 .rm length, W=4 -> ~20 .rm^2 capsule area, below 100 threshold.
+            tiny_stroke = ("#000000", 4.0, [(-50.0, 44.0), (-43.0, 44.0)])
+
+            with patch.object(detect_finish_turn, "collect_lines", return_value=[tiny_stroke]), \
+                 patch.object(detect_finish_turn, "load_calibration", return_value={"scale": 0.45}):
+                # Act
+                output = detect_finish_turn.detect(rm_dir, scale=0.45)
+
+        # Assert
+        self.assertFalse(output["marked"])
+
+    def test_thick_marker_tap_qualifies(self):
+        # Arrange: 1-point stroke with thick marker inside the Finish-turn box.
+        # Finish-turn at PDF (1540, 2100) 40x40 -> .rm at scale 0.45:
+        # rm_x: (1540-810)/0.45 .. (1580-810)/0.45 = 1622 .. 1711
+        # rm_y: 2100/0.45 .. 2140/0.45 = 4667 .. 4756
+        # A thick stroke centered there should qualify via cap area.
+        tap_stroke = ("#000000", 30.0, [(1666.0, 4711.0)])
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _write_manifest(tmp_path, "doc-uuid", ["page-uuid-1"])
+            rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1"])
+
+            with patch.object(detect_finish_turn, "collect_lines", return_value=[tap_stroke]), \
+                 patch.object(detect_finish_turn, "load_calibration", return_value={"scale": 0.45}):
+                # Act
+                output = detect_finish_turn.detect(rm_dir, scale=0.45)
+
+        # Assert: caps_fraction=1, area = pi*15^2 ~ 707; passes 100 threshold.
+        self.assertTrue(output["marked"])
 
 
 if __name__ == "__main__":
