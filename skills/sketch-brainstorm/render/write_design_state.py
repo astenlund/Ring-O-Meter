@@ -17,11 +17,11 @@ on NTFS for same-volume same-directory renames (same guarantee that
 poller.lock relies on).
 """
 import argparse
-import os
 import re
 import sys
 from pathlib import Path
 
+from _atomic_write import atomic_write_text
 from _chrome_boxes import VALID_MODES
 
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
@@ -87,10 +87,7 @@ def write(session_dir, iter_nn, mode, delta):
     else:
         content = content.rstrip() + "\n" + new_section
 
-    # Atomic rename via write-to-temp.
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(content, encoding="utf-8")
-    os.replace(tmp, path)
+    atomic_write_text(path, content)
 
 
 def main(argv=None):
@@ -100,8 +97,15 @@ def main(argv=None):
     p.add_argument("--mode", required=True, choices=VALID_MODES)
     args = p.parse_args(argv)
     delta = sys.stdin.read()
-    write(args.session_dir, args.iter_nn, args.mode, delta)
+    try:
+        write(args.session_dir, args.iter_nn, args.mode, delta)
+    except (FileNotFoundError, ValueError, OSError) as e:
+        print(f"write-design-state: {e}", file=sys.stderr)
+
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -21,12 +21,7 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
-from _chrome_boxes import (
-    MODE_BW_BOX_PDF,
-    MODE_COLOR_BOX_PDF,
-    MODE_WIREFRAME_BOX_PDF,
-    VALID_MODES,
-)
+from _chrome_boxes import BOX_REGISTRY, VALID_MODES
 
 # Coords are in CSS pixels relative to the 1620 px wide render viewport;
 # read_prefill scales them to the PDF's actual point size at runtime
@@ -34,12 +29,15 @@ from _chrome_boxes import (
 # rect 1215.12 x 1620 points for a 1620x2160 px viewport).
 PAGE_WIDTH_CSS = 1620.0
 
-# Keyed by short mode name (VALID_MODES element); paired with the
-# matching PDF box from the shared chrome-box module.
-MODE_BOXES = dict(zip(VALID_MODES, (MODE_COLOR_BOX_PDF, MODE_BW_BOX_PDF, MODE_WIREFRAME_BOX_PDF)))
+# Derived from BOX_REGISTRY so a new mode added to _chrome_boxes raises
+# KeyError here on import (fail-fast) rather than silently truncating.
+MODE_BOXES = {m: BOX_REGISTRY[f"mode_{m}"] for m in VALID_MODES}
 
 # heuristic: pixel-luminance threshold below which a pixel counts as
 # "filled" (the dark gold pre-fill rasterizes to luminance ~95 in 0-255).
+# LOCKSTEP with the `.mode-switch-checkbox[data-mode=...]` `background`
+# colors in page-chrome.css; a theme change to the fill color requires
+# recalibrating this threshold.
 FILL_LUMINANCE_THRESHOLD = 160
 
 # heuristic: minimum filled-pixel ratio for a box to count as pre-filled.
@@ -104,7 +102,6 @@ def main(argv=None):
         active = read_prefill(args.pdf)
     except Exception as e:
         print(f"read_prefill: {e}", file=sys.stderr)
-
         return 1
     print(json.dumps({"active_mode": active}))
 

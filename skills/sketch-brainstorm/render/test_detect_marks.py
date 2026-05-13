@@ -29,8 +29,11 @@ sys.modules.setdefault("rmscene", MagicMock())
 sys.modules.setdefault("rmscene.scene_items", MagicMock())
 
 import detect_marks  # noqa: E402
+from _chrome_boxes import BOX_REGISTRY  # noqa: E402
 
-_EXPECTED_BOX_NAMES = {"finish_turn", "end_session", "mode_color", "mode_bw", "mode_wireframe"}
+# Derived rather than literal so a new box in BOX_REGISTRY surfaces here
+# at test time instead of silently passing against a stale set.
+_EXPECTED_BOX_NAMES = set(BOX_REGISTRY.keys())
 
 
 def _write_manifest(parent_dir, uuid, page_uuids):

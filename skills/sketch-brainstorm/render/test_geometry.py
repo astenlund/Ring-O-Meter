@@ -1,23 +1,17 @@
-"""Unit tests for the capsule-area + Liang-Barsky helpers in _rm_strokes.
+"""Unit tests for the capsule-area + Liang-Barsky helpers in _geometry.
 
-Pure-geometric; stdlib-only. Stubs rmscene so _rm_strokes imports
-cleanly without the venv (the helpers under test don't touch rmscene,
-but the production module imports it at top level).
+Pure-geometric; stdlib-only. `_geometry` has no runtime dependencies
+beyond `math`, so the venv is not required.
 """
 import math
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 
-# Stub rmscene so module import doesn't require the venv.
-sys.modules.setdefault("rmscene", MagicMock())
-sys.modules.setdefault("rmscene.scene_items", MagicMock())
-
-from _rm_strokes import capsule_area  # noqa: E402
+from _geometry import capsule_area  # noqa: E402
 
 
 class CapsuleAreaTests(unittest.TestCase):

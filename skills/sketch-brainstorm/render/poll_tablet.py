@@ -34,6 +34,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
+from _atomic_write import atomic_write_text
 from _chrome_boxes import VALID_MODES
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -170,17 +171,10 @@ def pull_and_detect(cloud_doc: str, pulls_dir: Path) -> DetectionResult:
 
 
 def write_lock(lock_path: Path, pid: int, started: str, heartbeat: str) -> None:
-    """Atomic write of the lock JSON via temp + os.replace.
-
-    os.replace is atomic on POSIX and atomic-in-practice on NTFS for small
-    files on one volume, which is the only case we hit (lock and tmp share
-    the parent directory).
-    """
+    """Atomic write of the lock JSON."""
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = lock_path.with_name(lock_path.name + ".tmp")
     payload = {"pid": pid, "started": started, "last_heartbeat": heartbeat}
-    tmp.write_text(json.dumps(payload), encoding="utf-8")
-    os.replace(tmp, lock_path)
+    atomic_write_text(lock_path, json.dumps(payload))
 
 
 def release_lock(lock_path: Path) -> None:
@@ -239,17 +233,24 @@ def run(
     pid = os.getpid()
     write_lock(lock_file, pid, started, started)
 
+    # Signal handlers set a flag; the loop checks it and exits via the
+    # normal return path so the finally-block lock cleanup runs once.
+    # Avoids the project's `sys.exit() only in main()` convention break
+    # and removes the prior pattern's duplicated release_lock() call.
+    shutdown_requested = [False]
+
     def _on_signal(_signum, _frame):
-        release_lock(lock_file)
-        sys.exit(0)
+        shutdown_requested[0] = True
 
     signal.signal(signal.SIGINT, _on_signal)
     signal.signal(signal.SIGTERM, _on_signal)
 
     try:
         last_sig = signature_fn(cloud_doc)
-        while True:
+        while not shutdown_requested[0]:
             time.sleep(poll_interval_s)
+            if shutdown_requested[0]:
+                break
             write_lock(lock_file, pid, started, utc_now_iso())
             last_sig, result = poll_once(
                 cloud_doc, pulls_dir, last_sig, signature_fn, pull_detect_fn
@@ -263,6 +264,8 @@ def run(
                 print(f"READY:{iter_nn}{suffix}", flush=True)
 
                 return 0
+
+        return 0
     finally:
         release_lock(lock_file)
 

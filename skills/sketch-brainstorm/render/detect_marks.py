@@ -19,7 +19,8 @@ import sys
 from pathlib import Path
 
 from _chrome_boxes import BOX_REGISTRY
-from _rm_strokes import CALIBRATION_JSON, PAGE_W, capsule_area, collect_lines
+from _geometry import capsule_area
+from _rm_strokes import CALIBRATION_JSON, PAGE_W, collect_lines
 
 
 class CalibrationError(Exception):

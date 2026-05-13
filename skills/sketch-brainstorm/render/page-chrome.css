@@ -2,9 +2,10 @@
  * page-chrome.css
  *
  * Two-page rendered layout for sketch-brainstorm. Both pages share a
- * header strip (topic + iteration label) and a chrome footer (the
- * Finish-turn checkbox today; End-session and mode-switches when those
- * layer in). Page 1 is the mockup page; page 2 is the legend page.
+ * header strip (topic + iteration label) and a chrome footer carrying
+ * the Finish-turn checkbox, the End-session checkbox, and the
+ * mode-switch trio (Color / B&W / Wireframe). Page 1 is the mockup
+ * page; page 2 is the legend page.
  *
  * The Finish-turn checkbox is pinned at the same coordinates on both
  * rendered pages: (x=1540, y=2100) 40x40 px on the 1620x2160 viewport.
@@ -97,10 +98,11 @@ html, body {
 }
 
 /* Chrome footer: bottom of page, identical on both pages. Hosts the
-   Finish-turn checkbox (and End-session / mode-switch boxes when those
-   layer in). The checkbox column is right-aligned so the user's pen
-   always lands at the same screen position regardless of which
-   rendered page they are on. */
+   Finish-turn checkbox, the End-session checkbox, and the mode-switch
+   trio. The Finish-turn / End-session column is right-aligned so the
+   user's pen always lands at the same screen position regardless of
+   which rendered page they are on; the mode-switch trio sits in the
+   left half of the footer. */
 .chrome-footer {
   position: absolute;
   bottom: 0;
@@ -257,7 +259,9 @@ html, body {
 
    Color choice: dark gold (#a08020). Visible against white-paper
    background, distinct from pen ink colors (black/grey/red/blue), and
-   robust against the device's dithered greyscale rendering. */
+   robust against the device's dithered greyscale rendering. LOCKSTEP
+   with FILL_LUMINANCE_THRESHOLD in render/read_prefill.py; a theme
+   change to this fill color requires recalibrating that threshold. */
 .mode-switch-row[data-current-mode="color"]     .mode-switch-checkbox[data-mode="color"],
 .mode-switch-row[data-current-mode="bw"]        .mode-switch-checkbox[data-mode="bw"],
 .mode-switch-row[data-current-mode="wireframe"] .mode-switch-checkbox[data-mode="wireframe"] {
