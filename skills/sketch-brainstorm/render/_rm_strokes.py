@@ -5,8 +5,9 @@ and Paper Pro viewport constants. Consumers:
   - render-strokes.py: produces SVG overlays from strokes.
   - derive_calibration.py: reduces strokes to centroids for the
     five-dot calibration ceremony.
-  - detect_finish_turn.py: hit-tests strokes against the Finish-turn
-    box's .rm rectangle.
+  - detect_marks.py: computes per-stroke capsule area inside each
+    chrome-footer checkbox region (Finish-turn, End-session, mode-
+    switch trio).
 
 The .rm coordinate system is center-origin in x (positive = right),
 top-origin in y (positive = downward, same direction as PDF), and
@@ -71,8 +72,7 @@ def collect_lines(rm_file: Path) -> list[tuple[str, float, list[tuple[float, flo
             color = PEN_COLORS.get(raw_color, PEN_COLORS[0])
             width = max(1.0, getattr(node, "thickness_scale", 1.0) * 2)
             pts = [(p.x, p.y) for p in node.points]
-            if len(pts) >= 2:  # single-point polylines are invisible in SVG
-                lines.append((color, width, pts))
+            lines.append((color, width, pts))
 
     return lines
 

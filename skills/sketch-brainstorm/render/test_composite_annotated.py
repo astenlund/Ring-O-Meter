@@ -30,7 +30,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 _HERE = Path(__file__).resolve().parent
 _COMPOSITE_PY = _HERE / "composite-annotated.py"
@@ -179,6 +179,59 @@ class ResolutionConstantsTests(unittest.TestCase):
         # modules must change in lockstep and this test stays green.
         self.assertEqual(composite_mod.PAGE_W, 1620)
         self.assertEqual(composite_mod.PAGE_H, 2160)
+
+
+class CollectLinesSinglePointTest(unittest.TestCase):
+    """collect_lines should preserve 1-point strokes so the detector
+    can see marker-tap geometry. The renderer skips them itself."""
+
+    def test_single_point_stroke_included(self):
+        # Arrange: a rmscene tree with one stroke that has one point.
+        # _rm_strokes is not in sys.modules at test time (the kebab-load
+        # harness drops transitively-loaded helpers); re-stub rmscene
+        # during the import + call so isinstance(node, scene_items.Line)
+        # can be exercised.
+        fake_point = MagicMock(x=10.0, y=20.0)
+        fake_line = MagicMock(spec=[])
+        fake_line.color = 0
+        fake_line.thickness_scale = 1.0
+        fake_line.points = [fake_point]
+        fake_tree = MagicMock()
+        fake_tree.walk.return_value = [fake_line]
+
+        rmscene_stub = MagicMock()
+        scene_items_stub = MagicMock()
+        # isinstance check against scene_items.Line: align Line with
+        # the fake stroke's actual class so isinstance returns True.
+        scene_items_stub.Line = fake_line.__class__
+        rmscene_stub.scene_items = scene_items_stub
+        rmscene_stub.read_tree = MagicMock(return_value=fake_tree)
+
+        stubs = {"rmscene": rmscene_stub, "rmscene.scene_items": scene_items_stub}
+        with patch.dict(sys.modules, stubs):
+            # Drop any cached _rm_strokes so the import binds to the
+            # stubs above rather than reusing a stale (or pre-stubbed)
+            # module object.
+            sys.modules.pop("_rm_strokes", None)
+            try:
+                import _rm_strokes
+                # collect_lines calls open(rm_file, "rb") before read_tree;
+                # use a real temp file so the open() succeeds, then let
+                # the patched read_tree return our fake tree.
+                with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                    tmp_path = Path(tmp.name)
+                try:
+                    with patch.object(_rm_strokes, "read_tree", return_value=fake_tree):
+                        result = _rm_strokes.collect_lines(tmp_path)
+                finally:
+                    tmp_path.unlink(missing_ok=True)
+            finally:
+                sys.modules.pop("_rm_strokes", None)
+
+        # Assert
+        self.assertEqual(len(result), 1)
+        _color, _width, pts = result[0]
+        self.assertEqual(pts, [(10.0, 20.0)])
 
 
 if __name__ == "__main__":
