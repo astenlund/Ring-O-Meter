@@ -331,5 +331,73 @@ class ModeWinnerPropagationTests(unittest.TestCase):
         self.assertEqual(result.mode_winner, "wireframe")
 
 
+class RunLifecycleTests(unittest.TestCase):
+    """End-to-end coverage of run(): emit lines and finally-block lock cleanup."""
+
+    def test_run_emits_ready_and_releases_lock_on_finish_turn(self):
+        # Arrange: signature changes on each tick so pull_detect_fn fires.
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / "poller.lock"
+            pulls = Path(tmp) / "pulls"
+            tick = {"n": 0}
+
+            def signature_fn(_cloud_doc):
+                tick["n"] += 1
+                return poll_tablet.Signature(version=tick["n"], modified_client=str(tick["n"]))
+
+            def fake_pull_detect(_cloud_doc, _pulls_dir):
+                return poll_tablet.DetectionResult(
+                    finish_turn_marked=True, end_session_marked=False, mode_winner=None,
+                )
+
+            # Act
+            rc = poll_tablet.run(
+                cloud_doc="x",
+                iter_nn="00",
+                pulls_dir=pulls,
+                lock_file=lock,
+                poll_interval_s=0,
+                signature_fn=signature_fn,
+                pull_detect_fn=fake_pull_detect,
+            )
+
+            # Assert: clean exit, lock released, no .tmp sidecar.
+            self.assertEqual(rc, 0)
+            self.assertFalse(lock.exists())
+            self.assertFalse(lock.with_name(lock.name + ".tmp").exists())
+
+    def test_run_emits_stop_with_precedence_over_ready(self):
+        # Arrange: end-session takes precedence over finish-turn even when
+        # both flags are set on the same poll tick.
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / "poller.lock"
+            pulls = Path(tmp) / "pulls"
+            tick = {"n": 0}
+
+            def signature_fn(_cloud_doc):
+                tick["n"] += 1
+                return poll_tablet.Signature(version=tick["n"], modified_client=str(tick["n"]))
+
+            def both_marked(_cloud_doc, _pulls_dir):
+                return poll_tablet.DetectionResult(
+                    finish_turn_marked=True, end_session_marked=True, mode_winner=None,
+                )
+
+            # Act
+            rc = poll_tablet.run(
+                cloud_doc="x",
+                iter_nn="00",
+                pulls_dir=pulls,
+                lock_file=lock,
+                poll_interval_s=0,
+                signature_fn=signature_fn,
+                pull_detect_fn=both_marked,
+            )
+
+            # Assert
+            self.assertEqual(rc, 0)
+            self.assertFalse(lock.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

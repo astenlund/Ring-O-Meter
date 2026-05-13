@@ -80,6 +80,8 @@ def read_prefill(pdf_path: Path) -> str:
         doc.close()
 
     sorted_modes = sorted(ratios.items(), key=lambda kv: kv[1], reverse=True)
+    if len(sorted_modes) < 2:
+        raise RuntimeError(f"fewer than two mode boxes sampled (got {len(sorted_modes)})")
     winner_name, winner_ratio = sorted_modes[0]
     runner_ratio = sorted_modes[1][1]
 
@@ -100,7 +102,7 @@ def main(argv=None):
     args = p.parse_args(argv)
     try:
         active = read_prefill(args.pdf)
-    except Exception as e:
+    except (RuntimeError, OSError) as e:
         print(f"read_prefill: {e}", file=sys.stderr)
         return 1
     print(json.dumps({"active_mode": active}))

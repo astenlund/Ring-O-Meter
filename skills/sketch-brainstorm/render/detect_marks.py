@@ -20,11 +20,7 @@ from pathlib import Path
 
 from _chrome_boxes import BOX_REGISTRY
 from _geometry import capsule_area
-from _rm_strokes import CALIBRATION_JSON, PAGE_W, collect_lines
-
-
-class CalibrationError(Exception):
-    """Raised when calibration.json is missing, invalid, or unparseable."""
+from _rm_strokes import PAGE_W, CalibrationError, collect_lines, load_calibration
 
 
 class ManifestError(Exception):
@@ -36,32 +32,6 @@ class ManifestError(Exception):
 # thick-marker single taps, and palm-rest grazes. See
 # .claude/features/remarkable-tablet-brainstorm.md "Detection algorithm".
 MIN_AREA_RM_SQ = 100.0
-
-
-def load_calibration():
-    """Load and validate CALIBRATION_JSON.
-
-    Raises CalibrationError on missing file, invalid JSON, or invalid
-    scale value. Caller (main) translates to non-zero exit + diagnostic.
-    """
-    if not CALIBRATION_JSON.exists():
-        raise CalibrationError(
-            f"calibration.json not found at {CALIBRATION_JSON}; "
-            f"run derive-calibration.sh first"
-        )
-    try:
-        data = json.loads(CALIBRATION_JSON.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        raise CalibrationError(
-            f"calibration.json is not valid JSON ({e}); re-run derive-calibration.sh"
-        ) from e
-    scale = data.get("scale")
-    if not isinstance(scale, (int, float)) or scale <= 0:
-        raise CalibrationError(
-            "calibration.json missing or invalid 'scale'; re-run derive-calibration.sh"
-        )
-
-    return data
 
 
 def inverse_transform_box(pdf_box, scale):
@@ -93,8 +63,9 @@ def page_uuids_from_manifest(rm_dir):
     pushed but never opened.
 
     Returns page_uuids where page_uuids[i] is the UUID string for the i-th
-    rendered page (i is 0-based, matches cPages.pages[] order). On
-    absence/invalid/missing-key, exits non-zero with a diagnostic.
+    rendered page (i is 0-based, matches cPages.pages[] order). Raises
+    ManifestError on absent file, invalid JSON, or missing pages key;
+    caller (main) translates to non-zero exit + diagnostic.
     """
     content_path = rm_dir.parent / f"{rm_dir.name}.content"
     if not content_path.exists():

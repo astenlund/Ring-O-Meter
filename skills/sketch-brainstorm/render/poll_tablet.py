@@ -25,6 +25,7 @@ respawning across chats reads from there.
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -36,6 +37,8 @@ from typing import Callable, Optional, Tuple
 
 from _atomic_write import atomic_write_text
 from _chrome_boxes import VALID_MODES
+
+_ITER_NN_RE = re.compile(r"\d{2}")
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
@@ -122,6 +125,8 @@ def _resolve_mode_winner(per_page) -> Optional[str]:
     if len(qualifying) == 1:
         return qualifying[0]
     qualifying.sort(key=lambda s: per_mode_max[s], reverse=True)
+    # Float equality is safe here: detect_marks rounds area_rm_sq to 3dp,
+    # so values arrive at this comparison as canonical 3-decimal floats.
     if per_mode_max[qualifying[0]] == per_mode_max[qualifying[1]]:
         return None
 
@@ -284,20 +289,26 @@ def parse_args(argv):
         default=DEFAULT_POLL_INTERVAL_S,
         help=f"Seconds between polls (default {DEFAULT_POLL_INTERVAL_S}).",
     )
+    args = p.parse_args(argv)
+    if not _ITER_NN_RE.fullmatch(args.iter):
+        p.error(f"--iter must be two decimal digits; got {args.iter!r}")
 
-    return p.parse_args(argv)
+    return args
 
 
 def main(argv=None):
     args = parse_args(argv)
-
-    return run(
-        cloud_doc=args.cloud_doc,
-        iter_nn=args.iter,
-        pulls_dir=args.pulls_dir,
-        lock_file=args.lock_file,
-        poll_interval_s=args.poll_interval,
-    )
+    try:
+        return run(
+            cloud_doc=args.cloud_doc,
+            iter_nn=args.iter,
+            pulls_dir=args.pulls_dir,
+            lock_file=args.lock_file,
+            poll_interval_s=args.poll_interval,
+        )
+    except Exception as e:
+        print(f"poll_tablet: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
