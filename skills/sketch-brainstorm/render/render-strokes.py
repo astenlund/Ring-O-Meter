@@ -88,6 +88,13 @@ def render_svg(
     out_svg.write_text(svg, encoding="utf-8")
 
 
+def _warn_no_strokes(pairs):
+    if not pairs:
+        print("warning: no .rm files in rm-dir; no SVGs written", file=sys.stderr)
+    else:
+        print("warning: no strokes found in any .rm file; writing empty SVGs", file=sys.stderr)
+
+
 def main():
     if len(sys.argv) != 3:
         print(f"usage: {sys.argv[0]} <rm-dir> <out-dir>", file=sys.stderr)
@@ -113,11 +120,11 @@ def main():
             return 1
         print(f"using calibrated scale: {scale:.4f}")
         if not any(all_lines.values()):
-            print("warning: no strokes found in any .rm file; writing empty SVGs", file=sys.stderr)
+            _warn_no_strokes(pairs)
     else:
         bounds = union_bounds(all_lines)
         if not math.isfinite(bounds[2]):
-            print("warning: no strokes found in any .rm file; writing empty SVGs", file=sys.stderr)
+            _warn_no_strokes(pairs)
             for pdf_index, rm_file in pairs:
                 out_svg = out_dir / f"strokes-page{pdf_index + 1}.svg"
                 render_svg([], 1.0, out_svg)
