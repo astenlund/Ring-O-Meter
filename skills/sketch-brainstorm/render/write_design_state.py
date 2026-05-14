@@ -28,7 +28,7 @@ _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 # Lookahead matches any `## ` heading (not just `## Iteration `) so that
 # a future schema addition such as `## Archive` does not get absorbed
 # into the prior iter section and silently deleted on the next write.
-_ITER_SECTION_RE_TEMPLATE = r"(\n## Iteration {nn}\n.*?)(?=\n## |\Z)"
+_ITER_SECTION_RE_TEMPLATE = r"\n## Iteration {nn}\n.*?(?=\n## |\Z)"
 _ITER_MARKER_RE = re.compile(r"^## Iteration ", re.MULTILINE)
 _CURRENT_MODE_RE = re.compile(r"^current_mode:.*$", re.MULTILINE)
 
