@@ -1,6 +1,6 @@
 ---
 name: sketch-brainstorm
-description: Round-trip UI brainstorm loop with a reMarkable tablet. Use when the user wants to sketch on the tablet ("push to tablet", "send sketch to remarkable", "brainstorm UI on the tablet", "pull from tablet", "grab the annotated version"). Renders HTML mockups to PDF at the tablet's viewport, pushes to the reMarkable cloud via rmapi, drives an iter-by-iter render-pull-interpret-render loop. Polling, full bootstrap dialogue, verify-before-push, and compression are deferred to follow-up slices.
+description: Round-trip UI brainstorm loop with a reMarkable tablet. Use when the user wants to sketch on the tablet ("push to tablet", "send sketch to remarkable", "brainstorm UI on the tablet", "pull from tablet", "grab the annotated version"). Renders HTML mockups to PDF at the tablet's viewport, pushes to the reMarkable cloud via rmapi, drives an iter-by-iter render-pull-interpret-render loop. Full bootstrap dialogue and compression are deferred to follow-up slices.
 ---
 
 # sketch-brainstorm
@@ -10,11 +10,13 @@ A skill for design-iteration with handwritten annotations on a reMarkable tablet
 ## STATUS: closed loop + stroke-region detector + calibration ceremony
 
 Round-trip ships end-to-end and the stroke-region Finish-turn detector
-+ one-time calibration ceremony are in place. Polling, full bootstrap
-dialogue, verify-before-push, compression, and multi-sketch are still
-deferred to follow-up slices.
++ one-time calibration ceremony are in place. Verify-before-push is
+shipped: the loop body dispatches a fresh subagent against the new
+pre-renders (plus the prior turn's pre-renders when available) and
+gates the push on a PASS verdict. Full bootstrap dialogue, compression,
+and multi-sketch are still deferred to follow-up slices.
 
-- `render-html-to-pdf.sh` produces a two-page PDF at the Paper Pro viewport from a parametrised HTML template. Page 1 is the mockup page (header, mockup region, small notes area, chrome footer with the Finish-turn checkbox); page 2 is the legend page (header, vocabulary legend, larger notes area, mirrored chrome footer). The user can append further pages on the tablet for long-form notes (handled by the future interpretation slice). `--subtopic` (forward-compat for multi-sketch) and `--prerender-out <dir>` (captures per-page PNGs to feed verify-before-push when it lands).
+- `render-html-to-pdf.sh` produces a two-page PDF at the Paper Pro viewport from a parametrised HTML template. Page 1 is the mockup page (header, mockup region, small notes area, chrome footer with the Finish-turn checkbox); page 2 is the legend page (header, vocabulary legend, larger notes area, mirrored chrome footer). The user can append further pages on the tablet for long-form notes (handled by the future interpretation slice). `--subtopic` (forward-compat for multi-sketch) and `--prerender-out <dir>` (captures per-page PNGs that the verify-before-push slice consumes).
 - `push-to-tablet.sh` uploads a rendered PDF to a named cloud folder via `rmapi put --force`. Owns just the upload step; cloud-path composition (project root + per-session slug) belongs to the future bootstrap-dialogue slice that calls this wrapper.
 - `pull-from-tablet.sh` downloads a cloud document via `rmapi get` and extracts the resulting `.rmdoc` archive into a per-document directory. Stdout is the extracted directory path so it pipes directly into `render-strokes.sh`. Owns just the download + extract; rendering and interpretation are downstream.
 - `render-strokes.sh` converts per-page `.rm` stroke files (in the directory `pull-from-tablet.sh` produces, or any locally-extracted `.rmdoc`) to SVG overlays at the same viewport dimensions as the PDF. Bootstraps a Python venv with `rmscene` on first run.
@@ -37,15 +39,14 @@ Not yet implemented (deferred to follow-up plans):
 - Auth bootstrap (`setup-rmapi.sh`, `~/.rmapi` token, deny rules, PreToolUse hook); both transport wrappers assume the machine is already paired
 - Full bootstrap dialogue (design-language briefing, lock-file check, resume-vs-fresh prompt); bootstrap-lite ships today
 - ERROR taxonomy + backoff (structured error classes from the poller, retry/backoff policy)
-- Verify-before-push (visual sanity check on the rendered output before pushing)
 - Multi-sketch iterations (N rendered sketches plus a trailing legend page, for side-by-side alternatives)
 - Compression of cross-turn state (design-state.md history pruning, archive rollover)
 - Vocabulary lifecycle (weight-based active / archived split, frecency-style scoring) and close-session ceremony
 
 The automated loop ships today: bootstrap-lite + iter01+ render loop +
-structured interpret JSON. Polling and the full bootstrap dialogue are
-deferred to follow-up slices, so the orchestrator drives the loop via
-manual chat triggers (`go` / `pull` / `next` / `iter NN`) rather than
+structured interpret JSON. The full bootstrap dialogue is deferred to
+a follow-up slice, so the orchestrator drives the loop via manual
+chat triggers (`go` / `pull` / `next` / `iter NN`) rather than
 auto-detecting the user's tablet back-out.
 
 ## Files in this skill
@@ -66,9 +67,10 @@ auto-detecting the user's tablet back-out.
 - `render-strokes.sh` -- bash wrapper for the inbound stroke pipeline; reuses the shared venv.
 - `render/composite-annotated.py` -- composites stroke SVGs onto PDF pages as PNGs (PyMuPDF + Pillow).
 - `composite-annotated.sh` -- bash wrapper for the composite step; reuses the shared venv.
-- `render/prerender-pages.py` -- PyMuPDF-based PDF-to-PNG rasterizer; invoked by `render-html-to-pdf.sh`'s `--prerender-out` flag to feed the deferred verify-before-push slice.
+- `render/prerender-pages.py` -- PyMuPDF-based PDF-to-PNG rasterizer; invoked by `render-html-to-pdf.sh`'s `--prerender-out` flag to feed the verify-before-push slice.
 - `bootstrap-session.sh` -- creates the per-session local folder skeleton and primes `design-state.md` with frontmatter + `## Iteration 00`. Idempotent.
 - `parse-interpret-json.mjs` -- shell-callable JSON parse + validate helper for the interpret subagent's response. Authoritative schema lives at the top of this file.
+- `parse-verify-response.mjs` -- shell-callable JSON parse + validate helper for the verify subagent's response (`{verdict, reason}` with asymmetric-reason rule). Authoritative schema lives at the top of this file.
 - `derive-calibration.sh` -- bash wrapper for the one-time calibration ceremony; runs derive_calibration.py against a pulled five-dot calibration rm-dir to produce calibration.json.
 - `render/derive_calibration.py` -- calibration derivation: five-centroid Hungarian assignment, median scale derivation, asymmetry + residual verification, writes calibration.json.
 - `detect-marks.sh` -- bash wrapper for the per-turn detector.
@@ -92,7 +94,9 @@ auto-detecting the user's tablet back-out.
 - `render/test_detect_marks.py` -- JSON-shape test for the detector (stubs rmscene; runs stdlib-only).
 - `render/test_derive_calibration.py` -- fixture smoke test for the calibration derivation (uses the committed .rmdoc + the venv).
 - `interpret-prompt.md` -- prompt template for the interpretation subagent (read by the orchestrator; not directly executable).
+- `verify-prompt.md` -- prompt template for the verify subagent (read by the orchestrator; not directly executable).
 - `test_interpret_parse.mjs` -- node:test cases for `parseInterpretResponse` (happy path, CRLF, missing/wrong-type fields, malformed JSON).
+- `test_verify_parse.mjs` -- node:test cases for `parseVerifyResponse` (PASS/FAIL happy paths, CRLF, asymmetric-reason rule, missing/wrong-cased fields, forward-compat unknown-field tolerance, missing-fence rejection).
 - `test_bootstrap_session.sh` -- bash test for `bootstrap-session.sh` (folder skeleton, frontmatter, idempotency re-run, negative-input rejection).
 - `render/test_render_format.mjs` -- node:test cases for `formatIterationLabel`.
 - `render/test_prerender_pages.py` -- end-to-end test for `prerender-pages.py` against a real two-page PDF.
@@ -132,7 +136,7 @@ CLI flags:
 - `--out <path>` (required): output PDF path, conventionally `<slug>-NN.pdf`. Parent directory is created if missing.
 - `--mockup-html <path>` (optional): file whose contents are substituted into the mockup region. Iter 00 renders may pass an empty mockup or a description-driven mockup, depending on the bootstrap-lite path; iter 01+ pass orchestrator-composed mockup HTML derived from the prior turn's `user_intent`.
 - `--subtopic <string>` (optional): forward-compat hook for the deferred multi-sketch slice; substituted into the page header alongside the topic when present.
-- `--prerender-out <dir>` (optional): captures per-page PNGs of the rendered PDF (`<slug>-NN-page1.png`, `-page2.png`, ...) via PyMuPDF; consumed by the deferred verify-before-push slice and useful for spot-checking what was pushed.
+- `--prerender-out <dir>` (optional): captures per-page PNGs of the rendered PDF (`<slug>-NN-page1.png`, `-page2.png`, ...) via PyMuPDF; consumed by the verify-before-push slice and useful for spot-checking what was pushed.
 
 Windows: the bash wrapper requires Git Bash or WSL. PowerShell users invoke via `bash render-html-to-pdf.sh ...`.
 
@@ -272,6 +276,24 @@ This step is orchestrator-side, not a shell wrapper: the Agent tool is Claude Co
 
 The structured JSON contract documented above is the shipped shape; `parse-interpret-json.mjs` validates it on every loop body iteration. See the Loop body section below for the full orchestrator-side flow, and `interpret-prompt.md`'s "Future expansion" section for fields under consideration but not yet shipped (e.g., `slug_suggestion`).
 
+## Verify entry point
+
+After `render-html-to-pdf.sh --prerender-out` produces the per-page PNGs for the just-rendered iteration, dispatch a fresh verify subagent to visually sanity-check the render against the user's intent before pushing to the cloud:
+
+1. Read `skills/sketch-brainstorm/verify-prompt.md` (the prompt template).
+2. Substitute the bracketed tokens:
+   - `{NEW_PRERENDER_PATHS}` - newline-bullet absolute paths to the just-rendered `<session>/prerender/<slug>-NN-page*.png` files.
+   - `{PRIOR_PRERENDER_PATHS}` - newline-bullet absolute paths to the prior iteration's `<session>/prerender/<slug>-(NN-1)-page*.png` files when present (NN > 00 and the prior turn's pre-renders are on disk); the literal string `none` otherwise (iter 00 or prior absent). With `none`, the verifier runs in absolute-only layout-sanity mode; with paths, it adds the differential "did the requested change visually manifest?" check.
+   - `{USER_INTENT}` - this turn's `user_intent` text from the prior interpret turn for loop-body iterations. For bootstrap-lite iter 00 there is no prior interpret turn, so the substitution depends on the sub-path: the user's initial description verbatim for the description-driven path, and the literal string `(blank page; no specific intent; absolute layout-sanity only)` for the blank-page path. Threading this literal text into the prompt keeps the differential-vs-absolute mode explicit to the verifier and stops the orchestrator from improvising substitution per session.
+3. Dispatch via the Agent tool with `subagent_type: general-purpose`. Pass the substituted prompt body.
+4. Receive the subagent's response. Parse the fenced JSON block via `node skills/sketch-brainstorm/parse-verify-response.mjs` (stdin = raw response; stdout = canonicalized JSON; exit 0 on valid). The parsed object has two fields: `verdict` (`"PASS"` or `"FAIL"`, strict-cased) and `reason` (empty string on PASS, non-empty sentence naming the failure mode on FAIL). The asymmetric-reason rule (PASS implies empty reason, FAIL implies non-empty reason) is hard-validated; a subagent that returns `{"verdict":"PASS","reason":"looks good"}` is rejected, not coerced. On parse failure (parse helper exits non-zero), retry the verify dispatch once with a "JSON only, no preamble; conform to the contract" reminder appended to the prompt; on a second parse failure, surface the raw response in chat with the caveat *"verifier returned malformed output twice; proceeding to push without verify-gate."* and proceed to the push step. Parse failures do NOT consume the FAIL retry budget below.
+5. Branch on the verdict:
+   - **PASS**: proceed to the push step.
+   - **FAIL**: regenerate the iteration's mockup HTML with the verifier's `reason` folded in as a constraint, re-render via `render-html-to-pdf.sh --prerender-out`, and re-dispatch verify. Retry budget is 2 re-renders per turn (the failed attempt's HTML and rendered PDF are overwritten on each retry; previous failed attempts have no value).
+   - **After 2 failed verifies**: push anyway and surface the verifier's last `reason` verbatim in chat with the caveat *"verifier flagged: <reason> - 2 retries did not resolve it; check on the tablet."* The retry counter is chat-local per turn.
+
+This step is orchestrator-side, not a shell wrapper: the Agent tool is Claude Code's; shells can't dispatch it. The fresh-per-turn discipline matches the interpretation entry point - the verifier sees only the pre-render PNGs plus the substituted text, no prior chat context.
+
 ## Loop body (orchestrator-driven)
 
 When the user signals progress on the active session - `go`, `pull`,
@@ -303,6 +325,18 @@ body iteration:
    --out <session>/<slug>-NN.pdf --prerender-out <session>/prerender/`.
    The mode comes from `design-state.md`'s `current_mode` frontmatter
    (which step 5 just wrote).
+7.5. Dispatch the verify subagent per the "Verify entry point" section
+   above. Token substitutions for this loop-body iteration:
+   - `{NEW_PRERENDER_PATHS}` = paths to `<session>/prerender/<slug>-NN-page*.png`.
+   - `{PRIOR_PRERENDER_PATHS}` = paths to `<session>/prerender/<slug>-(NN-1)-page*.png`
+     when present and NN > 00; literal `none` otherwise.
+   - `{USER_INTENT}` = this turn's `user_intent` text (the string step 4 distilled,
+     the same one that drove the step 6 mockup composition).
+   On `FAIL`, regenerate `mockups/<slug>-NN.html` by re-running step 6 with the
+   verifier's `reason` added as a constraint, re-run step 7 to re-render and
+   capture fresh pre-renders, and re-dispatch verify. Verdict branching, retry
+   budget, push-anyway caveat, and parse-failure handling all follow the Verify
+   entry point section's rules verbatim.
 8. `push-to-tablet.sh --pdf <session>/<slug>-NN.pdf --cloud-folder
    <cloud-path>/<slug>`.
 9. Tell the user: "iter NN pushed; annotate and back out, then say `go`."
@@ -435,9 +469,31 @@ is the minimum viable preamble that gets iter 00 onto the tablet.
    Capture the printed session-folder path on stdout.
 7. Compose `mockups/<slug>-00.html`: description-driven mockup body
    when a description was supplied, empty `<main>` otherwise.
-8. Render and push:
-   `render-html-to-pdf.sh ... --iteration 00 ... --prerender-out`
-   then `push-to-tablet.sh ... --cloud-folder <cloud-path>/<slug>`.
+8a. Render:
+   `render-html-to-pdf.sh ... --iteration 00 ... --prerender-out
+   <session>/prerender/`. The `--prerender-out` PNGs feed step 8b.
+8b. Dispatch the verify subagent per the "Verify entry point" section
+   above. Token substitutions for the iter-00 bootstrap-lite path:
+   - `{NEW_PRERENDER_PATHS}` = newline-bullet absolute paths to
+     `<session>/prerender/<slug>-00-page*.png`.
+   - `{PRIOR_PRERENDER_PATHS}` = the literal string `none` (iter 00
+     has no prior turn; the verifier runs in absolute-only
+     layout-sanity mode).
+   - `{USER_INTENT}` depends on the bootstrap-lite sub-path the user
+     answered in step 4:
+     - Description-driven: the user's initial description verbatim.
+     - Blank-page: the literal string `(blank page; no specific
+       intent; absolute layout-sanity only)`. Threading this literal
+       text into the prompt keeps the differential-vs-absolute mode
+       explicit to the verifier and stops the orchestrator from
+       improvising substitution per session.
+   Verdict branching, retry budget, push-anyway caveat, and parse-failure
+   handling all follow the Verify entry point section's rules verbatim.
+   On `FAIL` retry, regenerate `mockups/<slug>-00.html` from step 7 with
+   the verifier's `reason` folded in as a constraint, re-render, and
+   re-dispatch verify.
+8c. Push:
+   `push-to-tablet.sh ... --cloud-folder <cloud-path>/<slug>`.
 9. Tell the user: *"iter 00 pushed; annotate and back out, then say
    `go`."*
 
@@ -454,7 +510,7 @@ is the minimum viable preamble that gets iter 00 onto the tablet.
 
 ## Smoke test (post-impl validation)
 
-A six-step end-to-end exercise the user runs once after the slice
+A seven-step end-to-end exercise the user runs once after the slice
 lands to validate it:
 
 1. Start a fresh session by sending a triggering message in chat (e.g.,
@@ -475,11 +531,22 @@ lands to validate it:
    - `mockups/<slug>-01.html` is composed
    - `<slug>-01.pdf` renders and pushes
    - `prerender/<slug>-01-page1.png` and `-page2.png` exist
+   - verify subagent dispatches with the new pre-renders + the iter 00
+     pre-renders + the iter 01 `user_intent`;
+     `parse-verify-response.mjs` accepts the verdict and the push
+     proceeds on PASS
 4. Confirm `<slug>-01.pdf` landed on the tablet's file picker.
 5. Open it; annotate again; type `go`. Confirm iter02 produces.
 6. Negative test: with a still-active session, try to start another
    session with the same topic. Confirm the resume-vs-rename prompt
    fires and offers all three documented branches.
+7. Verify-failure test: edit `mockups/<slug>-01.html` to embed a
+   literal `{{topic}}` token (template-typo simulation), re-render
+   with the iter 00 mockup as prior pre-render. Confirm the verify
+   subagent returns FAIL with a reason naming the literal token,
+   the orchestrator regenerates and re-renders, and after at most
+   2 retries either lands PASS or surfaces the push-anyway caveat
+   in chat with the verifier's last reason.
 
 ### Crash-recovery test
 
