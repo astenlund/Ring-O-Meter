@@ -18,6 +18,7 @@ then re-run with the venv's python directly.
 """
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -32,6 +33,9 @@ import derive_calibration  # noqa: E402
 _SKILL_ROOT = _HERE.parent
 _FIXTURES_DIR = _SKILL_ROOT / "test-fixtures"
 _CALIBRATION_JSON = _SKILL_ROOT / "calibration.json"
+_DOC_UUID_RE = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+)
 
 
 def _resolve_fixture():
@@ -56,7 +60,9 @@ def _extract_rm_dir(rmdoc_path, target_dir):
 
     Mirrors pull-from-tablet.sh's extraction logic: annotated .rmdoc
     archives have a nested <doc-uuid>/ subdirectory containing the
-    per-page .rm files.
+    per-page .rm files. Prefer a UUID-named directory when present so
+    a future firmware shipping a flat or multi-dir layout surfaces a
+    clear diagnostic instead of returning an unrelated sibling.
     """
     target_dir = Path(target_dir).resolve()
     with zipfile.ZipFile(rmdoc_path) as z:
@@ -65,11 +71,17 @@ def _extract_rm_dir(rmdoc_path, target_dir):
             if not str(member_path).startswith(str(target_dir) + os.sep):
                 raise RuntimeError(f"zip slip detected: {member!r} would escape target dir")
         z.extractall(target_dir)
-    # Find the nested <doc-uuid>/ subdirectory.
-    for entry in target_dir.iterdir():
-        if entry.is_dir():
-            return entry
-    raise RuntimeError(f"no rm-dir found inside {rmdoc_path}")
+    dirs = [e for e in target_dir.iterdir() if e.is_dir()]
+    uuid_dirs = [d for d in dirs if _DOC_UUID_RE.fullmatch(d.name)]
+    if uuid_dirs:
+        return uuid_dirs[0]
+    if len(dirs) == 1:
+        return dirs[0]
+    raise RuntimeError(
+        f"unrecognised .rmdoc layout in {rmdoc_path}: "
+        f"expected a doc-UUID directory or a single nested directory; "
+        f"found {[d.name for d in dirs]}"
+    )
 
 
 @unittest.skipIf(_resolve_fixture() is None, "no committed calibration fixture")
