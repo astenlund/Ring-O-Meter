@@ -3,7 +3,7 @@
 Output naming: <out-dir>/<prefix>-page1.png, ...-page2.png, ...
 Used by render-html-to-pdf.sh's --prerender-out flag to capture
 per-page snapshots of a freshly-rendered iter PDF, which feed the
-future verify-before-push slice.
+verify-before-push slice.
 """
 
 from __future__ import annotations
