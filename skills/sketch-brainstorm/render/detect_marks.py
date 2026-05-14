@@ -113,6 +113,9 @@ def detect_page(rm_file, scale):
         for _color, width, points in strokes:
             stroke_area = capsule_area(points, width, rm_box)
             if stroke_area >= MIN_AREA_RM_SQ:
+                # Sum within page + max across pages (see _resolve_mode_winner):
+                # prefers repeated marking over a single huge stroke when both
+                # occur on different pages.
                 total_area += stroke_area
                 marked = True
         boxes[box_name] = {"area_rm_sq": round(total_area, 3), "marked": marked}
