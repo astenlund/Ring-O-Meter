@@ -82,13 +82,15 @@ auto-detecting the user's tablet back-out.
 - `render/write_design_state.py` -- atomic write-to-temp + rename implementation; preserves prior iterations and updates `current_mode` frontmatter.
 - `render/test_write_design_state.py` -- unit tests for the atomic-write helper (frontmatter merge, iteration append, idempotency).
 - `read-prefill.sh` -- bash wrapper for the pixel-read pre-fill helper used by the resume flow's mode-recovery fallback.
-- `render/read_prefill.py` -- rasterizes a pulled PDF and reads a known pixel sample to infer the active mode; emits `{"active_mode": "..."}` on success.
+- `render/read_prefill.py` -- rasterizes a pulled PDF and reads a known pixel sample to infer the active mode; accepts calibration dict as a parameter (main() loads via load_calibration() and passes down); emits `{"active_mode": "..."}` on success.
 - `render/test_read_prefill.py` -- unit tests for the pixel-read mode inference.
 - `render/test_geometry.py` -- capsule-area geometry tests; stdlib-only (imports _geometry.py directly; no venv or rmscene stub required).
 - `render/_chrome_boxes.py` -- dependency-free shared data module: BOX_REGISTRY (5-box PDF coordinates), VALID_MODES tuple, ITER_NN_RE regex. Importable from both venvs (rmscene-equipped and fitz-equipped) without transitive deps.
-- `render/_geometry.py` -- capsule-area geometry primitives (capsule_area, _liang_barsky_clip, _point_in_box); stdlib-only (math only). Extracted from _rm_strokes so test_geometry.py runs without the venv.
+- `render/_calibration.py` -- calibration file management: SKILL_ROOT, CALIBRATION_JSON, CALIBRATION_SCHEMA_VERSION, CalibrationError, load_calibration; stdlib-only (no rmscene dependency).
+- `render/_geometry.py` -- capsule-area geometry primitives (points_bbox, capsule_area, _liang_barsky_clip, _point_in_box); stdlib-only (math only). Extracted from _rm_strokes so test_geometry.py runs without the venv.
 - `render/_atomic_write.py` -- atomic_write_text helper (write-to-temp + os.replace); shared by poll_tablet.write_lock and write_design_state.write.
-- `render/_rm_strokes.py` -- shared .rm parser: PAGE_W/PAGE_H constants, PEN_COLORS, collect_lines, ordered_rm_files, CalibrationError, load_calibration. Single source of truth for the .rm coordinate system and calibration loading.
+- `render/_rm_strokes.py` -- shared .rm parser and manifest reader: PAGE_W/PAGE_H constants, PEN_COLORS, collect_lines, ManifestError, manifest_pages (dual-schema modern+legacy), ordered_rm_files (delegates to manifest_pages). Single source of truth for .rm coordinate system and page ordering. CalibrationError and load_calibration live in _calibration.py.
+- `render/_test_helpers.py` -- shared kebab-module stub harness (STUB_MODULE_NAMES, load_kebab_module, stubbed_kebab_loads context manager); stdlib-only; used by test_composite_annotated.py and test_render_strokes.py.
 - `calibration.json` -- committed at the skill root; firmware-versioned scale produced by the calibration ceremony. Refreshed only when firmware changes invalidate the constant.
 - `test-fixtures/calibration-paper-pro-fw<version>.rmdoc` -- captured reference .rmdoc from the calibration ceremony; consumed by test_derive_calibration.py's fixture smoke test.
 - `render/test_detect_marks.py` -- JSON-shape test for the detector (stubs rmscene; runs stdlib-only).
@@ -100,7 +102,8 @@ auto-detecting the user's tablet back-out.
 - `test_bootstrap_session.sh` -- bash test for `bootstrap-session.sh` (folder skeleton, frontmatter, idempotency re-run, negative-input rejection).
 - `render/test_render_format.mjs` -- node:test cases for `formatIterationLabel`.
 - `render/test_prerender_pages.py` -- end-to-end test for `prerender-pages.py` against a real two-page PDF.
-- `render/test_composite_annotated.py` -- unit tests for `composite-annotated.py`'s page-pattern regex, numeric sort, and resolution constants (now also cross-checks `prerender-pages.py`).
+- `render/test_render_strokes.py` -- unit tests covering `render-strokes.py` main() calibration-present and auto-fit branches; also checks PAGE_W/PAGE_H parity with composite-annotated; uses shared kebab-module stub harness from _test_helpers.py.
+- `render/test_composite_annotated.py` -- unit tests for `composite-annotated.py`'s page-pattern regex, numeric sort, and resolution constants (now also cross-checks `prerender-pages.py`); uses shared kebab-module stub harness from _test_helpers.py.
 - `requirements.txt` -- Python deps for the inbound pipeline (rmscene + pymupdf + Pillow).
 
 ## Inbound stroke render entry point
