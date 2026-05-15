@@ -43,9 +43,17 @@ class CalibrationError(Exception):
 def load_calibration():
     """Load and validate CALIBRATION_JSON.
 
-    Raises CalibrationError on missing file, invalid JSON, or invalid
-    scale value. Callers translate to a non-zero exit + diagnostic in
-    their `main()`.
+    Raises CalibrationError on missing file, invalid JSON, an unknown
+    schema_version, or an invalid scale value. Callers translate to a
+    non-zero exit + diagnostic in their `main()`.
+
+    schema_version contract: missing -> v1 (back-compat with calibrations
+    written before the field was introduced); 1 -> the linear
+    `pdf_y = cy * scale` inverse-transform; anything else -> reject so
+    an old calibration cannot silently misproject under new math. The
+    schema check fires before the scale check so a hypothetical v2
+    file dropping `scale` produces 'regenerate calibration' guidance,
+    not a misleading 'missing scale' diagnostic.
     """
     if not CALIBRATION_JSON.exists():
         raise CalibrationError(
@@ -58,6 +66,12 @@ def load_calibration():
         raise CalibrationError(
             f"calibration.json is not valid JSON ({e}); re-run derive-calibration.sh"
         ) from e
+    schema_version = data.get("schema_version", 1)
+    if schema_version != 1:
+        raise CalibrationError(
+            f"calibration.json schema_version={schema_version!r} not supported by this "
+            f"reader (expected 1); re-run derive-calibration.sh to regenerate"
+        )
     scale = data.get("scale")
     if not isinstance(scale, (int, float)) or scale <= 0:
         raise CalibrationError(

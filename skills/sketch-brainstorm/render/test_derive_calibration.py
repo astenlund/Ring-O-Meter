@@ -24,10 +24,12 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 
+import _rm_strokes  # noqa: E402
 import derive_calibration  # noqa: E402
 
 _SKILL_ROOT = _HERE.parent
@@ -99,6 +101,7 @@ class FixtureScaleSmokeTests(unittest.TestCase):
         # +/- 0.001 catches geometry-math regressions; tighter would
         # break on floating-point reordering.
         self.assertAlmostEqual(payload["scale"], saved["scale"], delta=0.001)
+        self.assertEqual(payload["schema_version"], 1)
 
     def test_residuals_under_threshold(self):
         """All per-dot residuals should be under 3 px in the re-derivation."""
@@ -110,6 +113,37 @@ class FixtureScaleSmokeTests(unittest.TestCase):
             payload = derive_calibration.derive(rm_dir, saved["firmware_note"])
         for label, residual in payload["residuals_px"].items():
             self.assertLess(residual, 3.0, f"residual at {label} = {residual} px")
+
+
+class LoadCalibrationSchemaTests(unittest.TestCase):
+    """load_calibration must reject schema_version values it doesn't
+    understand so an old reader never silently misprojects a calibration
+    written under a future formula. Missing schema_version still loads
+    (treated as v1) for back-compat with calibrations written before the
+    field was introduced."""
+
+    def test_load_calibration_rejects_future_schema(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            future = Path(tmp) / "calibration.json"
+            future.write_text(
+                json.dumps({"schema_version": 2, "scale": 0.42284}),
+                encoding="utf-8",
+            )
+            with patch.object(_rm_strokes, "CALIBRATION_JSON", future):
+                with self.assertRaises(_rm_strokes.CalibrationError) as cm:
+                    _rm_strokes.load_calibration()
+        self.assertIn("schema_version", str(cm.exception))
+
+    def test_load_calibration_treats_missing_schema_as_v1(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            legacy = Path(tmp) / "calibration.json"
+            legacy.write_text(
+                json.dumps({"scale": 0.42284}),
+                encoding="utf-8",
+            )
+            with patch.object(_rm_strokes, "CALIBRATION_JSON", legacy):
+                data = _rm_strokes.load_calibration()
+        self.assertEqual(data["scale"], 0.42284)
 
 
 if __name__ == "__main__":

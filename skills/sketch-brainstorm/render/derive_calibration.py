@@ -189,6 +189,12 @@ def derive(rm_dir, firmware_note):
     residuals = verify_residuals(pairs, scale)
 
     return {
+        # v1 = the linear `pdf_y = cy * scale` inverse-transform shipped
+        # alongside this field. Bump only when the inverse-transform
+        # formula changes (e.g. a future firmware introducing y_offset
+        # would land as v2). load_calibration rejects unknown versions so
+        # an old calibration cannot silently misproject under new math.
+        "schema_version": 1,
         "scale": round(scale, 6),
         "firmware_note": firmware_note,
         "captured_at": datetime.now(timezone.utc).isoformat(),
