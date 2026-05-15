@@ -12,6 +12,21 @@ skill venv.
 import math
 
 
+def points_bbox(points):
+    """Axis-aligned bounding box of a point list as (x_min, x_max, y_min, y_max).
+
+    Returns None for an empty list. For a single-point list returns a
+    degenerate bbox (x, x, y, y) - the overlap test against an inflated
+    box then reduces to the same check as _point_in_box.
+    """
+    if not points:
+        return None
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+
+    return min(xs), max(xs), min(ys), max(ys)
+
+
 def capsule_area(points, width, box):
     """Compute the visible inked area of a stroke inside a box.
 
@@ -44,6 +59,18 @@ def capsule_area(points, width, box):
         return 0.0
 
     x_min, x_max, y_min, y_max = box
+
+    # Pre-filter: if the stroke's axis-aligned bbox doesn't overlap the
+    # target box inflated by W/2 on each side, neither the clipped
+    # centerline nor the cap discs can intersect; return 0.0 without
+    # running Liang-Barsky per segment. Saves work in the common case
+    # where most strokes miss most boxes (5 boxes x hundreds of strokes
+    # per page).
+    stroke_x_min, stroke_x_max, stroke_y_min, stroke_y_max = points_bbox(points)
+    inflate = width / 2.0
+    if (stroke_x_max < x_min - inflate or stroke_x_min > x_max + inflate
+            or stroke_y_max < y_min - inflate or stroke_y_min > y_max + inflate):
+        return 0.0
 
     clipped_length = 0.0
     for i in range(len(points) - 1):
