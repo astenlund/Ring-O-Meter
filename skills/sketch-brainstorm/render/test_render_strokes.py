@@ -16,7 +16,6 @@ Run:
 or:
   python -m unittest discover -s skills/sketch-brainstorm/render -p "test_*.py"
 """
-import importlib.util
 import sys
 import tempfile
 import unittest
@@ -24,33 +23,18 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from _test_helpers import stubbed_kebab_loads
+
 _HERE = Path(__file__).resolve().parent
 _COMPOSITE_PY = _HERE / "composite-annotated.py"
 _RENDER_STROKES_PY = _HERE / "render-strokes.py"
 
-_STUB_MODULE_NAMES = ("fitz", "PIL", "PIL.Image", "rmscene", "rmscene.scene_items")
-_originals = {name: sys.modules.get(name) for name in _STUB_MODULE_NAMES}
-_pre_load_modules = set(sys.modules.keys())
-for _name in _STUB_MODULE_NAMES:
-    sys.modules[_name] = MagicMock()
-try:
-    composite_mod = importlib.util.module_from_spec(
-        s := importlib.util.spec_from_file_location("composite_annotated_rs_test", _COMPOSITE_PY)
-    )
-    s.loader.exec_module(composite_mod)
-    render_strokes_mod = importlib.util.module_from_spec(
-        s2 := importlib.util.spec_from_file_location("render_strokes_under_test", _RENDER_STROKES_PY)
-    )
-    s2.loader.exec_module(render_strokes_mod)
-finally:
-    for _name, _original in _originals.items():
-        if _original is None:
-            sys.modules.pop(_name, None)
-        else:
-            sys.modules[_name] = _original
-    for _name in set(sys.modules.keys()) - _pre_load_modules:
-        if _name not in _STUB_MODULE_NAMES:
-            sys.modules.pop(_name, None)
+with stubbed_kebab_loads({
+    "composite_annotated_rs_test": _COMPOSITE_PY,
+    "render_strokes_under_test": _RENDER_STROKES_PY,
+}) as _modules:
+    composite_mod = _modules["composite_annotated_rs_test"]
+    render_strokes_mod = _modules["render_strokes_under_test"]
 
 
 class ResolutionConstantsTests(unittest.TestCase):

@@ -94,6 +94,7 @@ The full design is documented in the host project's feature backlog at `.claude/
 - `render/_geometry.py` -- capsule-area geometry primitives; stdlib-only (math only). Extracted so test_geometry.py runs without the venv.
 - `render/_atomic_write.py` -- atomic_write_text helper (write-to-temp + os.replace); shared by poll_tablet and write_design_state.
 - `render/_calibration.py` -- calibration file management: SKILL_ROOT, CALIBRATION_JSON, CALIBRATION_SCHEMA_VERSION, CalibrationError, load_calibration; stdlib-only (no rmscene dependency).
+- `render/_test_helpers.py` -- shared kebab-module load harness used by test_composite_annotated.py and test_render_strokes.py; stdlib-only.
 - `render/_rm_strokes.py` -- shared .rm parser: PAGE_W/PAGE_H, PEN_COLORS, collect_lines, ordered_rm_files.
 - `render/test_detect_marks.py` -- unit tests for the detector (stdlib-only with rmscene stubbed).
 - `render/test_geometry.py` -- unit tests for capsule-area geometry helpers; stdlib-only (imports _geometry.py directly; no venv or rmscene stub required).
