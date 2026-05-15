@@ -168,16 +168,16 @@ async function main() {
   await ensureDir(tempHtmlPath);
   await ensureDir(outPath);
 
-  // The template's <link rel="stylesheet" href="page-chrome.css"> is a
-  // relative reference. Copy the CSS next to the temp HTML so the relative
-  // resolves at file:// load time. Cheaper than rewriting the link to an
-  // absolute path or inlining the CSS.
-  const cssSrc = join(SCRIPT_DIR, 'page-chrome.css');
-  const cssDest = join(dirname(tempHtmlPath), 'page-chrome.css');
-  const cssContent = await readFile(cssSrc, 'utf8');
-  await writeFile(cssDest, cssContent, 'utf8');
+  // Replace the template's relative href="page-chrome.css" with an absolute
+  // file:// URL so Chromium resolves it regardless of where the temp HTML
+  // lands, eliminating the copy-to-temp-dir step entirely.
+  const cssFileUrl = pathToFileURL(join(SCRIPT_DIR, 'page-chrome.css')).href;
+  const renderedWithAbsoluteCss = rendered.replace(
+    'href="page-chrome.css"',
+    `href="${cssFileUrl}"`,
+  );
 
-  await writeFile(tempHtmlPath, rendered, 'utf8');
+  await writeFile(tempHtmlPath, renderedWithAbsoluteCss, 'utf8');
 
   const browser = await playwright.chromium.launch({ channel: 'chrome' });
   try {
@@ -207,11 +207,10 @@ async function main() {
     // and the PDF can capture fallback fonts.
     await page.goto(fileUrl, { waitUntil: 'networkidle' });
     // Mode stylesheets are injected via addStyleTag's `path` option, which
-    // reads from the absolute SCRIPT_DIR location directly. The earlier
-    // page-chrome.css copy-then-link pattern is required only for the
-    // <link rel="stylesheet" href="..."> in the template (file:// load
-    // needs the sheet adjacent to the temp HTML); addStyleTag bypasses
-    // that, so no copy step is needed for mode sheets.
+    // reads from the absolute SCRIPT_DIR location directly. page-chrome.css
+    // is referenced by an absolute file:// URL in the rendered HTML so
+    // Chromium resolves it without a copy step; addStyleTag works the same
+    // way for mode sheets.
     if (currentMode === 'bw') {
       // Style injection is synchronous; no fonts in this sheet, so no
       // networkidle wait needed before page.pdf().
