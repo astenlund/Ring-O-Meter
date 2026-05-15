@@ -40,6 +40,7 @@ _DOC_UUID_RE = re.compile(
 )
 
 
+
 def _resolve_fixture():
     """Find the calibration .rmdoc in test-fixtures/. Returns None
     if calibration.json or the fixture is absent (test will skip).
@@ -55,6 +56,9 @@ def _resolve_fixture():
     rmdocs = list(_FIXTURES_DIR.glob("calibration-*.rmdoc"))
 
     return rmdocs[0] if rmdocs else None
+
+
+_FIXTURE = _resolve_fixture()
 
 
 def _extract_rm_dir(rmdoc_path, target_dir):
@@ -86,24 +90,25 @@ def _extract_rm_dir(rmdoc_path, target_dir):
     )
 
 
-@unittest.skipIf(_resolve_fixture() is None, "no committed calibration fixture")
+@unittest.skipIf(_FIXTURE is None, "no committed calibration fixture")
 class FixtureScaleSmokeTests(unittest.TestCase):
     """Re-derive scale from the committed .rmdoc and assert it matches
     the saved calibration.json within a tight tolerance.
 
     setUpClass runs the expensive rmscene + scipy derivation once and
     caches the results; individual test methods assert against the
-    shared payload without re-deriving."""
+    shared payload without re-deriving. Both @skipIf and setUpClass
+    reference the module-level _FIXTURE so the filesystem probe runs
+    exactly once at import time."""
 
     _payload: dict
     _saved: dict
 
     @classmethod
     def setUpClass(cls):
-        fixture = _resolve_fixture()
         cls._saved = json.loads(_CALIBRATION_JSON.read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as tmp:
-            rm_dir = _extract_rm_dir(fixture, Path(tmp))
+            rm_dir = _extract_rm_dir(_FIXTURE, Path(tmp))
             cls._payload = derive_calibration.derive(rm_dir, cls._saved["firmware_note"])
 
     def test_scale_matches_saved(self):
