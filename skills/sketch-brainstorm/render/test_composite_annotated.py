@@ -259,7 +259,9 @@ class RenderStrokesMainTests(unittest.TestCase):
     def _scenario_dirs(self, root):
         """Build a fake rm_dir + out_dir pair under root. The rm-file
         contents don't matter — collect_lines is mocked — but the file
-        must exist so main()'s mkdir/path arithmetic doesn't trip."""
+        must exist so main()'s mkdir/path arithmetic doesn't trip.
+        Callers own cleanup: root must be a TemporaryDirectory (or equivalent)
+        that will remove the tree on exit."""
         rm_dir = root / "rm"
         out_dir = root / "out"
         rm_dir.mkdir()

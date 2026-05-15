@@ -34,7 +34,8 @@ from pathlib import Path
 
 from scipy.optimize import linear_sum_assignment
 
-from _rm_strokes import PAGE_W, collect_lines, ordered_rm_files
+from _atomic_write import atomic_write_text
+from _rm_strokes import CALIBRATION_SCHEMA_VERSION, PAGE_W, collect_lines, ordered_rm_files
 
 # LOCKSTEP with calibration-template.html .dot style="left:Xpx; top:Ypx".
 # If you change the margin or move any dot in the template, update the
@@ -194,7 +195,7 @@ def derive(rm_dir, firmware_note):
         # formula changes (e.g. a future firmware introducing y_offset
         # would land as v2). load_calibration rejects unknown versions so
         # an old calibration cannot silently misproject under new math.
-        "schema_version": 1,
+        "schema_version": CALIBRATION_SCHEMA_VERSION,
         "scale": round(scale, 6),
         "firmware_note": firmware_note,
         "captured_at": datetime.now(timezone.utc).isoformat(),
@@ -220,7 +221,7 @@ def main():
         # chat alongside the clear-page retry instruction.
         print(str(e), file=sys.stderr)
         return 1
-    output_json.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(output_json, json.dumps(payload, indent=2) + "\n")
     print(
         f"scale: {payload['scale']} (residuals max "
         f"{max(payload['residuals_px'].values()):.2f} px)"

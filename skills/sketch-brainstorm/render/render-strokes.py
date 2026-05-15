@@ -114,6 +114,9 @@ def main():
     # (e.g., on a fresh clone before the user has run the ceremony).
     if CALIBRATION_JSON.exists():
         try:
+            # load_calibration() validates schema_version before returning;
+            # an unrecognised version raises CalibrationError rather than
+            # silently reading a field that may not mean what v1 expected.
             scale = load_calibration()["scale"]
         except CalibrationError as e:
             print(str(e), file=sys.stderr)

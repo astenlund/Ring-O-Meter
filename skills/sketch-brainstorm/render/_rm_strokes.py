@@ -35,6 +35,9 @@ PAGE_H = 2160
 # one site needs updating.
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 CALIBRATION_JSON = SKILL_ROOT / "calibration.json"
+# Bump this and the load_calibration guard together whenever the
+# inverse-transform formula changes (e.g., a y_offset field is added).
+CALIBRATION_SCHEMA_VERSION = 1
 
 class CalibrationError(Exception):
     """Raised when calibration.json is missing, invalid, or unparseable."""
@@ -66,11 +69,11 @@ def load_calibration():
         raise CalibrationError(
             f"calibration.json is not valid JSON ({e}); re-run derive-calibration.sh"
         ) from e
-    schema_version = data.get("schema_version", 1)
-    if schema_version != 1:
+    schema_version = data.get("schema_version", CALIBRATION_SCHEMA_VERSION)
+    if schema_version != CALIBRATION_SCHEMA_VERSION:
         raise CalibrationError(
             f"calibration.json schema_version={schema_version!r} not supported by this "
-            f"reader (expected 1); re-run derive-calibration.sh to regenerate"
+            f"reader (expected {CALIBRATION_SCHEMA_VERSION}); re-run derive-calibration.sh to regenerate"
         )
     scale = data.get("scale")
     if not isinstance(scale, (int, float)) or scale <= 0:

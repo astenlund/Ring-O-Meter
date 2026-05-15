@@ -114,6 +114,8 @@ if NEG_OUTPUT="$(cd "$TMP4" && unset SKETCH_BRAINSTORM_REPO_ROOT && \
   echo "fail: bootstrap-session.sh should have hard-failed outside a repo" >&2
   exit 1
 fi
+# Diagnostic string must match bootstrap-session.sh / find_repo_root in _lib.sh;
+# update all three together when the marker filename changes.
 case "$NEG_OUTPUT" in
   *"could not locate Ring-O-Meter.slnx"*) ;;
   *)

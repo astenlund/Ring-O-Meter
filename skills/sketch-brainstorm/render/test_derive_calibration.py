@@ -122,27 +122,22 @@ class LoadCalibrationSchemaTests(unittest.TestCase):
     (treated as v1) for back-compat with calibrations written before the
     field was introduced."""
 
-    def test_load_calibration_rejects_future_schema(self):
+    def _load_with_json(self, payload: dict):
+        """Write payload to a temp calibration.json, patch CALIBRATION_JSON to
+        point at it, call load_calibration(), and return the result (or raise)."""
         with tempfile.TemporaryDirectory() as tmp:
-            future = Path(tmp) / "calibration.json"
-            future.write_text(
-                json.dumps({"schema_version": 2, "scale": 0.42284}),
-                encoding="utf-8",
-            )
-            with patch.object(_rm_strokes, "CALIBRATION_JSON", future):
-                with self.assertRaises(_rm_strokes.CalibrationError) as cm:
-                    _rm_strokes.load_calibration()
+            f = Path(tmp) / "calibration.json"
+            f.write_text(json.dumps(payload), encoding="utf-8")
+            with patch.object(_rm_strokes, "CALIBRATION_JSON", f):
+                return _rm_strokes.load_calibration()
+
+    def test_load_calibration_rejects_future_schema(self):
+        with self.assertRaises(_rm_strokes.CalibrationError) as cm:
+            self._load_with_json({"schema_version": 2, "scale": 0.42284})
         self.assertIn("schema_version", str(cm.exception))
 
     def test_load_calibration_treats_missing_schema_as_v1(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            legacy = Path(tmp) / "calibration.json"
-            legacy.write_text(
-                json.dumps({"scale": 0.42284}),
-                encoding="utf-8",
-            )
-            with patch.object(_rm_strokes, "CALIBRATION_JSON", legacy):
-                data = _rm_strokes.load_calibration()
+        data = self._load_with_json({"scale": 0.42284})
         self.assertEqual(data["scale"], 0.42284)
 
 
