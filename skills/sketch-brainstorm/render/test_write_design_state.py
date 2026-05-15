@@ -185,6 +185,28 @@ class WriteDesignStateTests(unittest.TestCase):
                     session_dir=absent, iter_nn="00", mode="color", delta="x",
                 )
 
+    def test_pre_existing_duplicate_iter_headings_raise(self):
+        # External mutation (or recovery from a partial write) could leave
+        # design-state.md with two '## Iteration NN' headings sharing a
+        # NN. write() must refuse to proceed, since the section regex
+        # below would only see the first match and the duplicate would
+        # persist/grow on every later write.
+        with tempfile.TemporaryDirectory() as tmp:
+            session = Path(tmp)
+            (session / "design-state.md").write_text(
+                "---\ncurrent_mode: color\n---\n\n"
+                "## Iteration 03\n\nfirst body\n\n"
+                "## Iteration 03\n\nduplicate body\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError) as cm:
+                write_design_state.write(
+                    session_dir=session, iter_nn="04", mode="color",
+                    delta="new body",
+                )
+        self.assertIn("duplicate", str(cm.exception))
+        self.assertIn("03", str(cm.exception))
+
     def test_fresh_file_has_blank_line_after_frontmatter(self):
         # When design-state.md doesn't exist yet, the prepended frontmatter
         # should be followed by a blank line, matching bootstrap-session.sh.
