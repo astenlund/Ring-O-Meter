@@ -1,4 +1,4 @@
-"""Unit tests for the inbound stroke and composite pipeline invariants.
+"""Unit tests for the composite-annotated.py pipeline invariants.
 
 Tripwires for the load-bearing properties that visual smoke testing
 won't catch:
@@ -7,11 +7,10 @@ won't catch:
   - Numeric (not lexicographic) sort order across page indices, so
     page 10 follows page 9 rather than landing between page 1 and
     page 2.
-  - Identical PAGE_W/PAGE_H constants in render-strokes.py and
-    composite-annotated.py. Drift here breaks pixel alignment between
-    the rendered PDF, the stroke SVG overlay, and the composite PNG;
-    the `render.mjs` Node side cannot be checked from Python so this
-    catches the python-side cases only.
+  - Identical PAGE_W/PAGE_H constants in composite-annotated.py and
+    prerender-pages.py. Drift here breaks pixel alignment between the
+    composite PNG and the prerender PNGs; the `render.mjs` Node side
+    cannot be checked from Python so this catches the python-side cases.
   - Empty strokes-dir behavior: collect_strokes_pages must return
     [] silently so main() can warn-and-return without raising.
 
@@ -29,13 +28,11 @@ import importlib.util
 import sys
 import tempfile
 import unittest
-from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 _HERE = Path(__file__).resolve().parent
 _COMPOSITE_PY = _HERE / "composite-annotated.py"
-_RENDER_STROKES_PY = _HERE / "render-strokes.py"
 _PRERENDER_PAGES_PY = _HERE / "prerender-pages.py"
 
 
@@ -54,12 +51,12 @@ def _load_kebab_module(module_name, file_path):
 # then sys.modules is restored before this file finishes loading.
 # The kebab-modules capture their own references to the MagicMock
 # objects during exec_module, so test methods still see the mocks via
-# composite_mod.fitz, render_strokes_mod.PIL, etc. Restoring sys.modules
-# is load-time-scoped (try/finally) rather than test-execution-scoped
-# (tearDownModule) because `unittest discover` loads ALL test files
-# before running any tests; a test-execution-scoped restore would leak
-# the stubs into sibling files loaded between this file's load and its
-# tearDownModule fire (test_prerender_pages.py is the canary).
+# composite_mod.fitz, etc. Restoring sys.modules is load-time-scoped
+# (try/finally) rather than test-execution-scoped (tearDownModule)
+# because `unittest discover` loads ALL test files before running any
+# tests; a test-execution-scoped restore would leak the stubs into
+# sibling files loaded between this file's load and its tearDownModule
+# fire (test_prerender_pages.py is the canary).
 _STUB_MODULE_NAMES = ("fitz", "PIL", "PIL.Image", "rmscene", "rmscene.scene_items")
 _originals = {name: sys.modules.get(name) for name in _STUB_MODULE_NAMES}
 _pre_load_modules = set(sys.modules.keys())
@@ -67,7 +64,6 @@ for _name in _STUB_MODULE_NAMES:
     sys.modules[_name] = MagicMock()
 try:
     composite_mod = _load_kebab_module("composite_annotated_under_test", _COMPOSITE_PY)
-    render_strokes_mod = _load_kebab_module("render_strokes_under_test", _RENDER_STROKES_PY)
     prerender_pages_mod = _load_kebab_module("prerender_pages_under_test", _PRERENDER_PAGES_PY)
 finally:
     # Restore the explicit stubs to their pre-existing state.
@@ -81,8 +77,8 @@ finally:
     # presence in sys.modules would otherwise hand siblings like
     # test_derive_calibration.py a stub-tainted import. The kebab-modules
     # themselves also get dropped here, which is fine: the locals
-    # composite_mod / render_strokes_mod / prerender_pages_mod still
-    # hold their references for this file's own tests.
+    # composite_mod / prerender_pages_mod still hold their references
+    # for this file's own tests.
     for _name in set(sys.modules.keys()) - _pre_load_modules:
         if _name not in _STUB_MODULE_NAMES:
             sys.modules.pop(_name, None)
@@ -160,24 +156,22 @@ class CollectStrokesPagesTests(unittest.TestCase):
 
 
 class ResolutionConstantsTests(unittest.TestCase):
-    """All three python-side modules must agree on the Paper Pro viewport.
-    Drift here silently shifts strokes off-position relative to the
-    rendered mockup, or makes prerender PNGs disagree with composite
-    PNGs about pixel dimensions."""
+    """composite-annotated.py and prerender-pages.py must agree on the
+    Paper Pro viewport. Drift makes prerender PNGs disagree with composite
+    PNGs about pixel dimensions. render-strokes.py parity is covered in
+    test_render_strokes.py's ResolutionConstantsTests."""
 
     def test_page_width_matches(self):
-        self.assertEqual(composite_mod.PAGE_W, render_strokes_mod.PAGE_W)
         self.assertEqual(composite_mod.PAGE_W, prerender_pages_mod.PAGE_W)
 
     def test_page_height_matches(self):
-        self.assertEqual(composite_mod.PAGE_H, render_strokes_mod.PAGE_H)
         self.assertEqual(composite_mod.PAGE_H, prerender_pages_mod.PAGE_H)
 
     def test_page_dimensions_are_paper_pro(self):
         # 1620x2160 is the reMarkable Paper Pro viewport. The Node-side
         # render.mjs hardcodes the same; this test only catches drift
-        # across the python files. If render.mjs changes, all three
-        # modules must change in lockstep and this test stays green.
+        # across the python files. If render.mjs changes, all modules
+        # must change in lockstep and this test stays green.
         self.assertEqual(composite_mod.PAGE_W, 1620)
         self.assertEqual(composite_mod.PAGE_H, 2160)
 
@@ -233,91 +227,6 @@ class CollectLinesSinglePointTest(unittest.TestCase):
         self.assertEqual(len(result), 1)
         _color, _width, pts = result[0]
         self.assertEqual(pts, [(10.0, 20.0)])
-
-
-class RenderStrokesMainTests(unittest.TestCase):
-    """Cover both branches of render-strokes.py main(): calibration-
-    present (load JSON scale via load_calibration) vs auto-fit fallback
-    (derive scale from union_bounds). Mocks are applied directly to the
-    kebab-loaded render_strokes_mod's namespace via patch.object — the
-    module retains its bound references after _rm_strokes is dropped
-    from sys.modules at lines 78-87, so patching there reaches main()'s
-    free-variable lookups via the module's __globals__."""
-
-    def _run_main(self, rm_dir, out_dir, **patches):
-        """Invoke render_strokes_mod.main() with sys.argv set to the
-        usage shape and the named symbols patched on render_strokes_mod
-        for the call's duration."""
-        argv = [str(_RENDER_STROKES_PY), str(rm_dir), str(out_dir)]
-        with ExitStack() as stack:
-            stack.enter_context(patch.object(sys, "argv", argv))
-            for name, value in patches.items():
-                stack.enter_context(patch.object(render_strokes_mod, name, value))
-
-            return render_strokes_mod.main()
-
-    def _scenario_dirs(self, root):
-        """Build a fake rm_dir + out_dir pair under root. The rm-file
-        contents don't matter — collect_lines is mocked — but the file
-        must exist so main()'s mkdir/path arithmetic doesn't trip.
-        Callers own cleanup: root must be a TemporaryDirectory (or equivalent)
-        that will remove the tree on exit."""
-        rm_dir = root / "rm"
-        out_dir = root / "out"
-        rm_dir.mkdir()
-        fake_rm = rm_dir / "page1.rm"
-        fake_rm.write_bytes(b"")
-
-        return rm_dir, out_dir, fake_rm
-
-    def test_main_uses_calibrated_scale_when_calibration_present(self):
-        # Arrange
-        with tempfile.TemporaryDirectory() as tmp:
-            rm_dir, out_dir, fake_rm = self._scenario_dirs(Path(tmp))
-            calibration_json = MagicMock()
-            calibration_json.exists.return_value = True
-            render_svg_spy = MagicMock()
-
-            # Act
-            ret = self._run_main(
-                rm_dir, out_dir,
-                CALIBRATION_JSON=calibration_json,
-                load_calibration=MagicMock(return_value={"scale": 0.42, "schema_version": 1}),
-                ordered_rm_files=MagicMock(return_value=[(0, fake_rm)]),
-                collect_lines=MagicMock(return_value=[("black", 1.0, [(0.0, 0.0), (1.0, 1.0)])]),
-                render_svg=render_svg_spy,
-            )
-
-        # Assert: render_svg(lines, scale, out_svg) — positional, scale at index 1.
-        self.assertEqual(ret, 0)
-        render_svg_spy.assert_called_once()
-        self.assertEqual(render_svg_spy.call_args.args[1], 0.42)
-
-    def test_main_falls_back_to_auto_fit_when_calibration_absent(self):
-        # Arrange
-        with tempfile.TemporaryDirectory() as tmp:
-            rm_dir, out_dir, fake_rm = self._scenario_dirs(Path(tmp))
-            calibration_json = MagicMock()
-            calibration_json.exists.return_value = False
-            render_svg_spy = MagicMock()
-            derive_scale_spy = MagicMock(return_value=1.5)
-
-            # Act
-            ret = self._run_main(
-                rm_dir, out_dir,
-                CALIBRATION_JSON=calibration_json,
-                ordered_rm_files=MagicMock(return_value=[(0, fake_rm)]),
-                collect_lines=MagicMock(return_value=[("black", 1.0, [(0.0, 0.0), (1.0, 1.0)])]),
-                render_svg=render_svg_spy,
-                union_bounds=MagicMock(return_value=(-100.0, 0.0, 100.0, 200.0)),
-                derive_scale=derive_scale_spy,
-            )
-
-        # Assert: derive_scale received the bounds; render_svg got the derived scale.
-        self.assertEqual(ret, 0)
-        derive_scale_spy.assert_called_once_with((-100.0, 0.0, 100.0, 200.0))
-        render_svg_spy.assert_called_once()
-        self.assertEqual(render_svg_spy.call_args.args[1], 1.5)
 
 
 if __name__ == "__main__":
