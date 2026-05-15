@@ -61,6 +61,9 @@ def load_calibration():
         raise CalibrationError(
             "calibration.json missing or invalid 'scale'; re-run derive-calibration.sh"
         )
+    # LOCKSTEP with derive_calibration.derive() — both sides spell these
+    # defaults as literals (CLAUDE.md mandates literal back-compat defaults,
+    # not named constants). Update both sites in sync.
     data.setdefault("fill_luminance_threshold", 160)
     data.setdefault("fill_ratio_threshold", 0.3)
     data.setdefault("winner_margin", 0.15)
