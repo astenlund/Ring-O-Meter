@@ -4,17 +4,20 @@ import {createFrameRing, FrameRingWriter, type FrameSource} from '../audio/frame
 import type {VoiceEntry} from '../plot/plotMessages';
 import {publishUiOnly, requireAllocHeap, settleHeap} from './allocHarness';
 
-// TODO: tighten this after three green CI runs to measured * 1.5
-// per the hot-path-allocation-discipline pattern. Initial ceiling
-// is generous: WebGPU device init + first paint pay one-time costs
-// (pipeline compile residue, command-encoder warmup) that the warmup
-// loop should absorb but may not fully eliminate.
-const HEAP_DELTA_BUDGET_BYTES = 100 * 1024;
+// Calibrated 2026-05-16: 3 consecutive local runs measured 0 / 0 / 0
+// bytes (performance.memory resolution is 1 KB; 0 means delta < 1 KB).
+// Max * 1.5 = 0; floor set to 4 KB — smallest meaningful regression
+// net given GC granularity. One-time pipeline compile residue and
+// command-encoder warmup costs are fully absorbed by the 200-iteration
+// warmup loop. Per the hot-path-allocation-discipline pattern; tighten
+// further only if a future run reproducibly measures below 4 KB.
+const HEAP_DELTA_BUDGET_BYTES = 4 * 1024;
 const PAINT_ITERATIONS = 1_000;
 const WARMUP_ITERATIONS = 200;
 
 describe('WebGPU plot paint allocation budget', () => {
     test(`${PAINT_ITERATIONS} paints leave heap under ${HEAP_DELTA_BUDGET_BYTES / 1024} KB`, async () => {
+        // Arrange
         const heap = requireAllocHeap();
         if (!navigator.gpu) {
             throw new Error('Test requires Chromium launched with --enable-unsafe-webgpu');
@@ -87,12 +90,15 @@ describe('WebGPU plot paint allocation budget', () => {
         settleHeap(heap);
         const baseline = heap.memory.usedJSHeapSize;
 
+        // Act
         for (let i = 0; i < PAINT_ITERATIONS; i += 1) {
             runFrame();
         }
         settleHeap(heap);
         const after = heap.memory.usedJSHeapSize;
 
+        // Assert
+        console.log(`plotWorkerWebgpu.alloc heap delta: ${after - baseline} bytes`);
         expect(after - baseline).toBeLessThan(HEAP_DELTA_BUDGET_BYTES);
 
         renderer.dispose();

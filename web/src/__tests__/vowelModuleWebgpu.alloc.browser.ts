@@ -4,20 +4,17 @@ import {createFrameRing, FrameRingWriter, FrameRingReader} from '../audio/frameR
 import type {VoiceEntry} from '../plot/plotMessages';
 import {requireAllocHeap, settleHeap} from './allocHarness';
 
-// PLACEHOLDER until orchestrator runs the mid-task review + 3-run
-// Calibrated 2026-05-04: 3 consecutive runs after applying mid-task
-// review fix-nows (polarAngleSortInto promotion + MAX_VOICES dedupe +
-// F1/F2 axis-bound heuristic tags) measured 11640 / 11496 / 11376
-// bytes. Max * 1.5 = 17460 bytes; rounded up to 20 KB for clean
-// headroom against V8 GC jitter and WebGPU command-encoder churn in
-// the test harness. Most of the residual delta is harness overhead
-// (createCommandEncoder + getCurrentTexture().createView() are not
-// fully zero-alloc on V8); the module's own update()+draw() path is
-// effectively zero-alloc per the pre-allocated scratch + shared
-// polarAngleSortInto pattern. Per the hot-path-allocation-discipline
-// pattern; tighten if a future review run reproducibly measures a
-// lower baseline.
-const HEAP_DELTA_BUDGET_BYTES = 20 * 1024;
+// Calibrated 2026-05-16: 3 consecutive local runs measured 0 / 0 / 0
+// bytes (performance.memory resolution is 1 KB; 0 means delta < 1 KB).
+// Max * 1.5 = 0; floor set to 4 KB — smallest meaningful regression
+// net given GC granularity. The module's update()+draw() path is
+// confirmed zero-alloc per the pre-allocated scratch + shared
+// polarAngleSortInto pattern. Harness overhead (createCommandEncoder +
+// getCurrentTexture().createView()) now also lands at 0 on this
+// machine after the warmup loop. Per the hot-path-allocation-discipline
+// pattern; re-tighten if a future calibration run reproducibly
+// measures a lower baseline.
+const HEAP_DELTA_BUDGET_BYTES = 4 * 1024;
 const PAINT_ITERATIONS = 1_000;
 const WARMUP_ITERATIONS = 200;
 
