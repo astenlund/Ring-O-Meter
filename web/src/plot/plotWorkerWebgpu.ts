@@ -7,6 +7,7 @@ import {
     type PlotMessage,
     type VoiceEntry,
 } from './plotMessages';
+import {ReadyGate} from './readyGate';
 import {TraceModule} from './traceModule';
 import {VowelModuleWebgpu} from './vowelModuleWebgpu';
 
@@ -36,16 +37,13 @@ const devicePromise: Promise<ResolvedDevice> = (async () => {
 })();
 
 const renderer = new TraceModule();
-let initialised = false;
-let initFailed = false;
-const pendingMessages: PlotMessage[] = [];
+const traceGate = new ReadyGate<PlotMessage>();
+const vowelGate = new ReadyGate<PlotMessage>();
 let rafId = 0;
 
 // Vowel-side state.
 let vowelModule: VowelModuleWebgpu | null = null;
 let vowelCanvasContext: GPUCanvasContext | null = null;
-const pendingVowelMessages: PlotMessage[] = [];
-let vowelInitialised = false;
 // Captured once initVowelCanvas resolves devicePromise so subsequent
 // SetVowelBacking handlers can resize+reconfigure the GPUCanvasContext
 // without re-awaiting the device. The trace's TraceModule does its own
@@ -204,12 +202,7 @@ async function initVowelCanvas(msg: InitVowelCanvasMessage): Promise<void> {
         // Real backing dims arrive via SetVowelBacking, which
         // calls applyVowelCanvasBacking and arms rAF. The module's
         // update loop early-exits while cssHeight is 0.
-        vowelInitialised = true;
-
-        for (const queued of pendingVowelMessages) {
-            applyMessage(queued);
-        }
-        pendingVowelMessages.length = 0;
+        vowelGate.markReady(applyMessage);
     } catch (err) {
         self.postMessage({
             type: 'vowelInitError',
@@ -263,8 +256,8 @@ function applyMessage(msg: PlotMessage): void {
             return;
         }
         case PlotMessageType.AttachVowelChannel: {
-            if (!vowelInitialised) {
-                pendingVowelMessages.push(msg);
+            if (!vowelGate.isReady()) {
+                vowelGate.defer(msg);
 
                 return;
             }
@@ -273,7 +266,7 @@ function applyMessage(msg: PlotMessage): void {
             return;
         }
         case PlotMessageType.DetachVowelChannel: {
-            if (!vowelInitialised) {
+            if (!vowelGate.isReady()) {
                 // No-op against an uninitialized vowel module; deferring would
                 // be wrong because the channel was never attached to begin with.
                 return;
@@ -283,8 +276,8 @@ function applyMessage(msg: PlotMessage): void {
             return;
         }
         case PlotMessageType.RebaseVowelChannel: {
-            if (!vowelInitialised) {
-                pendingVowelMessages.push(msg);
+            if (!vowelGate.isReady()) {
+                vowelGate.defer(msg);
 
                 return;
             }
@@ -293,8 +286,8 @@ function applyMessage(msg: PlotMessage): void {
             return;
         }
         case PlotMessageType.SetVowelBacking: {
-            if (!vowelInitialised) {
-                pendingVowelMessages.push(msg);
+            if (!vowelGate.isReady()) {
+                vowelGate.defer(msg);
 
                 return;
             }
@@ -322,14 +315,14 @@ function applyMessage(msg: PlotMessage): void {
 
 self.onmessage = async (event: MessageEvent<PlotMessage>) => {
     const msg = event.data;
-    if (initFailed) {
+    if (traceGate.isFailed()) {
         // Init failed once; further messages would just leak SAB
-        // descriptors into the pendingMessages array forever. Drop
-        // them silently - main has already been notified via the
+        // descriptors into the pending queue forever. Drop them
+        // silently - main has already been notified via the
         // 'webgpuInitError' message posted below.
         return;
     }
-    if (!initialised && msg.type === PlotMessageType.Init) {
+    if (!traceGate.isReady() && msg.type === PlotMessageType.Init) {
         try {
             const {device, format} = await devicePromise;
             const mainEpochOffsetMs = msg.mainNowAtInitMs - performance.now();
@@ -339,8 +332,7 @@ self.onmessage = async (event: MessageEvent<PlotMessage>) => {
             renderer.setWindow(msg.windowMs, msg.minHz, msg.maxHz);
             await renderer.init(msg.canvas, device, format);
         } catch (err) {
-            initFailed = true;
-            pendingMessages.length = 0;
+            traceGate.markFailed();
             // Surface the failure to main as a structured-cloneable
             // payload. App.tsx can register a worker.onmessage handler
             // that logs and optionally renders a "WebGPU unavailable"
@@ -358,16 +350,12 @@ self.onmessage = async (event: MessageEvent<PlotMessage>) => {
         // Real backing dims arrive via SetBacking, which calls
         // renderer.setBacking and arms rAF. The renderer's draw path
         // early-exits while cssHeight is 0.
-        initialised = true;
-        for (const queued of pendingMessages) {
-            applyMessage(queued);
-        }
-        pendingMessages.length = 0;
+        traceGate.markReady(applyMessage);
 
         return;
     }
-    if (!initialised) {
-        pendingMessages.push(msg);
+    if (!traceGate.isReady()) {
+        traceGate.defer(msg);
 
         return;
     }
