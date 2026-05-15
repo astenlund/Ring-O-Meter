@@ -141,6 +141,11 @@ _detect_venv_python() {
 # 'rm -rf "$VENV_DIR"' wipes the sentinel, so no separate cleanup
 # step is needed when the venv is being recreated.
 ensure_skill_venv() {
+  # CONCURRENCY: This function is NOT safe for concurrent invocations.
+  # Two simultaneous callers hitting the rebootstrap path will both
+  # rm -rf and recreate the venv, risking corruption. Safe today because
+  # orchestration is strictly serial. When the polling daemon lands,
+  # wrap the bootstrap block with flock (POSIX) or mkdir-lock (cross-platform).
   local prefix="$1"
   require_python "$prefix"
   local current_hash stored_hash need
