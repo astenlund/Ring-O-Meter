@@ -19,15 +19,22 @@
 #
 # Walks upward from <start-dir> looking for the Ring-O-Meter.slnx
 # marker file. Prints the matching directory on stdout and returns 0
-# on hit; prints a diagnostic on stderr and returns 1 on miss or on
-# missing argument. <start-dir> is required: the implicit-default
-# variant fails silently when a future caller forgets to set
-# SCRIPT_DIR in shell scope, so the contract is explicit.
+# on hit; returns 1 on miss (callers supply their own diagnostic) or
+# prints a diagnostic on stderr and returns 1 on missing argument.
+# <start-dir> is required: the implicit-default variant fails silently
+# when a future caller forgets to set SCRIPT_DIR in shell scope, so
+# the contract is explicit.
+#
+# Current callers pass deliberately different seeds:
+#   render-html-to-pdf.sh → "$SCRIPT_DIR" (always inside the repo)
+#   bootstrap-session.sh  → "$PWD" (user CWD; may be outside the
+#                            repo, which triggers the hard-fail path)
 #
 # When the skill ships to its own gist, this routine is the place
 # to swap the marker for whatever anchors the gist's own checkout.
 find_repo_root() {
   local dir="$1"
+  local next_dir
   if [[ -z "$dir" ]]; then
     echo "find_repo_root: <start-dir> argument required" >&2
     return 1

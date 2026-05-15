@@ -89,29 +89,32 @@ def _extract_rm_dir(rmdoc_path, target_dir):
 @unittest.skipIf(_resolve_fixture() is None, "no committed calibration fixture")
 class FixtureScaleSmokeTests(unittest.TestCase):
     """Re-derive scale from the committed .rmdoc and assert it matches
-    the saved calibration.json within a tight tolerance."""
+    the saved calibration.json within a tight tolerance.
+
+    setUpClass runs the expensive rmscene + scipy derivation once and
+    caches the results; individual test methods assert against the
+    shared payload without re-deriving."""
+
+    _payload: dict
+    _saved: dict
+
+    @classmethod
+    def setUpClass(cls):
+        fixture = _resolve_fixture()
+        cls._saved = json.loads(_CALIBRATION_JSON.read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as tmp:
+            rm_dir = _extract_rm_dir(fixture, Path(tmp))
+            cls._payload = derive_calibration.derive(rm_dir, cls._saved["firmware_note"])
 
     def test_scale_matches_saved(self):
-        fixture = _resolve_fixture()
-        saved = json.loads(_CALIBRATION_JSON.read_text(encoding="utf-8"))
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            rm_dir = _extract_rm_dir(fixture, tmp_path)
-            payload = derive_calibration.derive(rm_dir, saved["firmware_note"])
         # +/- 0.001 catches geometry-math regressions; tighter would
         # break on floating-point reordering.
-        self.assertAlmostEqual(payload["scale"], saved["scale"], delta=0.001)
-        self.assertEqual(payload["schema_version"], 1)
+        self.assertAlmostEqual(self._payload["scale"], self._saved["scale"], delta=0.001)
+        self.assertEqual(self._payload["schema_version"], 1)
 
     def test_residuals_under_threshold(self):
         """All per-dot residuals should be under 3 px in the re-derivation."""
-        fixture = _resolve_fixture()
-        saved = json.loads(_CALIBRATION_JSON.read_text(encoding="utf-8"))
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            rm_dir = _extract_rm_dir(fixture, tmp_path)
-            payload = derive_calibration.derive(rm_dir, saved["firmware_note"])
-        for label, residual in payload["residuals_px"].items():
+        for label, residual in self._payload["residuals_px"].items():
             self.assertLess(residual, 3.0, f"residual at {label} = {residual} px")
 
 
