@@ -1,16 +1,16 @@
 // render.mjs
 //
-// Substitutes tokens in page-template.html, launches Chromium via the
-// host repo's Playwright install, and writes a PDF at the reMarkable
+// Substitutes tokens in page-template.html, launches Chromium via
+// Playwright, and writes a PDF at the reMarkable
 // Paper Pro viewport (1620x2160 px).
 //
 // Bare-specifier ESM resolution does NOT walk cwd's node_modules tree;
-// it walks the importing file's tree. The skill folder has no
-// node_modules of its own, so playwright is resolved via createRequire
-// rooted at the host repo's web/package.json (passed in via the
-// SKETCH_BRAINSTORM_NODE_HOST env var by render-html-to-pdf.sh). When
-// the skill ships to its own gist, the env-var path becomes
-// per-skill node_modules instead.
+// it walks the importing file's tree. SKETCH_BRAINSTORM_NODE_HOST (set
+// by render-html-to-pdf.sh) points at a directory that contains
+// node_modules/playwright: either the skill's own node_modules (when
+// `npm install` has been run in the skill folder) or the host repo's
+// web/ folder as a fallback for in-repo incubation. The env-var
+// contract is unchanged; only the source directory varies.
 
 import { createRequire } from 'node:module';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -54,10 +54,11 @@ function loadPlaywright() {
   if (!host) {
     fail(
       'SKETCH_BRAINSTORM_NODE_HOST is not set. The bash wrapper '
-      + 'render-html-to-pdf.sh sets this to the host repo\'s web/ directory '
-      + 'so render.mjs can resolve playwright. Either run via the wrapper '
-      + 'or export the env var manually to a directory containing '
-      + 'package.json with playwright as a dep.'
+      + 'render-html-to-pdf.sh sets this to whichever directory contains '
+      + 'node_modules/playwright (skills/sketch-brainstorm or the host '
+      + 'repo\'s web/ folder, depending on which install you have). Either '
+      + 'run via the wrapper or export the env var manually to a directory '
+      + 'containing package.json with playwright as a dep.'
     );
   }
   const anchor = pathToFileURL(join(host, 'package.json')).href;
@@ -66,8 +67,7 @@ function loadPlaywright() {
     return require('playwright');
   } catch (err) {
     fail(
-      `Could not resolve playwright from ${host}. Run \`pnpm --dir ${host} install\` `
-      + `(or the npm equivalent) to install Playwright. Original error: ${err.message}`
+      `Could not resolve playwright from ${host}. Ensure node_modules/playwright is installed in ${host}. Original error: ${err.message}`
     );
   }
 }

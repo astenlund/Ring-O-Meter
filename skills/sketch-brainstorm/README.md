@@ -56,7 +56,7 @@ The full design is documented in the host project's feature backlog at `.claude/
 ## Per-machine setup
 
 - `rmapi` on `$PATH`. The skill assumes it is installed and authenticated; a `setup-rmapi.sh` helper (future slice) handles initial pairing and token rotation.
-- A host project with `playwright` available. Today the skill resolves Playwright from the host repo's `web/node_modules`. When the skill ships to its own gist, this loosens via a per-skill `package.json` and `npm install`.
+- A host project with Playwright available. The skill resolves it from `skills/sketch-brainstorm/node_modules` (run `npm install` from the skill folder once) with a fallback to `$REPO_ROOT/web/node_modules` for in-repo incubation. Gist consumers: `npm install` in the skill folder.
 - Chrome installed on the machine (the render uses `channel: 'chrome'` to mirror the host project's e2e suite).
 - Python 3.10+ on `$PATH`. The inbound stroke-rendering pipeline (`render/render-strokes.py`) bootstraps a Python venv on first run inside the skill folder (`./.venv/`) and installs `rmscene` and any rendering helpers from `requirements.txt`. The venv keeps the Python deps self-contained alongside the skill rather than polluting the host machine's global Python.
 
@@ -76,6 +76,7 @@ The full design is documented in the host project's feature backlog at `.claude/
 ## Files
 
 - `SKILL.md` -- auto-routing description, current STATUS, render entry-point.
+- `package.json` -- skill-local npm manifest; declares `playwright` dep so gist consumers can `npm install` in the skill folder.
 - `vocabulary.md` -- canonical core vocabulary table.
 - `render/page-template.html` -- HTML template with token placeholders.
 - `render/page-chrome.css` -- chrome-zone styles (header, notes, legend, checkboxes).
