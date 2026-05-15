@@ -203,6 +203,12 @@ def derive(rm_dir, firmware_note):
         "firmware_note": firmware_note,
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "residuals_px": {label: round(r, 2) for label, r in residuals.items()},
+        # heuristic thresholds — defaults match _calibration.load_calibration setdefaults.
+        # Edit these after a ceremony to tune detection for your hardware/theme.
+        "fill_luminance_threshold": 160,
+        "fill_ratio_threshold": 0.3,
+        "winner_margin": 0.15,
+        "min_area_rm_sq": 100.0,
     }
 
 

@@ -63,12 +63,11 @@ def read_prefill(pdf_path: Path) -> str:
         for name, (x, y, w, h) in MODE_BOXES.items():
             clip = fitz.Rect(x * scale, y * scale, (x + w) * scale, (y + h) * scale)
             try:
-                pix = page.get_pixmap(clip=clip, dpi=100)
+                pix = page.get_pixmap(clip=clip, dpi=100, colorspace=fitz.csGRAY)
             except Exception as exc:
                 raise RuntimeError(f"rasterization failed for {name} box: {exc}") from exc
-            gray_pix = fitz.Pixmap(fitz.csGRAY, pix)
-            total = gray_pix.width * gray_pix.height
-            filled = sum(1 for b in gray_pix.samples if b < fill_luminance_threshold)
+            total = pix.width * pix.height
+            filled = sum(1 for b in pix.samples if b < fill_luminance_threshold)
             ratios[name] = filled / total if total else 0.0
     finally:
         doc.close()

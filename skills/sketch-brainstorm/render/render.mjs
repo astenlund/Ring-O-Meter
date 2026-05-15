@@ -176,6 +176,9 @@ async function main() {
     'href="page-chrome.css"',
     `href="${cssFileUrl}"`,
   );
+  if (renderedWithAbsoluteCss === rendered) {
+    fail('page-template.html does not contain href="page-chrome.css" — CSS will not load');
+  }
 
   await writeFile(tempHtmlPath, renderedWithAbsoluteCss, 'utf8');
 
