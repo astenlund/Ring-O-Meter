@@ -71,51 +71,66 @@ def collect_lines(rm_file: Path) -> list[tuple[str, float, list[tuple[float, flo
     return lines
 
 
-def _page_order_modern(rm_dir, data):
-    """formatVersion>=2 style: cPages.pages[] objects with id + redir."""
+class ManifestError(Exception):
+    """Raised when the .content manifest is missing, invalid, or empty."""
+
+
+def manifest_pages(rm_dir):
+    """Return [(pdf_index, uuid_or_None)] for every manifest entry in
+    cPages.pages order (modern) or pages[]+redirectionPageMap order
+    (legacy).
+
+    Raises ManifestError for: missing content file, invalid JSON.
+    Returns [] when the file is present and valid JSON but no recognised
+    schema pages are found.
+
+    Unlike ordered_rm_files this does NOT filter for .rm-file presence
+    or sort by pdf_index; callers that need rendering order go through
+    ordered_rm_files. Callers that only need UUIDs (e.g.,
+    detect_marks.page_uuids_from_manifest) discard pdf_index; it is
+    returned as a byproduct of the shared parse and not recomputed by
+    callers.
+    """
+    content_path = rm_dir.parent / f"{rm_dir.name}.content"
+    if not content_path.exists():
+        raise ManifestError(
+            f"content manifest unreadable: {content_path.name} not found"
+        )
+    try:
+        data = json.loads(content_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise ManifestError(
+            f"content manifest unreadable: invalid JSON ({e})"
+        ) from e
+
     cpages = data.get("cPages") or {}
-    pages = cpages.get("pages") or []
-    ordered = []
-    for i, page in enumerate(pages):
-        page_id = page.get("id")
-        redir = (page.get("redir") or {}).get("value")
-        if page_id is None:
-            continue
-        rm_file = rm_dir / f"{page_id}.rm"
-        if not rm_file.exists():
-            # No .rm file means the page has no annotations; skip for
-            # rendering. Note: detect_marks.page_uuids_from_manifest
-            # intentionally does NOT apply this filter so per_page length
-            # matches the manifest's full page count regardless of .rm presence.
-            continue
-        if redir is not None and not isinstance(redir, int):
-            print(
-                f"warning: page {i} redir.value has unexpected type "
-                f"{type(redir).__name__!r} (expected int); "
-                f"falling back to position {i}",
-                file=sys.stderr,
-            )
-            redir = None
-        pdf_index = redir if isinstance(redir, int) else i
-        ordered.append((pdf_index, rm_file))
+    modern_pages = cpages.get("pages") or []
+    if modern_pages:
+        ordered = []
+        for i, page in enumerate(modern_pages):
+            page_id = page.get("id")
+            redir = (page.get("redir") or {}).get("value")
+            if redir is not None and not isinstance(redir, int):
+                print(
+                    f"warning: page {i} redir.value has unexpected type "
+                    f"{type(redir).__name__!r} (expected int); "
+                    f"falling back to position {i}",
+                    file=sys.stderr,
+                )
+                redir = None
+            pdf_index = redir if isinstance(redir, int) else i
+            ordered.append((pdf_index, page_id))
 
-    return ordered
+        return ordered
 
-
-def _page_order_legacy(rm_dir, data):
-    """formatVersion 1 style: top-level pages[] + redirectionPageMap[]."""
-    page_ids = data.get("pages") or []
+    legacy_pages = data.get("pages") or []
     redir_map = data.get("redirectionPageMap") or []
     ordered = []
-    for i, page_id in enumerate(page_ids):
+    for i, page_id in enumerate(legacy_pages):
         if not isinstance(page_id, str):
             continue
-        rm_file = rm_dir / f"{page_id}.rm"
-        if not rm_file.exists():
-            # Same filter as _page_order_modern; see note there.
-            continue
         pdf_index = redir_map[i] if i < len(redir_map) and isinstance(redir_map[i], int) else i
-        ordered.append((pdf_index, rm_file))
+        ordered.append((pdf_index, page_id))
 
     return ordered
 
@@ -124,25 +139,32 @@ def ordered_rm_files(rm_dir: Path) -> list[tuple[int, Path]]:
     """Return [(pdf_page_index, rm_file)] in PDF-page order.
 
     Reads the .rmdoc archive's <doc-uuid>.content sibling file (where
-    rm_dir.name is the doc UUID). Two schemas observed in the wild;
-    falls back to alphabetical filename sort with a warning if neither
-    produces pages.
+    rm_dir.name is the doc UUID) via manifest_pages, which handles
+    both modern and legacy schemas. Filters for .rm-file existence
+    (unannotated pages have no .rm file; skip them for rendering).
+    Falls back to alphabetical filename sort with a warning when the
+    manifest is missing, malformed, or yields no recognised pages.
     """
     content_file = rm_dir.parent / f"{rm_dir.name}.content"
     ordered = []
     if content_file.exists():
+        # Guard ensures manifest_pages() only ever raises here for bad
+        # JSON, never for missing-file (Case 1 of its contract is
+        # reached only via page_uuids_from_manifest()).
         try:
-            data = json.loads(content_file.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
+            pages = manifest_pages(rm_dir)
+        except ManifestError as e:
             print(
                 f"warning: {content_file.name} contains invalid JSON ({e}); "
                 f"falling back to alphabetical filename sort",
                 file=sys.stderr,
             )
-            data = {}
-        ordered = _page_order_modern(rm_dir, data)
-        if not ordered:
-            ordered = _page_order_legacy(rm_dir, data)
+            pages = []
+        ordered = [
+            (pdf_index, rm_dir / f"{uuid}.rm")
+            for pdf_index, uuid in pages
+            if uuid and (rm_dir / f"{uuid}.rm").exists()
+        ]
     if not ordered:
         rm_files_found = sorted(rm_dir.glob("*.rm"))
         if rm_files_found:
