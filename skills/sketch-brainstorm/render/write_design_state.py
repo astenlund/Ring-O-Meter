@@ -17,6 +17,7 @@ on NTFS for same-volume same-directory renames (same guarantee that
 poller.lock relies on).
 """
 import argparse
+import collections
 import re
 import sys
 from pathlib import Path
@@ -29,7 +30,13 @@ _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 # a future schema addition such as `## Archive` does not get absorbed
 # into the prior iter section and silently deleted on the next write.
 _ITER_SECTION_RE_TEMPLATE = r"\n## Iteration {nn}\n.*?(?=\n## |\Z)"
-_ITER_MARKER_RE = re.compile(r"^## Iteration ", re.MULTILINE)
+# Capture group lets the duplicate-iter check in write() count headings
+# by their NN suffix; _validate_delta only uses .search() truthiness so
+# the group is transparent there. The trailing `\d+` also tightens
+# _validate_delta's reject path to real iter markers — `## Iteration foo`
+# would never be parsed as a section anyway, so accepting it as delta
+# content is fine.
+_ITER_MARKER_RE = re.compile(r"^## Iteration (\d+)", re.MULTILINE)
 _CURRENT_MODE_RE = re.compile(r"^current_mode:.*$", re.MULTILINE)
 
 
@@ -67,6 +74,21 @@ def write(session_dir, iter_nn, mode, delta):
     path = session_path / "design-state.md"
     content = path.read_text(encoding="utf-8") if path.exists() else ""
     content = content.replace("\r\n", "\n")
+
+    # Refuse to write into a design-state.md that already has duplicate
+    # iter headings. Only path to duplicates today is external file
+    # mutation (partial writes are atomic-renamed, _validate_delta blocks
+    # marker-bearing deltas), so the failure mode is silent and rare —
+    # but if we proceed, section_re below sees only the first match and
+    # the duplicate persists/grows on every subsequent write. Surface it
+    # for manual recovery instead.
+    counts = collections.Counter(_ITER_MARKER_RE.findall(content))
+    duplicates = sorted(nn for nn, c in counts.items() if c > 1)
+    if duplicates:
+        raise ValueError(
+            f"design-state.md has duplicate '## Iteration NN' headings "
+            f"(NN={duplicates}); manual recovery needed before write()"
+        )
 
     # Update frontmatter.current_mode.
     m = _FRONTMATTER_RE.match(content)
