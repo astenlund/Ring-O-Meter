@@ -24,12 +24,10 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 
-import _rm_strokes  # noqa: E402
 import derive_calibration  # noqa: E402
 
 _SKILL_ROOT = _HERE.parent
@@ -121,32 +119,6 @@ class FixtureScaleSmokeTests(unittest.TestCase):
         """All per-dot residuals should be under 3 px in the re-derivation."""
         for label, residual in self._payload["residuals_px"].items():
             self.assertLess(residual, 3.0, f"residual at {label} = {residual} px")
-
-
-class LoadCalibrationSchemaTests(unittest.TestCase):
-    """load_calibration must reject schema_version values it doesn't
-    understand so an old reader never silently misprojects a calibration
-    written under a future formula. Missing schema_version still loads
-    (treated as v1) for back-compat with calibrations written before the
-    field was introduced."""
-
-    def _load_with_json(self, payload: dict):
-        """Write payload to a temp calibration.json, patch CALIBRATION_JSON to
-        point at it, call load_calibration(), and return the result (or raise)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            f = Path(tmp) / "calibration.json"
-            f.write_text(json.dumps(payload), encoding="utf-8")
-            with patch.object(_rm_strokes, "CALIBRATION_JSON", f):
-                return _rm_strokes.load_calibration()
-
-    def test_load_calibration_rejects_future_schema(self):
-        with self.assertRaises(_rm_strokes.CalibrationError) as cm:
-            self._load_with_json({"schema_version": 3, "scale": 0.42284})
-        self.assertIn("schema_version", str(cm.exception))
-
-    def test_load_calibration_rejects_v1_missing_schema(self):
-        with self.assertRaises(_rm_strokes.CalibrationError):
-            self._load_with_json({"scale": 0.42284})
 
 
 if __name__ == "__main__":

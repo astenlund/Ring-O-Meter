@@ -20,7 +20,8 @@ from pathlib import Path
 
 from _chrome_boxes import BOX_REGISTRY
 from _geometry import capsule_area
-from _rm_strokes import PAGE_W, CalibrationError, collect_lines, load_calibration
+from _calibration import CalibrationError, load_calibration
+from _rm_strokes import PAGE_W, collect_lines
 
 
 class ManifestError(Exception):

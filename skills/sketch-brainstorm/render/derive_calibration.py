@@ -35,7 +35,8 @@ from pathlib import Path
 from scipy.optimize import linear_sum_assignment
 
 from _atomic_write import atomic_write_text
-from _rm_strokes import CALIBRATION_SCHEMA_VERSION, PAGE_W, collect_lines, ordered_rm_files
+from _calibration import CALIBRATION_SCHEMA_VERSION
+from _rm_strokes import PAGE_W, collect_lines, ordered_rm_files
 
 # LOCKSTEP with calibration-template.html .dot style="left:Xpx; top:Ypx".
 # If you change the margin or move any dot in the template, update the

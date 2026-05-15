@@ -22,7 +22,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 from _chrome_boxes import BOX_REGISTRY, VALID_MODES
-from _rm_strokes import load_calibration
+from _calibration import load_calibration
 
 # Coords are in CSS pixels relative to the 1620 px wide render viewport;
 # read_prefill scales them to the PDF's actual point size at runtime

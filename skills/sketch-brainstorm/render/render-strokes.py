@@ -10,15 +10,8 @@ import math
 import sys
 from pathlib import Path
 
-from _rm_strokes import (
-    CALIBRATION_JSON,
-    PAGE_W,
-    PAGE_H,
-    CalibrationError,
-    collect_lines,
-    load_calibration,
-    ordered_rm_files,
-)
+from _calibration import CALIBRATION_JSON, CalibrationError, load_calibration
+from _rm_strokes import PAGE_W, PAGE_H, collect_lines, ordered_rm_files
 
 
 def union_bounds(
