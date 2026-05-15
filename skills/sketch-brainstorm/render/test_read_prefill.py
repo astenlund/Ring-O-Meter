@@ -20,6 +20,15 @@ sys.path.insert(0, str(_HERE))
 from read_prefill import MODE_BOXES, read_prefill  # noqa: E402
 
 
+def _test_calibration():
+    """Fixture matching _calibration.py's historical defaults."""
+    return {
+        "fill_luminance_threshold": 160,
+        "fill_ratio_threshold": 0.3,
+        "winner_margin": 0.15,
+    }
+
+
 def _make_pdf_with_filled_box(filled_mode, path):
     """Create a single-page PDF (1620x2160) with one mode-switch box
     painted dark gold and the others left white."""
@@ -40,19 +49,19 @@ class ReadPrefillTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pdf = Path(tmp) / "color.pdf"
             _make_pdf_with_filled_box("color", pdf)
-            self.assertEqual(read_prefill(pdf), "color")
+            self.assertEqual(read_prefill(pdf, _test_calibration()), "color")
 
     def test_bw_box_filled(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf = Path(tmp) / "bw.pdf"
             _make_pdf_with_filled_box("bw", pdf)
-            self.assertEqual(read_prefill(pdf), "bw")
+            self.assertEqual(read_prefill(pdf, _test_calibration()), "bw")
 
     def test_wireframe_box_filled(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf = Path(tmp) / "wf.pdf"
             _make_pdf_with_filled_box("wireframe", pdf)
-            self.assertEqual(read_prefill(pdf), "wireframe")
+            self.assertEqual(read_prefill(pdf, _test_calibration()), "wireframe")
 
     def test_no_box_filled_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -67,7 +76,7 @@ class ReadPrefillTests(unittest.TestCase):
             doc.close()
 
             with self.assertRaises(RuntimeError):
-                read_prefill(pdf)
+                read_prefill(pdf, _test_calibration())
 
 
 if __name__ == "__main__":
