@@ -29,6 +29,7 @@ import importlib.util
 import sys
 import tempfile
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -232,6 +233,89 @@ class CollectLinesSinglePointTest(unittest.TestCase):
         self.assertEqual(len(result), 1)
         _color, _width, pts = result[0]
         self.assertEqual(pts, [(10.0, 20.0)])
+
+
+class RenderStrokesMainTests(unittest.TestCase):
+    """Cover both branches of render-strokes.py main(): calibration-
+    present (load JSON scale via load_calibration) vs auto-fit fallback
+    (derive scale from union_bounds). Mocks are applied directly to the
+    kebab-loaded render_strokes_mod's namespace via patch.object — the
+    module retains its bound references after _rm_strokes is dropped
+    from sys.modules at lines 78-87, so patching there reaches main()'s
+    free-variable lookups via the module's __globals__."""
+
+    def _run_main(self, rm_dir, out_dir, **patches):
+        """Invoke render_strokes_mod.main() with sys.argv set to the
+        usage shape and the named symbols patched on render_strokes_mod
+        for the call's duration."""
+        argv = [str(_RENDER_STROKES_PY), str(rm_dir), str(out_dir)]
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(sys, "argv", argv))
+            for name, value in patches.items():
+                stack.enter_context(patch.object(render_strokes_mod, name, value))
+
+            return render_strokes_mod.main()
+
+    def _scenario_dirs(self, root):
+        """Build a fake rm_dir + out_dir pair under root. The rm-file
+        contents don't matter — collect_lines is mocked — but the file
+        must exist so main()'s mkdir/path arithmetic doesn't trip."""
+        rm_dir = root / "rm"
+        out_dir = root / "out"
+        rm_dir.mkdir()
+        fake_rm = rm_dir / "page1.rm"
+        fake_rm.write_bytes(b"")
+
+        return rm_dir, out_dir, fake_rm
+
+    def test_main_uses_calibrated_scale_when_calibration_present(self):
+        # Arrange
+        with tempfile.TemporaryDirectory() as tmp:
+            rm_dir, out_dir, fake_rm = self._scenario_dirs(Path(tmp))
+            calibration_json = MagicMock()
+            calibration_json.exists.return_value = True
+            render_svg_spy = MagicMock()
+
+            # Act
+            ret = self._run_main(
+                rm_dir, out_dir,
+                CALIBRATION_JSON=calibration_json,
+                load_calibration=MagicMock(return_value={"scale": 0.42, "schema_version": 1}),
+                ordered_rm_files=MagicMock(return_value=[(0, fake_rm)]),
+                collect_lines=MagicMock(return_value=[("black", 1.0, [(0.0, 0.0), (1.0, 1.0)])]),
+                render_svg=render_svg_spy,
+            )
+
+        # Assert: render_svg(lines, scale, out_svg) — positional, scale at index 1.
+        self.assertEqual(ret, 0)
+        render_svg_spy.assert_called_once()
+        self.assertEqual(render_svg_spy.call_args.args[1], 0.42)
+
+    def test_main_falls_back_to_auto_fit_when_calibration_absent(self):
+        # Arrange
+        with tempfile.TemporaryDirectory() as tmp:
+            rm_dir, out_dir, fake_rm = self._scenario_dirs(Path(tmp))
+            calibration_json = MagicMock()
+            calibration_json.exists.return_value = False
+            render_svg_spy = MagicMock()
+            derive_scale_spy = MagicMock(return_value=1.5)
+
+            # Act
+            ret = self._run_main(
+                rm_dir, out_dir,
+                CALIBRATION_JSON=calibration_json,
+                ordered_rm_files=MagicMock(return_value=[(0, fake_rm)]),
+                collect_lines=MagicMock(return_value=[("black", 1.0, [(0.0, 0.0), (1.0, 1.0)])]),
+                render_svg=render_svg_spy,
+                union_bounds=MagicMock(return_value=(-100.0, 0.0, 100.0, 200.0)),
+                derive_scale=derive_scale_spy,
+            )
+
+        # Assert: derive_scale received the bounds; render_svg got the derived scale.
+        self.assertEqual(ret, 0)
+        derive_scale_spy.assert_called_once_with((-100.0, 0.0, 100.0, 200.0))
+        render_svg_spy.assert_called_once()
+        self.assertEqual(render_svg_spy.call_args.args[1], 1.5)
 
 
 if __name__ == "__main__":
