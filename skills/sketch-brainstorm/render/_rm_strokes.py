@@ -1,7 +1,8 @@
 """Shared .rm parsing and coordinate-system constants.
 
 Single source of truth for `.rm`-stroke parsing, pen color mapping,
-and Paper Pro viewport constants. Consumers:
+and Paper Pro viewport constants. Calibration concerns (path, schema
+version, error type, loader) live in _calibration.py. Consumers:
   - render-strokes.py: produces SVG overlays from strokes.
   - derive_calibration.py: reduces strokes to centroids for the
     five-dot calibration ceremony.
@@ -29,68 +30,6 @@ from rmscene import read_tree, scene_items
 
 PAGE_W = 1620
 PAGE_H = 2160
-
-# Skill root + calibration.json path. Centralized so consumers don't
-# duplicate the `parent.parent` walk; if the layout ever changes, only
-# one site needs updating.
-SKILL_ROOT = Path(__file__).resolve().parent.parent
-CALIBRATION_JSON = SKILL_ROOT / "calibration.json"
-# Bump this and the load_calibration guard together whenever the
-# inverse-transform formula changes (e.g., a y_offset field is added).
-CALIBRATION_SCHEMA_VERSION = 2
-
-class CalibrationError(Exception):
-    """Raised when calibration.json is missing, invalid, or unparseable."""
-
-
-def load_calibration():
-    """Load and validate CALIBRATION_JSON.
-
-    Raises CalibrationError on missing file, invalid JSON, an unknown
-    schema_version, or an invalid scale value. Callers translate to a
-    non-zero exit + diagnostic in their `main()`.
-
-    schema_version contract: missing -> v1 (back-compat with calibrations
-    written before the field was introduced); 1 -> the linear
-    `pdf_y = cy * scale` inverse-transform; anything else -> reject so
-    an old calibration cannot silently misproject under new math. The
-    schema check fires before the scale check so a hypothetical v2
-    file dropping `scale` produces 'regenerate calibration' guidance,
-    not a misleading 'missing scale' diagnostic.
-    """
-    if not CALIBRATION_JSON.exists():
-        raise CalibrationError(
-            f"calibration.json not found at {CALIBRATION_JSON}; "
-            f"run derive-calibration.sh first"
-        )
-    try:
-        data = json.loads(CALIBRATION_JSON.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        raise CalibrationError(
-            f"calibration.json is not valid JSON ({e}); re-run derive-calibration.sh"
-        ) from e
-    # Default must be the literal 1 (the version implied by absence of the field
-    # for files written before schema_version was introduced), NOT the constant.
-    # Using the constant as default would silently read pre-field files under
-    # the wrong semantics whenever CALIBRATION_SCHEMA_VERSION is bumped.
-    schema_version = data.get("schema_version", 1)
-    if schema_version != CALIBRATION_SCHEMA_VERSION:
-        raise CalibrationError(
-            f"calibration.json schema_version={schema_version!r} not supported by this "
-            f"reader (expected {CALIBRATION_SCHEMA_VERSION}); re-run derive-calibration.sh to regenerate"
-        )
-    scale = data.get("scale")
-    if not isinstance(scale, (int, float)) or scale <= 0:
-        raise CalibrationError(
-            "calibration.json missing or invalid 'scale'; re-run derive-calibration.sh"
-        )
-    data.setdefault("fill_luminance_threshold", 160)
-    data.setdefault("fill_ratio_threshold", 0.3)
-    data.setdefault("winner_margin", 0.15)
-    data.setdefault("min_area_rm_sq", 100.0)
-
-    return data
-
 
 PEN_COLORS = {
     # rmscene.scene_items.PenColor enum -> on-screen hex.
