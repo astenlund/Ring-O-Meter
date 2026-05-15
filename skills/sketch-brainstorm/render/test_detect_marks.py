@@ -211,5 +211,73 @@ class CapsuleAreaQualificationTests(unittest.TestCase):
         self.assertFalse(boxes["finish_turn"]["marked"])
 
 
+class PageUuidsFromManifestTests(unittest.TestCase):
+    """Direct tests of page_uuids_from_manifest's delegation to manifest_pages.
+
+    These cover schema branches (legacy) and error paths (missing file,
+    bad JSON, no recognised pages). Called via page_uuids_from_manifest()
+    rather than manifest_pages() directly because the test file's
+    fixture environment is already wired for the detect_marks side.
+    """
+
+    def test_legacy_schema_returns_uuids_in_order(self):
+        # Arrange: legacy-schema .content (no cPages; top-level pages[]).
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            content_path = tmp_path / "doc-uuid.content"
+            content_path.write_text(
+                json.dumps({"pages": ["uuid1", "uuid2"], "redirectionPageMap": [0, 1]}),
+                encoding="utf-8",
+            )
+            rm_dir = tmp_path / "doc-uuid"
+            rm_dir.mkdir()
+
+            # Act
+            result = detect_marks.page_uuids_from_manifest(rm_dir)
+
+        # Assert
+        self.assertEqual(result, ["uuid1", "uuid2"])
+
+    def test_no_pages_raises_manifest_error(self):
+        # Arrange: valid JSON but neither cPages nor top-level pages[].
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            content_path = tmp_path / "doc-uuid.content"
+            content_path.write_text(json.dumps({"someOtherKey": "value"}), encoding="utf-8")
+            rm_dir = tmp_path / "doc-uuid"
+            rm_dir.mkdir()
+
+            # Act / Assert
+            with self.assertRaises(detect_marks.ManifestError) as ctx:
+                detect_marks.page_uuids_from_manifest(rm_dir)
+        self.assertIn("no pages found", str(ctx.exception))
+
+    def test_missing_content_file_raises_manifest_error(self):
+        # Arrange: rm_dir with no sibling .content file at all.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            rm_dir = tmp_path / "doc-uuid"
+            rm_dir.mkdir()
+
+            # Act / Assert
+            with self.assertRaises(detect_marks.ManifestError) as ctx:
+                detect_marks.page_uuids_from_manifest(rm_dir)
+        self.assertIn("not found", str(ctx.exception))
+
+    def test_bad_json_raises_manifest_error(self):
+        # Arrange: .content file with malformed JSON.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            content_path = tmp_path / "doc-uuid.content"
+            content_path.write_text("not valid json", encoding="utf-8")
+            rm_dir = tmp_path / "doc-uuid"
+            rm_dir.mkdir()
+
+            # Act / Assert
+            with self.assertRaises(detect_marks.ManifestError) as ctx:
+                detect_marks.page_uuids_from_manifest(rm_dir)
+        self.assertIn("invalid JSON", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

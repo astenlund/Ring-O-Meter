@@ -21,11 +21,7 @@ from pathlib import Path
 from _chrome_boxes import BOX_REGISTRY
 from _geometry import capsule_area
 from _calibration import CalibrationError, load_calibration
-from _rm_strokes import PAGE_W, collect_lines
-
-
-class ManifestError(Exception):
-    """Raised when the .content manifest is missing, invalid, or empty."""
+from _rm_strokes import ManifestError, PAGE_W, collect_lines, manifest_pages
 
 
 class StrokeParseError(Exception):
@@ -59,34 +55,28 @@ def inverse_transform_box(pdf_box, scale):
 def page_uuids_from_manifest(rm_dir):
     """Return page UUIDs from the .content manifest in manifest order.
 
-    The manifest sits next to rm_dir (at <doc-uuid>.content where
-    rm_dir.name is the doc UUID). We use cPages.pages[] WITHOUT filtering
-    for .rm-file existence -- this is intentional: per_page must cover every
-    rendered page regardless of annotation presence. (This differs from
-    _rm_strokes.ordered_rm_files, which skips unannotated pages for rendering.)
-    Do NOT use the top-level `pageCount` field; it is 0 for documents that were
-    pushed but never opened.
+    Delegates to _rm_strokes.manifest_pages() to handle both modern
+    (cPages.pages[]) and legacy (pages[] + redirectionPageMap[]) schemas
+    without filtering for .rm-file existence -- this is intentional:
+    per_page must cover every rendered page regardless of annotation
+    presence. (This differs from _rm_strokes.ordered_rm_files, which
+    skips unannotated pages for rendering.) Do NOT use the top-level
+    `pageCount` field; it is 0 for documents that were pushed but never
+    opened.
 
-    Returns page_uuids where page_uuids[i] is the UUID string for the i-th
-    rendered page (i is 0-based, matches cPages.pages[] order). Raises
-    ManifestError on absent file, invalid JSON, or missing pages key;
+    Returns page_uuids where page_uuids[i] is the UUID string for the
+    i-th rendered page (i is 0-based, matches manifest order). Raises
+    ManifestError on absent file, invalid JSON, or no recognised pages;
     caller (main) translates to non-zero exit + diagnostic.
     """
-    content_path = rm_dir.parent / f"{rm_dir.name}.content"
-    if not content_path.exists():
-        raise ManifestError(
-            f"content manifest unreadable: {content_path.name} not found"
-        )
-    try:
-        data = json.loads(content_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        raise ManifestError(f"content manifest unreadable: invalid JSON ({e})") from e
-    cpages = data.get("cPages") or {}
-    pages = cpages.get("pages") or []
+    pages = manifest_pages(rm_dir)
     if not pages:
-        raise ManifestError("content manifest unreadable: cPages.pages missing or empty")
+        raise ManifestError(
+            "content manifest unreadable: no pages found in manifest "
+            "(neither modern nor legacy schema)"
+        )
 
-    return [p.get("id") for p in pages]
+    return [uuid for _pdf_index, uuid in pages]
 
 
 def detect_page(rm_file, scale):
