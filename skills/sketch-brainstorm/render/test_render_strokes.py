@@ -113,7 +113,7 @@ class RenderStrokesMainTests(unittest.TestCase):
             ret = self._run_main(
                 rm_dir, out_dir,
                 CALIBRATION_JSON=calibration_json,
-                load_calibration=MagicMock(return_value={"scale": 0.42, "schema_version": 1}),
+                load_calibration=MagicMock(return_value={"scale": 0.42, "schema_version": 2}),
                 ordered_rm_files=MagicMock(return_value=[(0, fake_rm)]),
                 collect_lines=MagicMock(return_value=[("black", 1.0, [(0.0, 0.0), (1.0, 1.0)])]),
                 render_svg=render_svg_spy,

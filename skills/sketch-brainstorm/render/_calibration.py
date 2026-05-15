@@ -25,10 +25,11 @@ def load_calibration():
     schema_version, or an invalid scale value. Callers translate to a
     non-zero exit + diagnostic in their `main()`.
 
-    schema_version contract: missing -> v1 (back-compat with calibrations
-    written before the field was introduced); 2 -> the linear
-    `pdf_y = cy * scale` inverse-transform plus heuristic fields;
-    anything else -> reject so an old calibration cannot silently
+    schema_version contract: missing field -> treated as v1 -> rejected
+    (v1 is no longer the current schema; pre-field calibration files must
+    be regenerated via derive-calibration.sh); 2 -> the linear
+    `pdf_y = cy * scale` inverse-transform plus heuristic detection
+    fields; anything else -> reject so an old calibration cannot silently
     misproject under new math. The schema check fires before the scale
     check so a hypothetical v3 file dropping `scale` produces
     'regenerate calibration' guidance, not a misleading 'missing scale'
