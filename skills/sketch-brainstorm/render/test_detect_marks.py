@@ -34,6 +34,7 @@ from _chrome_boxes import BOX_REGISTRY  # noqa: E402
 # Derived rather than literal so a new box in BOX_REGISTRY surfaces here
 # at test time instead of silently passing against a stale set.
 _EXPECTED_BOX_NAMES = set(BOX_REGISTRY.keys())
+_TEST_MIN_AREA_RM_SQ = 100.0  # heuristic: matches detect_marks default; see detect_page Args
 
 
 def _write_manifest(parent_dir, uuid, page_uuids):
@@ -64,7 +65,7 @@ class JsonShapeTests(unittest.TestCase):
             _write_manifest(tmp_path, "doc-uuid", ["page-uuid-1", "page-uuid-2"])
             rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1", "page-uuid-2"])
             with patch.object(detect_marks, "collect_lines", return_value=[]):
-                payload = detect_marks.detect(rm_dir, scale=0.45)
+                payload = detect_marks.detect(rm_dir, scale=0.45, min_area_rm_sq=_TEST_MIN_AREA_RM_SQ)
         self.assertEqual(set(payload.keys()), {"per_page"})
         self.assertIsInstance(payload["per_page"], list)
 
@@ -76,7 +77,7 @@ class JsonShapeTests(unittest.TestCase):
             rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1"])
 
             with patch.object(detect_marks, "collect_lines", return_value=[]):
-                output = detect_marks.detect(rm_dir, scale=0.45)
+                output = detect_marks.detect(rm_dir, scale=0.45, min_area_rm_sq=_TEST_MIN_AREA_RM_SQ)
 
         self.assertIn("per_page", output)
         self.assertEqual(len(output["per_page"]), 1)
@@ -98,7 +99,7 @@ class JsonShapeTests(unittest.TestCase):
             (rm_dir / "p1.rm").touch()
             (rm_dir / "p2.rm").touch()
             with patch.object(detect_marks, "collect_lines", return_value=[]):
-                payload = detect_marks.detect(rm_dir, scale=0.45)
+                payload = detect_marks.detect(rm_dir, scale=0.45, min_area_rm_sq=_TEST_MIN_AREA_RM_SQ)
         self.assertEqual(len(payload["per_page"]), 3)
         # Synthesized entry for never-opened page has all-zero boxes.
         third = payload["per_page"][2]
@@ -127,7 +128,7 @@ class JsonShapeTests(unittest.TestCase):
                     return [("#000", 4.0, [(1650, 4700), (1660, 4710), (1670, 4720), (1680, 4730)])]
                 return [("#000", 2.0, [(0, 0), (10, 10)])]
             with patch.object(detect_marks, "collect_lines", side_effect=fake_collect):
-                payload = detect_marks.detect(rm_dir, scale=0.45)
+                payload = detect_marks.detect(rm_dir, scale=0.45, min_area_rm_sq=_TEST_MIN_AREA_RM_SQ)
         self.assertFalse(payload["per_page"][0]["boxes"]["finish_turn"]["marked"])
         self.assertTrue(payload["per_page"][1]["boxes"]["finish_turn"]["marked"])
 
@@ -146,7 +147,7 @@ class CapsuleAreaQualificationTests(unittest.TestCase):
 
             with patch.object(detect_marks, "collect_lines", return_value=[tiny_stroke]):
                 # Act
-                output = detect_marks.detect(rm_dir, scale=0.45)
+                output = detect_marks.detect(rm_dir, scale=0.45, min_area_rm_sq=_TEST_MIN_AREA_RM_SQ)
 
         # Assert
         self.assertFalse(output["per_page"][0]["boxes"]["finish_turn"]["marked"])
@@ -165,7 +166,7 @@ class CapsuleAreaQualificationTests(unittest.TestCase):
 
             with patch.object(detect_marks, "collect_lines", return_value=[tap_stroke]):
                 # Act
-                output = detect_marks.detect(rm_dir, scale=0.45)
+                output = detect_marks.detect(rm_dir, scale=0.45, min_area_rm_sq=_TEST_MIN_AREA_RM_SQ)
 
         # Assert: caps_fraction=1, area = pi*15^2 ~ 707; passes 100 threshold.
         self.assertTrue(output["per_page"][0]["boxes"]["finish_turn"]["marked"])
@@ -182,7 +183,7 @@ class CapsuleAreaQualificationTests(unittest.TestCase):
             rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1"])
 
             with patch.object(detect_marks, "collect_lines", return_value=[bw_stroke]):
-                output = detect_marks.detect(rm_dir, scale=0.45)
+                output = detect_marks.detect(rm_dir, scale=0.45, min_area_rm_sq=_TEST_MIN_AREA_RM_SQ)
 
         boxes = output["per_page"][0]["boxes"]
         self.assertTrue(boxes["mode_bw"]["marked"])
@@ -203,7 +204,7 @@ class CapsuleAreaQualificationTests(unittest.TestCase):
             rm_dir = _make_rm_dir(tmp_path, "doc-uuid", ["page-uuid-1"])
 
             with patch.object(detect_marks, "collect_lines", return_value=[big_stroke]):
-                output = detect_marks.detect(rm_dir, scale=0.45)
+                output = detect_marks.detect(rm_dir, scale=0.45, min_area_rm_sq=_TEST_MIN_AREA_RM_SQ)
 
         boxes = output["per_page"][0]["boxes"]
         self.assertTrue(boxes["end_session"]["marked"])

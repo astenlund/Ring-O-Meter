@@ -28,13 +28,6 @@ class StrokeParseError(Exception):
     """Raised when rmscene fails to parse a `.rm` stroke file."""
 
 
-# heuristic: minimum capsule area (in .rm^2) for a stroke to qualify
-# as a mark on the box. Calibrated against snap-to-straight chords,
-# thick-marker single taps, and palm-rest grazes. See
-# .claude/features/remarkable-tablet-brainstorm.md "Detection algorithm".
-MIN_AREA_RM_SQ = 100.0
-
-
 def inverse_transform_box(pdf_box, scale):
     """Convert a PDF (x, y, w, h) box to .rm (x_min, x_max, y_min, y_max).
 
@@ -79,12 +72,21 @@ def page_uuids_from_manifest(rm_dir):
     return [uuid for _pdf_index, uuid in pages]
 
 
-def detect_page(rm_file, scale):
+def detect_page(rm_file, scale, min_area_rm_sq):
     """Per-page detection: returns a {box_name: {area_rm_sq, marked}} dict.
 
     Iterates every entry in BOX_REGISTRY. When rm_file is None or
     missing, strokes is empty and every box's loop body skips the
     threshold check, yielding {area_rm_sq: 0.0, marked: False}.
+
+    Args:
+        rm_file: path to the per-page .rm stroke file, or None for unannotated pages.
+        scale: .rm-to-PDF scale factor from calibration.json.
+        min_area_rm_sq: minimum capsule area (in .rm^2) for a stroke to qualify
+            as a mark on the box. Calibrated against snap-to-straight chords,
+            thick-marker single taps, and palm-rest grazes. See
+            .claude/features/remarkable-tablet-brainstorm.md "Detection algorithm".
+            # heuristic: minimum capsule area threshold -- see detect_page Args
     """
     boxes = {}
     # Materialize once: the box loop below re-iterates strokes per box.
@@ -103,7 +105,7 @@ def detect_page(rm_file, scale):
         marked = False
         for _color, width, points in strokes:
             stroke_area = capsule_area(points, width, rm_box)
-            if stroke_area >= MIN_AREA_RM_SQ:
+            if stroke_area >= min_area_rm_sq:
                 # Sum within page + max across pages (see _resolve_mode_winner):
                 # prefers repeated marking over a single huge stroke when both
                 # occur on different pages.
@@ -114,14 +116,18 @@ def detect_page(rm_file, scale):
     return boxes
 
 
-def detect(rm_dir, scale):
-    """Run the detector against rm_dir at the given scale. Returns
-    the JSON payload as a dict."""
+def detect(rm_dir, scale, min_area_rm_sq):
+    """Run the detector against rm_dir at the given scale + threshold.
+
+    Returns the JSON payload as a dict.
+    """
     page_uuids = page_uuids_from_manifest(rm_dir)
     per_page = []
     for i, uuid in enumerate(page_uuids):
         rm_file = rm_dir / f"{uuid}.rm" if uuid else None
-        per_page.append({"page": i + 1, "boxes": detect_page(rm_file, scale)})
+        per_page.append(
+            {"page": i + 1, "boxes": detect_page(rm_file, scale, min_area_rm_sq)}
+        )
 
     return {"per_page": per_page}
 
@@ -136,9 +142,7 @@ def main():
         return 1
     try:
         calibration = load_calibration()
-        global MIN_AREA_RM_SQ
-        MIN_AREA_RM_SQ = calibration["min_area_rm_sq"]
-        payload = detect(rm_dir, calibration["scale"])
+        payload = detect(rm_dir, calibration["scale"], calibration["min_area_rm_sq"])
     except (CalibrationError, ManifestError, StrokeParseError, OSError) as e:
         print(str(e), file=sys.stderr)
         return 1

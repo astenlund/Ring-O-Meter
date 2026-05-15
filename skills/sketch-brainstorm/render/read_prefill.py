@@ -35,11 +35,10 @@ PAGE_WIDTH_CSS = 1620.0
 MODE_BOXES = {m: BOX_REGISTRY[f"mode_{m}"] for m in VALID_MODES}
 
 
-def read_prefill(pdf_path: Path) -> str:
+def read_prefill(pdf_path: Path, calibration: dict) -> str:
     """Open the PDF, sample each mode-switch box region on page 1,
     return the active mode name. Raises RuntimeError on rasterization
     failure or ambiguous sample."""
-    calibration = load_calibration()
     fill_luminance_threshold = calibration["fill_luminance_threshold"]
     fill_ratio_threshold = calibration["fill_ratio_threshold"]
     winner_margin = calibration["winner_margin"]
@@ -94,8 +93,13 @@ def main(argv=None):
     p.add_argument("pdf", type=Path, help="Path to the rendered PDF.")
     args = p.parse_args(argv)
     try:
-        active = read_prefill(args.pdf)
-    except (RuntimeError, OSError, CalibrationError) as e:
+        calibration = load_calibration()
+    except CalibrationError as e:
+        print(f"read_prefill: {e}", file=sys.stderr)
+        return 1
+    try:
+        active = read_prefill(args.pdf, calibration)
+    except (RuntimeError, OSError) as e:
         print(f"read_prefill: {e}", file=sys.stderr)
         return 1
     print(json.dumps({"active_mode": active}))
