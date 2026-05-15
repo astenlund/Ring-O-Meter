@@ -22,7 +22,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 from _chrome_boxes import BOX_REGISTRY, VALID_MODES
-from _calibration import load_calibration
+from _calibration import CalibrationError, load_calibration
 
 # Coords are in CSS pixels relative to the 1620 px wide render viewport;
 # read_prefill scales them to the PDF's actual point size at runtime
@@ -96,7 +96,7 @@ def main(argv=None):
     args = p.parse_args(argv)
     try:
         active = read_prefill(args.pdf)
-    except (RuntimeError, OSError) as e:
+    except (RuntimeError, OSError, CalibrationError) as e:
         print(f"read_prefill: {e}", file=sys.stderr)
         return 1
     print(json.dumps({"active_mode": active}))
