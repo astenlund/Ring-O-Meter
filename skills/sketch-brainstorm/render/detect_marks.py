@@ -1,13 +1,13 @@
 """Stroke-region checkbox detector for page-chrome interaction boxes.
 
 Per pulled rm-dir: read calibration.json, read the .content manifest
-for the rendered page count + page UUIDs, inverse-transform each
-registered box from PDF coordinates into .rm coordinates, parse
-strokes via _rm_strokes.collect_lines(), and hit-test each stroke
-against the box region. A stroke is "on the box" when its capsule
-area inside the box meets MIN_AREA_RM_SQ; a box is "marked" when at
-least one stroke qualifies. Per-page output reports every registered
-box.
+(via _rm_strokes.manifest_pages) for the rendered page count + page
+UUIDs, inverse-transform each registered box from PDF coordinates into
+.rm coordinates, parse strokes via _rm_strokes.collect_lines(), and
+hit-test each stroke against the box region using _geometry.capsule_area.
+A stroke is "on the box" when its capsule area meets the calibrated
+min_area_rm_sq threshold; a box is "marked" when at least one stroke
+qualifies. Per-page output reports every registered box.
 
 Output: a single JSON line on stdout, exit 0 on a clean run
 regardless of result. Exit non-zero is reserved for script errors
@@ -86,7 +86,6 @@ def detect_page(rm_file, scale, min_area_rm_sq):
             as a mark on the box. Calibrated against snap-to-straight chords,
             thick-marker single taps, and palm-rest grazes. See
             .claude/features/remarkable-tablet-brainstorm.md "Detection algorithm".
-            # heuristic: minimum capsule area threshold -- see detect_page Args
     """
     boxes = {}
     # Materialize once: the box loop below re-iterates strokes per box.
@@ -105,6 +104,7 @@ def detect_page(rm_file, scale, min_area_rm_sq):
         marked = False
         for _color, width, points in strokes:
             stroke_area = capsule_area(points, width, rm_box)
+            # heuristic: minimum capsule area for stroke-to-box qualification
             if stroke_area >= min_area_rm_sq:
                 # Sum within page + max across pages (see _resolve_mode_winner):
                 # prefers repeated marking over a single huge stroke when both
