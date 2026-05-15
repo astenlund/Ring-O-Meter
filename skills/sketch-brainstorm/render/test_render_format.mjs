@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { formatIterationLabel } from './render.mjs';
 
 test('two-digit iteration with no subtopic', () => {
-  assert.equal(formatIterationLabel('00', undefined), ' #00');
-  assert.equal(formatIterationLabel('01', undefined), ' #01');
-  assert.equal(formatIterationLabel('05', undefined), ' #05');
-  assert.equal(formatIterationLabel('99', undefined), ' #99');
+  assert.equal(formatIterationLabel('00', undefined), '#00');
+  assert.equal(formatIterationLabel('01', undefined), '#01');
+  assert.equal(formatIterationLabel('05', undefined), '#05');
+  assert.equal(formatIterationLabel('99', undefined), '#99');
 });
 
 test('two-digit iteration with subtopic', () => {
@@ -15,7 +15,7 @@ test('two-digit iteration with subtopic', () => {
 });
 
 test('empty-string subtopic is equivalent to undefined', () => {
-  assert.equal(formatIterationLabel('05', ''), ' #05');
+  assert.equal(formatIterationLabel('05', ''), '#05');
 });
 
 test('rejects single-digit, non-numeric, and seed legacy', () => {
@@ -26,8 +26,8 @@ test('rejects single-digit, non-numeric, and seed legacy', () => {
 
 test('accepts three-or-more-digit iterations (sessions past 99)', () => {
   // Mirrors ITER_NN_RE = `\d{2,}` in _chrome_boxes.py.
-  assert.equal(formatIterationLabel('001', undefined), ' #001');
-  assert.equal(formatIterationLabel('100', undefined), ' #100');
+  assert.equal(formatIterationLabel('001', undefined), '#001');
+  assert.equal(formatIterationLabel('100', undefined), '#100');
 });
 
 test('subtopic with single quote does not break HTML escape', () => {

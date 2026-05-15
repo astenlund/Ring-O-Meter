@@ -39,9 +39,9 @@ export function formatIterationLabel(iteration, subtopic) {
       `--iteration must be at least two decimal digits (e.g. 00, 100); got: ${iteration}`,
     );
   }
-  const subtopicSegment = subtopic ? `: ${subtopic}` : '';
+  const subtopicSegment = subtopic ? `: ${subtopic} ` : '';
 
-  return `${subtopicSegment} #${iteration}`;
+  return `${subtopicSegment}#${iteration}`;
 }
 
 function fail(message) {
