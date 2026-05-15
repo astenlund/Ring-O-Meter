@@ -93,17 +93,17 @@ The full design is documented in the host project's feature backlog at `.claude/
 - `render/_chrome_boxes.py` -- dependency-free shared data module: BOX_REGISTRY (5-box PDF coordinates), VALID_MODES, ITER_NN_RE. Importable from both venvs.
 - `render/_geometry.py` -- capsule-area geometry primitives; stdlib-only (math only). Extracted so test_geometry.py runs without the venv.
 - `render/_atomic_write.py` -- atomic_write_text helper (write-to-temp + os.replace); shared by poll_tablet and write_design_state.
-- `render/_rm_strokes.py` -- shared .rm parser: PAGE_W/PAGE_H, PEN_COLORS, collect_lines, ordered_rm_files, CalibrationError, load_calibration.
+- `render/_rm_strokes.py` -- shared .rm parser: PAGE_W/PAGE_H, PEN_COLORS, collect_lines, ordered_rm_files, CALIBRATION_JSON, CALIBRATION_SCHEMA_VERSION, CalibrationError, load_calibration.
 - `render/test_detect_marks.py` -- unit tests for the detector (stdlib-only with rmscene stubbed).
 - `render/test_geometry.py` -- unit tests for capsule-area geometry helpers; stdlib-only (imports _geometry.py directly; no venv or rmscene stub required).
 - `write-design-state.sh` -- bash wrapper for the atomic design-state.md update (frontmatter + iter-section replace-or-append + write-temp + rename).
-- `render/write_design_state.py` -- implementation of the atomic write helper.
+- `render/write_design_state.py` -- implementation of the atomic write helper; includes a pre-write integrity check that rejects pre-existing duplicate `## Iteration NN` headings (silent-corruption guard for external file mutation).
 - `render/test_write_design_state.py` -- unit tests for write-design-state (stdlib-only).
 - `read-prefill.sh` -- bash wrapper for the cross-machine resume helper; pixel-samples the cloud PDF's pre-filled mode-switch box and prints the active mode.
 - `render/read_prefill.py` -- implementation of read-prefill (venv-required: PyMuPDF + Pillow).
 - `render/test_read_prefill.py` -- unit tests for read-prefill (venv-required).
 - `test.sh` -- bash wrapper that runs the Python test suite (via the skill venv) followed by the Node test suite (`test_*.mjs`). `bash test.sh` runs both; pass `test_<module>` or a dotted test id to target a Python subset.
-- `_lib.sh` -- internal bash helpers sourced by other wrappers (rmapi auth precondition, shared Python venv bootstrap with requirements.txt drift detection).
+- `_lib.sh` -- internal bash helpers sourced by other wrappers: rmapi auth precondition, shared Python venv bootstrap with requirements.txt drift detection, and `find_repo_root <start-dir>` (walk-upward `Ring-O-Meter.slnx` marker discovery; sourced by `render-html-to-pdf.sh` with `$SCRIPT_DIR` and by `bootstrap-session.sh` with `$PWD`).
 - `render/render-strokes.py` -- converts per-page `.rm` stroke files to SVG overlays.
 - `render-strokes.sh` -- bash wrapper for the inbound stroke-rendering pipeline.
 - `render/composite-annotated.py` -- composites stroke SVGs onto PDF pages as PNGs (uses PyMuPDF + Pillow).
@@ -112,7 +112,7 @@ The full design is documented in the host project's feature backlog at `.claude/
 - `bootstrap-session.sh` -- creates the per-session local folder skeleton and primes `design-state.md` (including `current_mode: color` frontmatter); idempotent.
 - `parse-interpret-json.mjs` -- shell-callable JSON parse + validate helper for the interpret subagent's response.
 - `parse-verify-response.mjs` -- shell-callable JSON parse + validate helper for the verify subagent's response (`{verdict, reason}` with asymmetric-reason rule + forward-compat unknown-field tolerance).
-- `render/test_composite_annotated.py` -- unit tests for the page-pattern regex, numeric sort, and resolution-constants invariant across all three python modules.
+- `render/test_composite_annotated.py` -- unit tests covering: page-pattern regex and numeric sort (`composite-annotated.py`); resolution-constants invariant across the three python modules; `collect_lines` single-point-stroke contract (`_rm_strokes.py`); `main()` calibration-present and auto-fit branches (`render-strokes.py`).
 - `render/test_prerender_pages.py` -- end-to-end test for `prerender-pages.py` against a real two-page PDF.
 - `render/test_render_format.mjs` -- node:test cases for `formatIterationLabel`.
 - `test_interpret_parse.mjs` -- node:test cases for `parseInterpretResponse`.
