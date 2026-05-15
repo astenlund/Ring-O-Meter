@@ -290,7 +290,7 @@ After `render-html-to-pdf.sh --prerender-out` produces the per-page PNGs for the
 5. Branch on the verdict:
    - **PASS**: proceed to the push step.
    - **FAIL**: regenerate the iteration's mockup HTML with the verifier's `reason` folded in as a constraint, re-render via `render-html-to-pdf.sh --prerender-out`, and re-dispatch verify. Retry budget is 2 re-renders per turn (the failed attempt's HTML and rendered PDF are overwritten on each retry; previous failed attempts have no value).
-   - **After 2 failed verifies**: push anyway and surface the verifier's last `reason` verbatim in chat with the caveat *"verifier flagged: <reason> - 2 retries did not resolve it; check on the tablet."* The retry counter is chat-local per turn.
+   - **After 2 failed verifies**: pause and ask the user in chat: *"Verifier flagged the same issue after 2 retries. Push anyway, or abort?"* Present exactly two options: push anyway / abort. If the user chooses abort, skip the push and report the verifier's last `reason` verbatim in chat. If the user chooses push anyway, or does not respond within a reasonable wait (default on timeout: push anyway), proceed to the push step and surface the verifier's last `reason` verbatim in chat with the caveat *"verifier flagged: <reason> - 2 retries did not resolve it; check on the tablet."* The retry counter is chat-local per turn.
 
 This step is orchestrator-side, not a shell wrapper: the Agent tool is Claude Code's; shells can't dispatch it. The fresh-per-turn discipline matches the interpretation entry point - the verifier sees only the pre-render PNGs plus the substituted text, no prior chat context.
 
