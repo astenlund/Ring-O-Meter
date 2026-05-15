@@ -76,11 +76,11 @@ html, body {
   font-weight: 600;
 }
 
-/* Iteration label sits inline immediately after the topic as ' #NN',
-   with the # and digits both rendered in the same grey used for the
-   alignment-guide color hint. Render.mjs supplies the leading space
-   so the topic and label have a single source of truth for spacing. */
+/* Iteration label sits inline immediately after the topic as '#NN' (no
+   subtopic) or ': subtopic #NN' (with subtopic). CSS owns the gap between
+   the topic text and this label via margin-left. */
 .header-iter {
+  margin-left: 0.3em;
   font-weight: 700;
   /* Lighter than .legend-color-align because the bold weight makes
      the same grey look much darker on e-ink under dithered greyscale.
