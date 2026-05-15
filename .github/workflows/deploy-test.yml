@@ -30,19 +30,19 @@ jobs:
     if: github.repository == 'astenlund/Ring-O-Meter'
     runs-on: ubuntu-latest
     permissions:
-      id-token: write  # Federated OIDC token for azure/login@v2.
-      contents: read   # actions/checkout@v4 default.
+      id-token: write  # Federated OIDC token for azure/login@v3.
+      contents: read   # actions/checkout@v6 default.
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
 
       - name: Set up Node 22 + pnpm via Corepack
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
 
@@ -64,7 +64,7 @@ jobs:
           pnpm test
 
       - name: Azure login (federated OIDC)
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -147,7 +147,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Mark deployed commit
         continue-on-error: true
