@@ -2,7 +2,7 @@
 # render-html-to-pdf.sh
 #
 # Bash entry point for the sketch-brainstorm render pipeline. Resolves
-# the host repo root, points the Node script at the host's playwright
+# the host repo root, points the Node script at the resolved playwright
 # install via SKETCH_BRAINSTORM_NODE_HOST, and forwards CLI flags to
 # render.mjs.
 #
@@ -44,10 +44,21 @@ REPO_ROOT="$(find_repo_root "$SCRIPT_DIR")" || {
 VENV_DIR="$SCRIPT_DIR/.venv"
 REQUIREMENTS="$SCRIPT_DIR/requirements.txt"
 
-NODE_HOST="$REPO_ROOT/web"
-if [ ! -d "$NODE_HOST/node_modules/playwright" ]; then
-  echo "render-html-to-pdf.sh: playwright not found at $NODE_HOST/node_modules/playwright" >&2
-  echo "  Run \`pnpm --dir $NODE_HOST install\` to install dependencies." >&2
+# Resolve Playwright host: prefer per-skill node_modules (gist-
+# publication layout); fall back to host repo's web/node_modules
+# (in-repo incubation path). render.mjs's createRequire walks
+# node_modules from whatever path SKETCH_BRAINSTORM_NODE_HOST points
+# at.
+NODE_HOST=""
+for candidate in "$SCRIPT_DIR" "$REPO_ROOT/web"; do
+  if [ -d "$candidate/node_modules/playwright" ]; then
+    NODE_HOST="$candidate"
+    break
+  fi
+done
+if [ -z "$NODE_HOST" ]; then
+  echo "render-html-to-pdf.sh: playwright not found in $SCRIPT_DIR/node_modules or $REPO_ROOT/web/node_modules" >&2
+  echo "  Run \`npm install\` in $SCRIPT_DIR (skill-local) or \`pnpm --dir $REPO_ROOT/web install\` (host repo)." >&2
   exit 1
 fi
 

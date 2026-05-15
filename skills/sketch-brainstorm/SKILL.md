@@ -143,7 +143,7 @@ CLI flags:
 
 Windows: the bash wrapper requires Git Bash or WSL. PowerShell users invoke via `bash render-html-to-pdf.sh ...`.
 
-The wrapper expects to run from a host repo that has `playwright` installed in `web/node_modules/` (the Ring-O-Meter shape). When the skill ships to its own gist, that constraint loosens via a per-skill `package.json` and `npm install` (see README).
+The skill resolves Playwright from `skills/sketch-brainstorm/node_modules` (per-skill install, run `npm install` from the skill folder once) or falls back to `$REPO_ROOT/web/node_modules` for in-repo incubation. Gist consumers: `npm install` in the skill folder.
 
 ## Outbound rmapi push entry point
 
