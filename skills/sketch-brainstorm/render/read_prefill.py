@@ -74,14 +74,9 @@ def read_prefill(pdf_path: Path) -> str:
                 pix = page.get_pixmap(clip=clip, dpi=100)
             except Exception as exc:
                 raise RuntimeError(f"rasterization failed for {name} box: {exc}") from exc
-            total = pix.width * pix.height
-            filled = 0
-            for py in range(pix.height):
-                for px in range(pix.width):
-                    r, g, b = pix.pixel(px, py)[:3]
-                    luminance = 0.299 * r + 0.587 * g + 0.114 * b
-                    if luminance < FILL_LUMINANCE_THRESHOLD:
-                        filled += 1
+            gray_pix = fitz.Pixmap(fitz.csGRAY, pix)
+            total = gray_pix.width * gray_pix.height
+            filled = sum(1 for b in gray_pix.samples if b < FILL_LUMINANCE_THRESHOLD)
             ratios[name] = filled / total if total else 0.0
     finally:
         doc.close()
