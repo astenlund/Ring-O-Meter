@@ -11,7 +11,7 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 
-from _geometry import capsule_area  # noqa: E402
+from _geometry import capsule_area, points_bbox  # noqa: E402
 
 
 class CapsuleAreaTests(unittest.TestCase):
@@ -99,6 +99,90 @@ class CapsuleAreaTests(unittest.TestCase):
 
         # Assert: clipped diagonal >0, no caps inside, area > 100 (passes).
         self.assertGreater(area, 100.0)
+
+
+class BboxPreFilterTests(unittest.TestCase):
+    """Capsule area returns 0.0 when stroke bbox can't possibly overlap box."""
+
+    BOX = (0.0, 5.0, 0.0, 5.0)  # 5x5 box at origin
+
+    def test_stroke_fully_left_of_box(self):
+        # Arrange: stroke entirely to the left of the inflated box.
+        points = [(-10.0, 0.0), (-5.0, 0.0)]
+        width = 1.0
+
+        # Act
+        area = capsule_area(points, width, self.BOX)
+
+        # Assert: bbox pre-filter short-circuits to 0.0.
+        self.assertEqual(area, 0.0)
+
+    def test_stroke_fully_above_box(self):
+        # Arrange: stroke entirely above the inflated box (y > 5+0.5).
+        points = [(2.0, 20.0), (3.0, 20.0)]
+        width = 1.0
+
+        # Act
+        area = capsule_area(points, width, self.BOX)
+
+        # Assert
+        self.assertEqual(area, 0.0)
+
+    def test_single_point_tap_inside_inflated_box(self):
+        # Arrange: single-point stroke clearly inside the box.
+        points = [(2.0, 2.0)]
+        width = 2.0
+
+        # Act
+        area = capsule_area(points, width, self.BOX)
+
+        # Assert: full cap disc (caps_fraction = 1), area = pi * (W/2)^2.
+        expected = math.pi * 1.0 * 1.0
+        self.assertAlmostEqual(area, expected, delta=0.1)
+
+    def test_single_point_tap_outside_inflated_box(self):
+        # Arrange: single-point stroke well outside the box, even after
+        # inflation by W/2 = 1.0.
+        points = [(20.0, 20.0)]
+        width = 2.0
+
+        # Act
+        area = capsule_area(points, width, self.BOX)
+
+        # Assert: bbox pre-filter returns 0.0. This also verifies
+        # points_bbox returns a degenerate (20, 20, 20, 20) for a
+        # single point (not None - would raise TypeError on unpack).
+        self.assertEqual(area, 0.0)
+
+    def test_stroke_bbox_grazes_inflated_box(self):
+        # Arrange: stroke just inside the inflated box on one axis.
+        # W=2 inflates box by 1 on each side: effective box (-1, 6, -1, 6).
+        # Stroke at y=-0.5 grazes the inflated bottom edge.
+        points = [(2.0, -0.5), (3.0, -0.5)]
+        width = 2.0
+
+        # Act
+        area = capsule_area(points, width, self.BOX)
+
+        # Assert: pre-filter does NOT short-circuit (bboxes overlap);
+        # Liang-Barsky produces a non-zero (small) area.
+        self.assertGreater(area, 0.0)
+
+
+class PointsBboxTests(unittest.TestCase):
+    """Direct tests of points_bbox helper."""
+
+    def test_empty_list_returns_none(self):
+        self.assertIsNone(points_bbox([]))
+
+    def test_single_point_returns_degenerate_bbox(self):
+        self.assertEqual(points_bbox([(5.0, 7.0)]), (5.0, 5.0, 7.0, 7.0))
+
+    def test_multi_point_returns_min_max(self):
+        self.assertEqual(
+            points_bbox([(1.0, 4.0), (3.0, 2.0), (-1.0, 6.0)]),
+            (-1.0, 3.0, 2.0, 6.0),
+        )
 
 
 if __name__ == "__main__":
