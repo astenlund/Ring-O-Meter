@@ -37,7 +37,7 @@ SKILL_ROOT = Path(__file__).resolve().parent.parent
 CALIBRATION_JSON = SKILL_ROOT / "calibration.json"
 # Bump this and the load_calibration guard together whenever the
 # inverse-transform formula changes (e.g., a y_offset field is added).
-CALIBRATION_SCHEMA_VERSION = 1
+CALIBRATION_SCHEMA_VERSION = 2
 
 class CalibrationError(Exception):
     """Raised when calibration.json is missing, invalid, or unparseable."""
@@ -84,6 +84,10 @@ def load_calibration():
         raise CalibrationError(
             "calibration.json missing or invalid 'scale'; re-run derive-calibration.sh"
         )
+    data.setdefault("fill_luminance_threshold", 160)
+    data.setdefault("fill_ratio_threshold", 0.3)
+    data.setdefault("winner_margin", 0.15)
+    data.setdefault("min_area_rm_sq", 100.0)
 
     return data
 

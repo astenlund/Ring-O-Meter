@@ -22,6 +22,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 from _chrome_boxes import BOX_REGISTRY, VALID_MODES
+from _rm_strokes import load_calibration
 
 # Coords are in CSS pixels relative to the 1620 px wide render viewport;
 # read_prefill scales them to the PDF's actual point size at runtime
@@ -33,25 +34,16 @@ PAGE_WIDTH_CSS = 1620.0
 # KeyError here on import (fail-fast) rather than silently truncating.
 MODE_BOXES = {m: BOX_REGISTRY[f"mode_{m}"] for m in VALID_MODES}
 
-# heuristic: pixel-luminance threshold below which a pixel counts as
-# "filled" (the dark gold pre-fill rasterizes to luminance ~95 in 0-255).
-# LOCKSTEP with the `.mode-switch-checkbox[data-mode=...]` `background`
-# colors in page-chrome.css; a theme change to the fill color requires
-# recalibrating this threshold.
-FILL_LUMINANCE_THRESHOLD = 160
-
-# heuristic: minimum filled-pixel ratio for a box to count as pre-filled.
-FILL_RATIO_THRESHOLD = 0.3
-
-# heuristic: minimum margin between winner and runner-up to declare
-# unambiguous detection. Below this margin, exit non-zero.
-WINNER_MARGIN = 0.15
-
 
 def read_prefill(pdf_path: Path) -> str:
     """Open the PDF, sample each mode-switch box region on page 1,
     return the active mode name. Raises RuntimeError on rasterization
     failure or ambiguous sample."""
+    calibration = load_calibration()
+    fill_luminance_threshold = calibration["fill_luminance_threshold"]
+    fill_ratio_threshold = calibration["fill_ratio_threshold"]
+    winner_margin = calibration["winner_margin"]
+
     try:
         doc = fitz.open(str(pdf_path))
     except Exception as exc:
@@ -76,7 +68,7 @@ def read_prefill(pdf_path: Path) -> str:
                 raise RuntimeError(f"rasterization failed for {name} box: {exc}") from exc
             gray_pix = fitz.Pixmap(fitz.csGRAY, pix)
             total = gray_pix.width * gray_pix.height
-            filled = sum(1 for b in gray_pix.samples if b < FILL_LUMINANCE_THRESHOLD)
+            filled = sum(1 for b in gray_pix.samples if b < fill_luminance_threshold)
             ratios[name] = filled / total if total else 0.0
     finally:
         doc.close()
@@ -87,9 +79,9 @@ def read_prefill(pdf_path: Path) -> str:
     winner_name, winner_ratio = sorted_modes[0]
     runner_ratio = sorted_modes[1][1]
 
-    if winner_ratio < FILL_RATIO_THRESHOLD:
+    if winner_ratio < fill_ratio_threshold:
         raise RuntimeError(f"no box reads as filled (max ratio {winner_ratio:.3f})")
-    if winner_ratio - runner_ratio < WINNER_MARGIN:
+    if winner_ratio - runner_ratio < winner_margin:
         raise RuntimeError(
             f"ambiguous pre-fill: {winner_name}={winner_ratio:.3f}, "
             f"runner-up={runner_ratio:.3f}"

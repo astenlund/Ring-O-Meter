@@ -1,6 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "scale": 0.42284,
+  "fill_luminance_threshold": 160,
+  "fill_ratio_threshold": 0.3,
+  "winner_margin": 0.15,
+  "min_area_rm_sq": 100.0,
   "firmware_note": "Paper Pro 3.27.1.0",
   "captured_at": "2026-05-12T21:00:08.141254+00:00",
   "residuals_px": {
