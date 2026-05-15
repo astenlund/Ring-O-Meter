@@ -29,30 +29,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Walk up from the script directory looking for Ring-O-Meter.slnx
-# (the host repo's marker file). When the skill ships to its own gist,
-# this routine becomes "look up node_modules/playwright reachable from
-# the gist's own checkout".
-find_repo_root() {
-  local dir="$SCRIPT_DIR"
-  while [ "$dir" != "/" ] && [ "$dir" != "" ]; do
-    if [ -f "$dir/Ring-O-Meter.slnx" ]; then
-      echo "$dir"
-      return 0
-    fi
-    dir="$(dirname "$dir")"
-  done
-  return 1
-}
+# shellcheck source=_lib.sh
+source "$SCRIPT_DIR/_lib.sh"
 
-REPO_ROOT="$(find_repo_root)" || {
+REPO_ROOT="$(find_repo_root "$SCRIPT_DIR")" || {
   echo "render-html-to-pdf.sh: could not locate Ring-O-Meter.slnx walking up from $SCRIPT_DIR" >&2
   echo "  (host repo detection assumes the Ring-O-Meter shape; portable packaging is a followup)" >&2
   exit 1
 }
-
-# shellcheck source=_lib.sh
-source "$SCRIPT_DIR/_lib.sh"
 
 # Required by ensure_skill_venv: VENV_DIR + REQUIREMENTS scope vars must be
 # set in caller; ensure_skill_venv reads them by name and exports VENV_PYTHON

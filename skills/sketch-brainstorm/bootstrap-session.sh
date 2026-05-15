@@ -18,6 +18,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_lib.sh
+source "$SCRIPT_DIR/_lib.sh"
+
 SLUG=""
 TOPIC=""
 DESCRIPTION=""
@@ -48,11 +52,17 @@ done
 # lines, the second without a key, breaking downstream parsers.
 [[ "$TOPIC" != *$'\n'* ]] || { echo "bootstrap-session.sh: --topic must not contain newlines" >&2; exit 1; }
 
-# Repo root: env override for tests; default to PWD's repo root via
-# git, or fall back to PWD if not in a repo.
+# Repo root: env override for tests; otherwise walk up from $PWD
+# looking for the canonical Ring-O-Meter.slnx marker. Hard-fails
+# rather than silently writing under whatever happens to be $PWD,
+# matching render-html-to-pdf.sh's behaviour.
 REPO_ROOT="${SKETCH_BRAINSTORM_REPO_ROOT:-}"
 if [[ -z "$REPO_ROOT" ]]; then
-  REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  REPO_ROOT="$(find_repo_root "$PWD")" || {
+    echo "bootstrap-session.sh: could not locate Ring-O-Meter.slnx walking up from $PWD" >&2
+    echo "  Set SKETCH_BRAINSTORM_REPO_ROOT or invoke from inside the repo." >&2
+    exit 1
+  }
 fi
 
 TODAY="$(date -u +%Y-%m-%d)"
