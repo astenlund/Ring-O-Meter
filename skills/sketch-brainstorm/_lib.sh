@@ -37,7 +37,11 @@ find_repo_root() {
       echo "$dir"
       return 0
     fi
-    dir="$(dirname "$dir")"
+    next_dir="$(dirname "$dir")"
+    # Guard against drive-root loops on Windows Git Bash: C:/ → dirname → C:/,
+    # which never equals "/" and would spin forever without this check.
+    [ "$next_dir" = "$dir" ] && break
+    dir="$next_dir"
   done
   return 1
 }
