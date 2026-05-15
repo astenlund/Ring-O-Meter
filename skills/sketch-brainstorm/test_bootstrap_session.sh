@@ -74,7 +74,8 @@ grep -q "^## Iteration 00$" "$DS2" || { echo "fail: blank-path iter heading miss
 
 # Negative test: slug with path separators must be rejected.
 TMP3="$(mktemp -d)"
-trap 'rm -rf "$TMP" "$TMP2" "$TMP3"' EXIT
+TMP4="$(mktemp -d)"
+trap 'rm -rf "$TMP" "$TMP2" "$TMP3" "$TMP4"' EXIT
 if SKETCH_BRAINSTORM_REPO_ROOT="$TMP3" \
      bash "$SCRIPT_DIR/bootstrap-session.sh" \
        --slug "evil/../boom" \
@@ -99,5 +100,27 @@ if SKETCH_BRAINSTORM_REPO_ROOT="$TMP3" \
   echo "fail: missing slug value should have been rejected" >&2
   exit 1
 fi
+
+# Negative test: with no SKETCH_BRAINSTORM_REPO_ROOT and PWD outside
+# any Ring-O-Meter checkout, bootstrap-session.sh must hard-fail with
+# the canonical diagnostic. The cd into TMP4 is load-bearing: without
+# it, $PWD is the test script's CWD (the repo root) and find_repo_root
+# would silently succeed, inverting the test. Run inside a subshell so
+# the cd doesn't leak to sibling cases.
+if NEG_OUTPUT="$(cd "$TMP4" && unset SKETCH_BRAINSTORM_REPO_ROOT && \
+     bash "$SCRIPT_DIR/bootstrap-session.sh" \
+       --slug "outside-repo-test" \
+       --topic "no marker ancestor" 2>&1)"; then
+  echo "fail: bootstrap-session.sh should have hard-failed outside a repo" >&2
+  exit 1
+fi
+case "$NEG_OUTPUT" in
+  *"could not locate Ring-O-Meter.slnx"*) ;;
+  *)
+    echo "fail: missing 'could not locate Ring-O-Meter.slnx' diagnostic; got:" >&2
+    echo "$NEG_OUTPUT" >&2
+    exit 1
+    ;;
+esac
 
 echo "all tests passed"

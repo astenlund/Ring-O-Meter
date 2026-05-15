@@ -10,13 +10,37 @@
 # top-level side effects beyond function declarations; sourcing it is
 # safe at any point before the first call.
 #
-# Rationale: the rmapi auth precondition was inlined in each transport
-# wrapper (push, pull) verbatim. The QUICK_WINS-trigger rule for the
-# sibling `find_repo_root` extraction (extract when a second consumer
-# arrives) applies here once the second consumer landed; the pull
-# wrapper made it the second consumer of the auth shape. The polling
-# daemon is now the third; a future `setup-rmapi.sh` helper will reuse
-# this same precondition.
+# Helpers land here once a second consumer arrives — the same trigger
+# rule that promoted require_rmapi_authenticated (push wrapper +
+# pull wrapper) and find_repo_root (render-html-to-pdf wrapper +
+# bootstrap-session wrapper). Single-consumer helpers stay inlined.
+
+# find_repo_root <start-dir>
+#
+# Walks upward from <start-dir> looking for the Ring-O-Meter.slnx
+# marker file. Prints the matching directory on stdout and returns 0
+# on hit; prints a diagnostic on stderr and returns 1 on miss or on
+# missing argument. <start-dir> is required: the implicit-default
+# variant fails silently when a future caller forgets to set
+# SCRIPT_DIR in shell scope, so the contract is explicit.
+#
+# When the skill ships to its own gist, this routine is the place
+# to swap the marker for whatever anchors the gist's own checkout.
+find_repo_root() {
+  local dir="$1"
+  if [[ -z "$dir" ]]; then
+    echo "find_repo_root: <start-dir> argument required" >&2
+    return 1
+  fi
+  while [ "$dir" != "/" ] && [ "$dir" != "" ]; do
+    if [ -f "$dir/Ring-O-Meter.slnx" ]; then
+      echo "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
 
 # require_python <wrapper-name>
 #
