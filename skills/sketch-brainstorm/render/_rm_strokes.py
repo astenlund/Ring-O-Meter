@@ -69,7 +69,11 @@ def load_calibration():
         raise CalibrationError(
             f"calibration.json is not valid JSON ({e}); re-run derive-calibration.sh"
         ) from e
-    schema_version = data.get("schema_version", CALIBRATION_SCHEMA_VERSION)
+    # Default must be the literal 1 (the version implied by absence of the field
+    # for files written before schema_version was introduced), NOT the constant.
+    # Using the constant as default would silently read pre-field files under
+    # the wrong semantics whenever CALIBRATION_SCHEMA_VERSION is bumped.
+    schema_version = data.get("schema_version", 1)
     if schema_version != CALIBRATION_SCHEMA_VERSION:
         raise CalibrationError(
             f"calibration.json schema_version={schema_version!r} not supported by this "
