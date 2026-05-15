@@ -115,7 +115,7 @@ class FixtureScaleSmokeTests(unittest.TestCase):
         # +/- 0.001 catches geometry-math regressions; tighter would
         # break on floating-point reordering.
         self.assertAlmostEqual(self._payload["scale"], self._saved["scale"], delta=0.001)
-        self.assertEqual(self._payload["schema_version"], 1)
+        self.assertEqual(self._payload["schema_version"], 2)
 
     def test_residuals_under_threshold(self):
         """All per-dot residuals should be under 3 px in the re-derivation."""
@@ -141,12 +141,12 @@ class LoadCalibrationSchemaTests(unittest.TestCase):
 
     def test_load_calibration_rejects_future_schema(self):
         with self.assertRaises(_rm_strokes.CalibrationError) as cm:
-            self._load_with_json({"schema_version": 2, "scale": 0.42284})
+            self._load_with_json({"schema_version": 3, "scale": 0.42284})
         self.assertIn("schema_version", str(cm.exception))
 
-    def test_load_calibration_treats_missing_schema_as_v1(self):
-        data = self._load_with_json({"scale": 0.42284})
-        self.assertEqual(data["scale"], 0.42284)
+    def test_load_calibration_rejects_v1_missing_schema(self):
+        with self.assertRaises(_rm_strokes.CalibrationError):
+            self._load_with_json({"scale": 0.42284})
 
 
 if __name__ == "__main__":

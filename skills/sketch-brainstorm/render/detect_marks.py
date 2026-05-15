@@ -145,6 +145,8 @@ def main():
         return 1
     try:
         calibration = load_calibration()
+        global MIN_AREA_RM_SQ
+        MIN_AREA_RM_SQ = calibration.get("min_area_rm_sq", 100.0)
         payload = detect(rm_dir, calibration["scale"])
     except (CalibrationError, ManifestError, StrokeParseError, OSError) as e:
         print(str(e), file=sys.stderr)
