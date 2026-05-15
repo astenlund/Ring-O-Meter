@@ -21,10 +21,20 @@ def points_bbox(points):
     """
     if not points:
         return None
-    xs = [p[0] for p in points]
-    ys = [p[1] for p in points]
+    it = iter(points)
+    x_min, y_min = next(it)
+    x_max, y_max = x_min, y_min
+    for x, y in it:
+        if x < x_min:
+            x_min = x
+        elif x > x_max:
+            x_max = x
+        if y < y_min:
+            y_min = y
+        elif y > y_max:
+            y_max = y
 
-    return min(xs), max(xs), min(ys), max(ys)
+    return x_min, x_max, y_min, y_max
 
 
 def capsule_area(points, width, box):
@@ -79,7 +89,7 @@ def capsule_area(points, width, box):
             (cx1, cy1), (cx2, cy2) = clipped
             clipped_length += math.hypot(cx2 - cx1, cy2 - cy1)
 
-    inflated = (x_min - width / 2, x_max + width / 2, y_min - width / 2, y_max + width / 2)
+    inflated = (x_min - inflate, x_max + inflate, y_min - inflate, y_max + inflate)
     if len(points) == 1:
         caps_fraction = 1.0 if _point_in_box(points[0], inflated) else 0.0
     else:
@@ -90,7 +100,7 @@ def capsule_area(points, width, box):
             n_inside += 1
         caps_fraction = n_inside / 2.0
 
-    cap_area = caps_fraction * math.pi * (width / 2.0) ** 2
+    cap_area = caps_fraction * math.pi * inflate ** 2
 
     return clipped_length * width + cap_area
 

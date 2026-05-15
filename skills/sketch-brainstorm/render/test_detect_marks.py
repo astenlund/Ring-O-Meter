@@ -34,7 +34,7 @@ from _chrome_boxes import BOX_REGISTRY  # noqa: E402
 # Derived rather than literal so a new box in BOX_REGISTRY surfaces here
 # at test time instead of silently passing against a stale set.
 _EXPECTED_BOX_NAMES = set(BOX_REGISTRY.keys())
-_TEST_MIN_AREA_RM_SQ = 100.0  # heuristic: matches detect_marks default; see detect_page Args
+_TEST_MIN_AREA_RM_SQ = 100.0  # heuristic: fixture value; matches calibration.json min_area_rm_sq historical default; see detect_page Args
 
 
 def _write_manifest(parent_dir, uuid, page_uuids):

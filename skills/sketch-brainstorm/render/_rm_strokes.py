@@ -1,12 +1,14 @@
-"""Shared .rm parsing and coordinate-system constants.
+"""Shared .rm parsing, manifest reading, and coordinate-system constants.
 
 Single source of truth for `.rm`-stroke parsing, pen color mapping,
-and Paper Pro viewport constants. Calibration concerns (path, schema
-version, error type, loader) live in _calibration.py. Consumers:
+Paper Pro viewport constants, and `.content` manifest parsing (both
+modern cPages and legacy pages[] schemas). Calibration concerns (path,
+schema version, error type, loader) live in _calibration.py. Consumers:
   - render-strokes.py: produces SVG overlays from strokes.
   - derive_calibration.py: reduces strokes to centroids for the
     five-dot calibration ceremony.
-  - detect_marks.py: parses strokes, then hands them off to
+  - detect_marks.py: reads page manifests via manifest_pages/ManifestError,
+    parses strokes via collect_lines, then hands areas off to
     `_geometry.capsule_area` for the chrome-footer hit-test.
 
 The .rm coordinate system is center-origin in x (positive = right),
