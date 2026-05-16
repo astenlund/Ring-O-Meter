@@ -31,3 +31,26 @@ grep -q '\[FAIL\] rmapi binary not on PATH' <<<"$out" || { echo "fail: missing P
 [[ "$ec" != "0" ]] || { echo "fail: rmapi-absent should produce non-zero exit, got 0" >&2; exit 1; }
 
 echo "OK: verifier Check 1 (rmapi absent) test passed"
+
+# Test: rmapi present but auth fails -> Check 1 PASS, Check 2 FAIL, non-zero exit
+TMP2="$(mktemp -d)"
+cat >"$TMP2/rmapi" <<'EOF'
+#!/usr/bin/env bash
+# Fake rmapi: --version succeeds; any other invocation fails with auth-expired stderr.
+if [[ "${1:-}" == "--version" ]]; then
+  echo "rmapi version 0.0.33 (fake)"
+  exit 0
+fi
+echo "missing token, not asking, aborting" >&2
+exit 1
+EOF
+chmod +x "$TMP2/rmapi"
+
+out=$(PATH="$TMP2:$PATH" bash "$CHECK" 2>&1 || true)
+ec=$(PATH="$TMP2:$PATH" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
+grep -q '\[PASS\] rmapi binary on PATH' <<<"$out" || { echo "fail: missing PASS line for Check 1; got: $out" >&2; exit 1; }
+grep -q '\[FAIL\] rmapi authentication' <<<"$out" || { echo "fail: missing Check 2 FAIL; got: $out" >&2; exit 1; }
+[[ "$ec" == "1" ]] || { echo "fail: auth-failure should produce exit 1, got $ec" >&2; exit 1; }
+
+rm -rf "$TMP2"
+echo "OK: verifier Check 2 (auth) test passed"
