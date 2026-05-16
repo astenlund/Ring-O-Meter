@@ -54,3 +54,28 @@ grep -q '\[FAIL\] rmapi authentication' <<<"$out" || { echo "fail: missing Check
 
 rm -rf "$TMP2"
 echo "OK: verifier Check 2 (auth) test passed"
+
+# Test: settings.json with deny-rule containing "rmapi" -> Check 3 PASS
+TMP3="$(mktemp -d)"
+mkdir -p "$TMP3/.claude"
+cat >"$TMP3/.claude/settings.json" <<'EOF'
+{
+  "permissions": {
+    "deny": ["Read(//$HOME/.config/rmapi/**)"]
+  }
+}
+EOF
+out=$(HOME="$TMP3" bash "$CHECK" 2>&1 || true)
+grep -q '\[PASS\] deny-rule' <<<"$out" || { echo "fail: missing Check 3 PASS; got: $out" >&2; exit 1; }
+
+# Test: settings.json without rmapi deny entries -> Check 3 FAIL
+TMP4="$(mktemp -d)"
+mkdir -p "$TMP4/.claude"
+cat >"$TMP4/.claude/settings.json" <<'EOF'
+{"permissions": {"deny": ["Read(//$HOME/.ssh/**)"]}}
+EOF
+out=$(HOME="$TMP4" bash "$CHECK" 2>&1 || true)
+grep -q '\[FAIL\] deny-rule' <<<"$out" || { echo "fail: missing Check 3 FAIL; got: $out" >&2; exit 1; }
+
+rm -rf "$TMP3" "$TMP4"
+echo "OK: verifier Check 3 (deny-rule) test passed"
