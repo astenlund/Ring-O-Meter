@@ -34,15 +34,14 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional, Tuple, TypeVar
 
 from _atomic_write import atomic_write_text
 from _chrome_boxes import ITER_NN_RE, VALID_MODES
-
-T = TypeVar("T")
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
@@ -59,20 +58,43 @@ DEFAULT_POLL_INTERVAL_S = 30
 # features/remarkable-tablet-brainstorm.md. Per-operation budget, not
 # per-tick: each subprocess interaction (signature fetch, pull+detect)
 # owns its own schedule.
-BACKOFF_SLEEPS: Tuple[float, ...] = (2, 4, 8, 16)
+BACKOFF_SLEEPS: tuple[float, ...] = (2, 4, 8, 16)
 
 # heuristic: stderr substring patterns rmapi v0.0.33 might emit when its
 # token is expired or invalid. The exact stderr signature for auth
 # failures is undocumented; tracked in .claude/QUICK_WINS.md for
 # verification once observed in the wild. Patterns are matched
 # case-insensitively against the captured stderr.
-AUTH_EXPIRED_STDERR_PATTERNS: Tuple[str, ...] = ("401", "unauthor")
+AUTH_EXPIRED_STDERR_PATTERNS: tuple[str, ...] = ("401", "unauthor")
 
 # Stable substring rmapi v0.0.33 prints when the requested cloud doc
 # does not exist (per README rmapi quirks). Treated as non-retryable
 # because re-pulling won't conjure the doc; the orchestrator must push
 # a new copy or the user must restore the cloud entry.
 DOC_MISSING_STDERR_PATTERN = "file doesn't exist"
+
+# Stage literals passed to classify_subprocess_error / _run_with_retry.
+# Using constants keeps call sites and the per_stage mapping in lockstep;
+# a typo becomes a NameError rather than a silent wrong-context emission.
+# Note: run() wraps the entire fetch_signature call (which internally runs
+# both rmapi refresh AND stat) under _STAGE_STAT, and pull_detect_fn
+# (which runs pull AND detect) under _STAGE_PULL. The _STAGE_REFRESH and
+# _STAGE_DETECT constants are available for direct testing and future
+# callers that wrap those operations individually.
+_STAGE_REFRESH = "refresh"
+_STAGE_STAT = "stat"
+_STAGE_PULL = "pull"
+_STAGE_DETECT = "detect"
+
+# Exception types that classify_subprocess_error handles. Shared by
+# _run_with_retry (its catch set), run()'s two inner try/except blocks,
+# run()'s pre-loop catch, and main()'s safety-net clause. Keeping one
+# definition ensures that expanding the classifier to a new type (e.g.,
+# TimeoutError) prompts updating all six sites together: this tuple, the
+# four except clauses, AND the isinstance branches inside
+# classify_subprocess_error itself (otherwise the new type silently falls
+# through to the "subprocess-error" fallback).
+_CLASSIFIED_ERRORS = (subprocess.CalledProcessError, json.JSONDecodeError, OSError, RuntimeError)
 
 
 @dataclass(frozen=True)
@@ -90,7 +112,7 @@ class DetectionResult:
 
     finish_turn_marked: bool
     end_session_marked: bool
-    mode_winner: Optional[str]  # "color" | "bw" | "wireframe" | None
+    mode_winner: str | None  # "color" | "bw" | "wireframe" | None
 
 
 def utc_now_iso() -> str:
@@ -125,7 +147,7 @@ def fetch_signature(cloud_doc: str) -> Signature:
     )
 
 
-def _resolve_mode_winner(per_page) -> Optional[str]:
+def _resolve_mode_winner(per_page) -> str | None:
     """Apply radio-button winner-takes-all on the mode-switch trio.
 
     Two distinct cross-page aggregations apply here, matching the
@@ -207,14 +229,16 @@ def pull_and_detect(cloud_doc: str, pulls_dir: Path) -> DetectionResult:
     )
 
 
-def classify_subprocess_error(stage: str, exc: Exception) -> Tuple[str, bool]:
+def classify_subprocess_error(stage: str, exc: Exception) -> tuple[str, bool]:
     """Map a subprocess failure to a (context, retryable) pair.
 
     Stage is the literal that was passed to `_run_with_retry`: one of
-    `refresh`, `stat`, `pull`, `detect`. The classifier inspects
-    `CalledProcessError.stderr` (case-insensitive, guarded against
-    `None`) for the auth-expired and doc-missing substrings; everything
-    else is retryable.
+    `_STAGE_REFRESH`, `_STAGE_STAT`, `_STAGE_PULL`, `_STAGE_DETECT`.
+    Prefer the `_STAGE_*` constants over raw strings; an unrecognised
+    stage falls through to `("subprocess-error", True)` silently.
+    The classifier inspects `CalledProcessError.stderr`
+    (case-insensitive, guarded against `None`) for the auth-expired and
+    doc-missing substrings; everything else is retryable.
 
     Context names contain no colons so the spec's
     `ERROR:<context>:<details>` protocol stays parseable with
@@ -226,21 +250,26 @@ def classify_subprocess_error(stage: str, exc: Exception) -> Tuple[str, bool]:
             if pattern in stderr:
 
                 return ("auth-expired", False)
-        if stage == "pull" and DOC_MISSING_STDERR_PATTERN in stderr:
+        if stage == _STAGE_PULL and DOC_MISSING_STDERR_PATTERN in stderr:
 
             return ("rmapi-pull-failed-doc-missing", False)
+        # _STAGE_REFRESH and _STAGE_DETECT are available here but run()'s
+        # _run_with_retry call sites currently use only _STAGE_STAT and
+        # _STAGE_PULL (fetch_signature groups refresh+stat; pull_detect_fn
+        # groups pull+detect). The entries remain for testability and future
+        # callers that wrap individual rmapi commands separately.
         per_stage = {
-            "refresh": "rmapi-refresh-failed",
-            "stat": "rmapi-stat-failed",
-            "pull": "rmapi-pull-failed",
-            "detect": "detect-failed",
+            _STAGE_REFRESH: "rmapi-refresh-failed",
+            _STAGE_STAT: "rmapi-stat-failed",
+            _STAGE_PULL: "rmapi-pull-failed",
+            _STAGE_DETECT: "detect-failed",
         }
 
         return (per_stage.get(stage, "subprocess-error"), True)
     if isinstance(exc, json.JSONDecodeError):
 
         return ("parse-failed", True)
-    if isinstance(exc, RuntimeError) and stage == "pull":
+    if isinstance(exc, RuntimeError) and stage == _STAGE_PULL:
 
         return ("pull-shape-invalid", True)
 
@@ -265,10 +294,10 @@ def _build_error_details(exc: Exception) -> str:
 
 
 def _run_with_retry(
-    op: Callable[[], T],
+    op: Callable[[], Any],
     stage: str,
     sleep_fn: Callable[[float], None] = time.sleep,
-) -> T:
+) -> Any:
     """Run `op()` with per-operation exponential backoff.
 
     On a retryable failure (classifier verdict), sleeps from
@@ -283,7 +312,7 @@ def _run_with_retry(
         try:
 
             return op()
-        except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, RuntimeError) as exc:
+        except _CLASSIFIED_ERRORS as exc:
             _, retryable = classify_subprocess_error(stage, exc)
             if not retryable or not attempts_left:
                 raise
@@ -313,13 +342,21 @@ def poll_once(
     last_sig: Signature,
     signature_fn: Callable[[str], Signature],
     pull_detect_fn: Callable[[str, Path], DetectionResult],
-) -> Tuple[Signature, DetectionResult]:
+) -> tuple[Signature, DetectionResult]:
     """One polling iteration. Returns (new_signature, result).
 
     Factored out of the loop so tests can drive it deterministically with
     fake signature_fn / pull_detect_fn. Idle iterations return
     (last_sig, all-false DetectionResult) without touching the network
     beyond the stat call.
+
+    Note: `run()` does NOT call this function directly. The loop body
+    inlines the same idle/changed branching so it can thread per-operation
+    `_run_with_retry` + `_emit_error` through each subprocess boundary
+    individually — which would require exposing the backoff and suppression
+    machinery here and would destroy this function's value as a clean,
+    dependency-free test surface. `PollOnceTests` still exercises this
+    function directly.
     """
     current = signature_fn(cloud_doc)
     if current == last_sig:
@@ -368,7 +405,7 @@ def run(
     signal.signal(signal.SIGINT, _on_signal)
     signal.signal(signal.SIGTERM, _on_signal)
 
-    last_emitted_error_context: Optional[str] = None
+    last_emitted_error_context: str | None = None
 
     def _emit_error(stage_local: str, exc: Exception) -> None:
         nonlocal last_emitted_error_context
@@ -382,9 +419,9 @@ def run(
         # ERROR and seed last_sig with an empty Signature so the first
         # real tick always triggers a full pull-detect.
         try:
-            last_sig = _run_with_retry(lambda: signature_fn(cloud_doc), "stat", sleep_fn)
-        except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, RuntimeError) as exc:
-            _emit_error("stat", exc)
+            last_sig = _run_with_retry(lambda: signature_fn(cloud_doc), _STAGE_STAT, sleep_fn)
+        except _CLASSIFIED_ERRORS as exc:
+            _emit_error(_STAGE_STAT, exc)
             last_sig = Signature(version=0, modified_client="")
 
         while not shutdown_requested[0]:
@@ -394,9 +431,9 @@ def run(
             write_lock(lock_file, pid, started, utc_now_iso())
 
             try:
-                current = _run_with_retry(lambda: signature_fn(cloud_doc), "stat", sleep_fn)
-            except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, RuntimeError) as exc:
-                _emit_error("stat", exc)
+                current = _run_with_retry(lambda: signature_fn(cloud_doc), _STAGE_STAT, sleep_fn)
+            except _CLASSIFIED_ERRORS as exc:
+                _emit_error(_STAGE_STAT, exc)
 
                 continue
 
@@ -406,9 +443,9 @@ def run(
                 continue
 
             try:
-                result = _run_with_retry(lambda: pull_detect_fn(cloud_doc, pulls_dir), "pull", sleep_fn)
-            except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, RuntimeError) as exc:
-                _emit_error("pull", exc)
+                result = _run_with_retry(lambda: pull_detect_fn(cloud_doc, pulls_dir), _STAGE_PULL, sleep_fn)
+            except _CLASSIFIED_ERRORS as exc:
+                _emit_error(_STAGE_PULL, exc)
 
                 continue
 
@@ -465,7 +502,7 @@ def main(argv=None):
             lock_file=args.lock_file,
             poll_interval_s=args.poll_interval,
         )
-    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, RuntimeError) as e:
+    except _CLASSIFIED_ERRORS as e:
         # Safety net for bugs in _run_with_retry / classify_subprocess_error;
         # normal exhaustion is caught in run()'s loop body and surfaced as
         # ERROR: lines rather than escaping here.
