@@ -23,3 +23,9 @@ ec=$(printf '{"tool_name":"Read","tool_input":{"file_path":"/home/user/.config/r
 [[ "$ec" == "2" ]] || { echo "fail: Read of rmapi.conf should exit 2, got $ec" >&2; exit 1; }
 
 echo "OK: hook Read-file_path test passed"
+
+# Test: Grep with path containing rmapi.conf -> exit 2 (Grep uses `path`, not `file_path`)
+ec=$(printf '{"tool_name":"Grep","tool_input":{"pattern":"token","path":"/home/user/.config/rmapi/rmapi.conf"}}' | bash "$HOOK" >/dev/null 2>&1 && echo 0 || echo $?)
+[[ "$ec" == "2" ]] || { echo "fail: Grep of rmapi.conf should exit 2, got $ec" >&2; exit 1; }
+
+echo "OK: hook Grep-path test passed"
