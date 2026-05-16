@@ -18,5 +18,11 @@ if ! tool_command=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/
   exit 0
 fi
 
-# (Scaffold only - no match yet. Following tasks extend.)
+haystack="$tool_command"
+
+if printf '%s' "$haystack" | grep -iq 'rmapi\.conf'; then
+  printf 'Blocked: rmapi conf access\n' >&2
+  exit 2
+fi
+
 exit 0
