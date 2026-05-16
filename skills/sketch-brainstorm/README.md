@@ -178,6 +178,7 @@ It prints one `[PASS]` / `[FAIL]` / `[ERROR]` line per check and exits 0 if all 
 - `read-prefill.sh` -- bash wrapper for the cross-machine resume helper; pixel-samples the cloud PDF's pre-filled mode-switch box and prints the active mode.
 - `render/read_prefill.py` -- implementation of read-prefill (venv-required: PyMuPDF + Pillow).
 - `render/test_read_prefill.py` -- unit tests for read-prefill (venv-required).
+- `rmapi-conf-deny-hook.sh`: PreToolUse hook implementation that blocks tool calls referencing the literal filename `rmapi.conf`. Reads tool-call JSON on stdin (extracts `tool_name`, `command`, `file_path`, `path`), regex-matches case-insensitively, exits 2 with audit-log entry on match, exits 0 silent on no-match, exits 0 fail-open on malformed JSON. Audit log at `~/.claude/sketch-brainstorm-conf-access.log` (override via optional positional arg `$1`, used by tests; production callers pass no args and get the default). Never invoked directly by Claude; wired via `~/.claude/settings.json`.
 - `test.sh` -- bash wrapper that runs the Python test suite (via the skill venv) followed by the Node test suite (`test_*.mjs`). `bash test.sh` runs both; pass `test_<module>` or a dotted test id to target a Python subset.
 - `_lib.sh` -- internal bash helpers sourced by other wrappers: rmapi auth precondition, shared Python venv bootstrap with requirements.txt drift detection, and `find_repo_root <start-dir>` (walk-upward `Ring-O-Meter.slnx` marker discovery; sourced by `render-html-to-pdf.sh` with `$SCRIPT_DIR` and by `bootstrap-session.sh` with `$PWD`).
 - `render/render-strokes.py` -- converts per-page `.rm` stroke files to SVG overlays.
@@ -186,6 +187,7 @@ It prints one `[PASS]` / `[FAIL]` / `[ERROR]` line per check and exits 0 if all 
 - `composite-annotated.sh` -- bash wrapper for the composite step.
 - `render/prerender-pages.py` -- PyMuPDF-based PDF-to-PNG rasterizer; invoked by `render-html-to-pdf.sh`'s `--prerender-out` flag.
 - `bootstrap-session.sh` -- creates the per-session local folder skeleton and primes `design-state.md` (including `current_mode: color` frontmatter); idempotent.
+- `check-rmapi-setup.sh`: read-only four-check verifier (rmapi on PATH, conf valid, deny-rule installed, PreToolUse hook installed). Exit 0/1/2 with rationale. Safe for Claude to invoke on demand. See "Installing rmapi for sketch-brainstorm" above and the design rationale in `.claude/features/remarkable-tablet-brainstorm.md` (Transport section).
 - `parse-interpret-json.mjs` -- shell-callable JSON parse + validate helper for the interpret subagent's response.
 - `parse-verify-response.mjs` -- shell-callable JSON parse + validate helper for the verify subagent's response (`{verdict, reason}` with asymmetric-reason rule + forward-compat unknown-field tolerance).
 - `render/test_composite_annotated.py` -- unit tests covering: page-pattern regex and numeric sort (`composite-annotated.py`); resolution-constants invariant between composite and prerender-pages modules; `collect_lines` single-point-stroke contract (`_rm_strokes.py`).
@@ -196,6 +198,8 @@ It prints one `[PASS]` / `[FAIL]` / `[ERROR]` line per check and exits 0 if all 
 - `test_interpret_parse.mjs` -- node:test cases for `parseInterpretResponse`.
 - `test_verify_parse.mjs` -- node:test cases for `parseVerifyResponse` (12 cases including PASS/FAIL happy paths, the asymmetric-reason rule both directions, CRLF, chatty preamble, no-fence, malformed JSON, missing fields, wrong-cased verdict, unknown-field tolerance).
 - `test_bootstrap_session.sh` -- bash test for `bootstrap-session.sh`.
+- `test_check_rmapi_setup.sh`: standalone bash test runner for `check-rmapi-setup.sh`. Not wired into `test.sh` (which handles Python + Node only); run manually with `bash skills/sketch-brainstorm/test_check_rmapi_setup.sh`.
+- `test_rmapi_conf_deny_hook.sh`: standalone bash test runner for `rmapi-conf-deny-hook.sh`. Not wired into `test.sh`; run manually.
 - `interpret-prompt.md` -- prompt template for the interpretation subagent. Read by the orchestrator (Claude in main chat); not directly executable.
 - `verify-prompt.md` -- prompt template for the verify-before-push subagent. Read by the orchestrator; substituted tokens are the new + prior pre-render PNG paths plus the turn's `user_intent`.
 - `requirements.txt` -- Python deps for the inbound pipeline (rmscene + pymupdf + Pillow).

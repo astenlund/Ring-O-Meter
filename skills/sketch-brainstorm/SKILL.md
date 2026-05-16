@@ -72,6 +72,7 @@ auto-detecting the user's tablet back-out.
 - `composite-annotated.sh` -- bash wrapper for the composite step; reuses the shared venv.
 - `render/prerender-pages.py` -- PyMuPDF-based PDF-to-PNG rasterizer; invoked by `render-html-to-pdf.sh`'s `--prerender-out` flag to feed the verify-before-push slice.
 - `bootstrap-session.sh` -- creates the per-session local folder skeleton and primes `design-state.md` with frontmatter + `## Iteration 00`. Idempotent.
+- `check-rmapi-setup.sh`: read-only verifier for the rmapi auth-bootstrap security posture (rmapi on PATH, auth, deny-rule, hook). Safe for Claude to invoke.
 - `parse-interpret-json.mjs` -- shell-callable JSON parse + validate helper for the interpret subagent's response. Authoritative schema lives at the top of this file.
 - `parse-verify-response.mjs` -- shell-callable JSON parse + validate helper for the verify subagent's response (`{verdict, reason}` with asymmetric-reason rule). Authoritative schema lives at the top of this file.
 - `derive-calibration.sh` -- bash wrapper for the one-time calibration ceremony; runs derive_calibration.py against a pulled five-dot calibration rm-dir to produce calibration.json.
@@ -85,6 +86,7 @@ auto-detecting the user's tablet back-out.
 - `render/write_design_state.py` -- atomic write-to-temp + rename implementation; preserves prior iterations and updates `current_mode` frontmatter.
 - `render/test_write_design_state.py` -- unit tests for the atomic-write helper (frontmatter merge, iteration append, idempotency).
 - `read-prefill.sh` -- bash wrapper for the pixel-read pre-fill helper used by the resume flow's mode-recovery fallback.
+- `rmapi-conf-deny-hook.sh`: PreToolUse hook blocking access to the rmapi token conf. Wired via `~/.claude/settings.json` per the install instructions in `README.md`.
 - `render/read_prefill.py` -- rasterizes a pulled PDF and reads a known pixel sample to infer the active mode; accepts calibration dict as a parameter (main() loads via load_calibration() and passes down); emits `{"active_mode": "..."}` on success.
 - `render/test_read_prefill.py` -- unit tests for the pixel-read mode inference.
 - `render/test_geometry.py` -- capsule-area geometry tests; stdlib-only (imports _geometry.py directly; no venv or rmscene stub required).
