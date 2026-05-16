@@ -86,3 +86,13 @@ printf '{"tool_name":"Bash","tool_input":{"command":"ls /tmp"}}' | \
 [[ ! -f "$TMP/no-match.log" ]] || { echo "fail: audit log created on no-match" >&2; exit 1; }
 
 echo "OK: hook no-audit-on-no-match test passed"
+
+# Test: stderr carries the "Blocked:" message on a match.
+# Capture stderr only: 2>&1 1>/dev/null redirects stderr to the capture pipe
+# while discarding stdout.
+stderr_out=$(printf '{"tool_name":"Bash","tool_input":{"command":"cat ~/.config/rmapi/rmapi.conf"}}' | \
+  bash "$HOOK" "$TMP/stderr-test.log" 2>&1 1>/dev/null || true)
+grep -q "Blocked: rmapi conf access via" <<<"$stderr_out" || \
+  { echo "fail: missing Blocked stderr; got: $stderr_out" >&2; exit 1; }
+
+echo "OK: hook stderr message test passed"
