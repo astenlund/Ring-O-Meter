@@ -36,6 +36,12 @@ if command -v rmapi >/dev/null 2>&1; then
   fi
 fi
 
+# Prerequisite for Checks 3 and 4: jq must be on PATH.
+if ! command -v jq >/dev/null 2>&1; then
+  printf '[ERROR] jq required (needed for checks 3 and 4)\n'
+  exit 2
+fi
+
 # Check 3: deny-rule installed in ~/.claude/settings.json
 settings="$HOME/.claude/settings.json"
 if [[ -f "$settings" ]]; then
