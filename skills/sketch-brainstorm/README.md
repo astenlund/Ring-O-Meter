@@ -55,10 +55,82 @@ The full design is documented in the host project's feature backlog at `.claude/
 
 ## Per-machine setup
 
-- `rmapi` on `$PATH`. The skill assumes it is installed and authenticated; a `setup-rmapi.sh` helper (future slice) handles initial pairing and token rotation.
+- `rmapi` on `$PATH`. The skill assumes it is installed and authenticated; see [Installing rmapi for sketch-brainstorm](#installing-rmapi-for-sketch-brainstorm) below for the full setup including the security boundary.
 - A host project with Playwright available. The skill resolves it from `skills/sketch-brainstorm/node_modules` (run `npm install` from the skill folder once) with a fallback to `$REPO_ROOT/web/node_modules` for in-repo incubation. Gist consumers: `npm install` in the skill folder.
 - Chrome installed on the machine (the render uses `channel: 'chrome'` to mirror the host project's e2e suite).
 - Python 3.10+ on `$PATH`. The inbound stroke-rendering pipeline (`render/render-strokes.py`) bootstraps a Python venv on first run inside the skill folder (`./.venv/`) and installs `rmscene` and any rendering helpers from `requirements.txt`. The venv keeps the Python deps self-contained alongside the skill rather than polluting the host machine's global Python.
+
+## Installing rmapi for sketch-brainstorm
+
+This skill assumes [rmapi](https://github.com/ddvk/rmapi) v0.0.33+ is installed and paired to your reMarkable account, and that Claude Code is configured with a two-layer security boundary (a deny-rule + PreToolUse hook) that prevents Claude from reading the rmapi token. The two layers are independent: the hook is the primary enforcement layer on all platforms; the deny-rule is an additive early-rejection on Windows.
+
+### 1. Pair rmapi
+
+Run in your terminal:
+
+```bash
+rmapi help
+```
+
+On an unpaired machine, rmapi prompts for a one-time activation code from <https://my.remarkable.com/device/desktop/connect>. On a paired machine it prints usage. The resulting conf lives at the OS default:
+- **Windows**: `%APPDATA%\rmapi\rmapi.conf`
+- **macOS/Linux**: `~/.config/rmapi/rmapi.conf` *(presumed XDG default - please verify on first non-Windows machine and let us know if it differs)*
+
+**Destructive-rotation caveat:** rmapi v0.0.33 zeroes both tokens in its conf to `""` on a failed authentication attempt. If you are deliberately rotating a token (not just re-pairing after expiry), back the existing conf up first: a typo in the activation code leaves the conf un-paireable until you restore the backup. Routine re-pairs after an expiry do not need this - the conf is already invalid.
+
+### 2. Install the deny-rule and PreToolUse hook
+
+Open `~/.claude/settings.json`. If it does not exist, create it from the snippet below. If it exists with other entries, **merge** the `permissions.deny` array and the `hooks.PreToolUse` array (do not replace them). The combined snippet:
+
+```json
+{
+  "permissions": {
+    "deny": [
+      "Read(//$APPDATA/rmapi/**)",
+      "Edit(//$APPDATA/rmapi/**)",
+      "Write(//$APPDATA/rmapi/**)",
+      "Grep(//$APPDATA/rmapi/**)",
+      "Bash(*$APPDATA*rmapi*conf*)",
+      "Read(//$HOME/.config/rmapi/**)",
+      "Edit(//$HOME/.config/rmapi/**)",
+      "Write(//$HOME/.config/rmapi/**)",
+      "Grep(//$HOME/.config/rmapi/**)",
+      "Bash(*$HOME/.config/rmapi*conf*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Edit|Write|NotebookEdit|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/skills/sketch-brainstorm/rmapi-conf-deny-hook.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Hook-path variant for in-repo incubation:** while the skill lives inside a host repo (this repo, `skills/sketch-brainstorm/`), use:
+
+```json
+"command": "bash <absolute-path-to-repo>/skills/sketch-brainstorm/rmapi-conf-deny-hook.sh"
+```
+
+Users on macOS/Linux can keep all deny entries (the Windows ones are inert when `$APPDATA` is unset) or trim to just the second cluster; both are correct.
+
+### 3. Verify
+
+Run:
+
+```bash
+bash <skill-path>/check-rmapi-setup.sh
+```
+
+It prints one `[PASS]` / `[FAIL]` / `[ERROR]` line per check and exits 0 if all four pass. Exit codes: 0 = all pass; 1 = at least one check fails (actionable install gap); 2 = structural prerequisite error (jq missing, settings.json malformed).
 
 ## rmapi quirks observed in practice
 
