@@ -423,27 +423,23 @@ class RunLifecycleTests(unittest.TestCase):
 class ClassifierTests(unittest.TestCase):
     """classify_subprocess_error returns (context, retryable) per the plan's table."""
 
-    def test_auth_expired_via_401_substring(self):
+    def test_auth_expired_via_verbatim_rmapi_v0_0_33_stderr(self):
+        """Verbatim stderr captured 2026-05-16 from `rmapi -ni refresh`
+        against a bogus token via RMAPI_CONFIG sandbox. If rmapi upgrades
+        change the wording, this test fails and AUTH_EXPIRED_STDERR_PATTERNS
+        must be updated in lockstep. The capture preserves the ERROR
+        prefix, timestamp, and file:line so the classifier's case-insensitive
+        substring match is exercised against a realistic surrounding payload,
+        not just the bare phrase."""
         # Arrange
         exc = subprocess.CalledProcessError(
-            returncode=1, cmd=["rmapi", "refresh"], stderr="HTTP 401 from cloud",
+            returncode=1,
+            cmd=["rmapi", "-ni", "refresh"],
+            stderr="ERROR: 2026/05/16 16:17:57 auth.go:30: missing token, not asking, aborting\n",
         )
 
         # Act
         ctx, retryable = poll_tablet.classify_subprocess_error("refresh", exc)
-
-        # Assert
-        self.assertEqual(ctx, "auth-expired")
-        self.assertFalse(retryable)
-
-    def test_auth_expired_via_unauthor_substring_case_insensitive(self):
-        # Arrange
-        exc = subprocess.CalledProcessError(
-            returncode=1, cmd=["rmapi", "stat"], stderr="Unauthorized: token expired",
-        )
-
-        # Act
-        ctx, retryable = poll_tablet.classify_subprocess_error("stat", exc)
 
         # Assert
         self.assertEqual(ctx, "auth-expired")
@@ -596,7 +592,9 @@ class RunWithRetryTests(unittest.TestCase):
         """Auth-expired classification skips the backoff loop entirely."""
         # Arrange
         original = subprocess.CalledProcessError(
-            returncode=1, cmd=["rmapi", "stat"], stderr="401 Unauthorized",
+            returncode=1,
+            cmd=["rmapi", "-ni", "stat"],
+            stderr="ERROR: 2026/05/16 16:17:57 auth.go:30: missing token, not asking, aborting\n",
         )
 
         def op():
@@ -817,7 +815,9 @@ class ErrorEmissionTests(unittest.TestCase):
                 tick["n"] += 1
                 if tick["n"] == 2:
                     raise subprocess.CalledProcessError(
-                        returncode=1, cmd=["rmapi", "stat"], stderr="HTTP 401 Unauthorized",
+                        returncode=1,
+                        cmd=["rmapi", "-ni", "stat"],
+                        stderr="ERROR: 2026/05/16 16:17:57 auth.go:30: missing token, not asking, aborting\n",
                     )
 
                 return poll_tablet.Signature(version=tick["n"], modified_client=str(tick["n"]))

@@ -100,7 +100,15 @@ require_rmapi_authenticated() {
     echo "  via the future setup-rmapi.sh helper (or rmapi's first-run prompt)." >&2
     exit 1
   fi
-  if ! rmapi ls >/dev/null 2>&1; then
+  # `-ni` short-circuits the auth-prompt loop: with a stale token and
+  # closed-stdin subprocess, the default interactive mode spam-prints
+  # "Enter one-time code... Code has the wrong length" indefinitely on
+  # Windows Git Bash (verified 2026-05-16). With `-ni` rmapi instead
+  # aborts with "missing token, not asking, aborting" -- still a fail,
+  # but a fast one. Every non-interactive rmapi call in this skill must
+  # pass `-ni`; the diagnostic just below deliberately suggests plain
+  # `rmapi ls` because that's the user-facing interactive re-pair surface.
+  if ! rmapi -ni ls >/dev/null 2>&1; then
     echo "$prefix: rmapi cannot list the cloud root" >&2
     echo "  Token missing or expired. Re-pair the machine, or run" >&2
     echo "  'rmapi ls' interactively to surface the underlying error." >&2
