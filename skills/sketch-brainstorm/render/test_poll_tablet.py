@@ -24,6 +24,19 @@ sys.path.insert(0, str(_HERE))
 import poll_tablet  # noqa: E402
 
 
+def _run_with_stdout(**kwargs):
+    """Run poll_tablet.run() and capture its stdout. Returns (exit_code, stdout_text).
+
+    Shared by RunLifecycleTests and ErrorEmissionTests to eliminate the
+    otherwise identical helper that both classes would define independently.
+    """
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = poll_tablet.run(**kwargs)
+
+    return rc, buf.getvalue()
+
+
 class LockFileTests(unittest.TestCase):
     """Atomic write contract for poller.lock."""
 
@@ -337,13 +350,6 @@ class ModeWinnerPropagationTests(unittest.TestCase):
 class RunLifecycleTests(unittest.TestCase):
     """End-to-end coverage of run(): emit lines and finally-block lock cleanup."""
 
-    def _run_with_stdout(self, **kwargs):
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            rc = poll_tablet.run(**kwargs)
-
-        return rc, buf.getvalue()
-
     def test_run_emits_ready_and_releases_lock_on_finish_turn(self):
         # Arrange: signature changes on each tick so pull_detect_fn fires.
         with tempfile.TemporaryDirectory() as tmp:
@@ -361,7 +367,7 @@ class RunLifecycleTests(unittest.TestCase):
                 )
 
             # Act
-            rc, out = self._run_with_stdout(
+            rc, out = _run_with_stdout(
                 cloud_doc="x",
                 iter_nn="00",
                 pulls_dir=pulls,
@@ -369,6 +375,7 @@ class RunLifecycleTests(unittest.TestCase):
                 poll_interval_s=0,
                 signature_fn=signature_fn,
                 pull_detect_fn=fake_pull_detect,
+                sleep_fn=lambda _: None,
             )
 
             # Assert: emits READY, clean exit, lock released, no .tmp sidecar.
@@ -395,7 +402,7 @@ class RunLifecycleTests(unittest.TestCase):
                 )
 
             # Act
-            rc, out = self._run_with_stdout(
+            rc, out = _run_with_stdout(
                 cloud_doc="x",
                 iter_nn="00",
                 pulls_dir=pulls,
@@ -403,6 +410,7 @@ class RunLifecycleTests(unittest.TestCase):
                 poll_interval_s=0,
                 signature_fn=signature_fn,
                 pull_detect_fn=both_marked,
+                sleep_fn=lambda _: None,
             )
 
             # Assert: STOP is emitted (not READY), confirming precedence.
@@ -606,13 +614,6 @@ class RunWithRetryTests(unittest.TestCase):
 class ErrorEmissionTests(unittest.TestCase):
     """run() emits ERROR lines per the spec, with suppression and recovery semantics."""
 
-    def _run(self, **kwargs):
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            rc = poll_tablet.run(**kwargs)
-
-        return rc, buf.getvalue()
-
     def test_emits_error_for_retryable_exhaustion_then_recovers(self):
         """Retryable failure exhausts the budget on loop iter 1, then loop iter 2 succeeds and READY fires."""
         # Arrange: retry exhaustion calls op() 1 + len(BACKOFF_SLEEPS) = 5 times.
@@ -641,7 +642,7 @@ class ErrorEmissionTests(unittest.TestCase):
                 )
 
             # Act
-            rc, out = self._run(
+            rc, out = _run_with_stdout(
                 cloud_doc="x",
                 iter_nn="00",
                 pulls_dir=pulls,
@@ -687,7 +688,7 @@ class ErrorEmissionTests(unittest.TestCase):
                 )
 
             # Act
-            _rc, out = self._run(
+            _rc, out = _run_with_stdout(
                 cloud_doc="x",
                 iter_nn="00",
                 pulls_dir=pulls,
@@ -742,7 +743,7 @@ class ErrorEmissionTests(unittest.TestCase):
                 )
 
             # Act
-            _rc, out = self._run(
+            _rc, out = _run_with_stdout(
                 cloud_doc="x",
                 iter_nn="00",
                 pulls_dir=pulls,
@@ -783,7 +784,7 @@ class ErrorEmissionTests(unittest.TestCase):
                 )
 
             # Act
-            rc, out = self._run(
+            rc, out = _run_with_stdout(
                 cloud_doc="x",
                 iter_nn="00",
                 pulls_dir=pulls,
@@ -827,7 +828,7 @@ class ErrorEmissionTests(unittest.TestCase):
                 )
 
             # Act
-            _rc, out = self._run(
+            _rc, out = _run_with_stdout(
                 cloud_doc="x",
                 iter_nn="00",
                 pulls_dir=pulls,
