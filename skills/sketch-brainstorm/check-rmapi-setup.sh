@@ -45,6 +45,14 @@ if [[ -f "$settings" ]]; then
     printf '[FAIL] deny-rule for rmapi conf not found in ~/.claude/settings.json (see README)\n'
     fail_count=$((fail_count + 1))
   fi
+
+  # Check 4: PreToolUse hook referencing rmapi-conf-deny-hook installed
+  if jq -e '(.hooks.PreToolUse // []) | map(.hooks // [] | map(.command // "")) | flatten | map(select(test("rmapi-conf-deny-hook"))) | length > 0' "$settings" >/dev/null 2>&1; then
+    printf '[PASS] PreToolUse hook for rmapi-conf-deny-hook.sh installed\n'
+  else
+    printf '[FAIL] PreToolUse hook for rmapi-conf-deny-hook.sh not found (see README)\n'
+    fail_count=$((fail_count + 1))
+  fi
 fi
 
 [[ $fail_count -eq 0 ]] && exit 0 || exit 1

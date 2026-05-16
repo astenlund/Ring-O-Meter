@@ -79,3 +79,31 @@ grep -q '\[FAIL\] deny-rule' <<<"$out" || { echo "fail: missing Check 3 FAIL; go
 
 rm -rf "$TMP3" "$TMP4"
 echo "OK: verifier Check 3 (deny-rule) test passed"
+
+# Test: settings.json with hook stanza referencing rmapi-conf-deny-hook.sh -> Check 4 PASS
+TMP5="$(mktemp -d)"
+mkdir -p "$TMP5/.claude"
+cat >"$TMP5/.claude/settings.json" <<'EOF'
+{
+  "permissions": {"deny": ["Read(//$HOME/.config/rmapi/**)"]},
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "bash $HOME/.claude/skills/sketch-brainstorm/rmapi-conf-deny-hook.sh"}]}
+    ]
+  }
+}
+EOF
+out=$(HOME="$TMP5" bash "$CHECK" 2>&1 || true)
+grep -q '\[PASS\] PreToolUse hook' <<<"$out" || { echo "fail: missing Check 4 PASS; got: $out" >&2; exit 1; }
+
+# Test: settings.json without rmapi hook -> Check 4 FAIL
+TMP6="$(mktemp -d)"
+mkdir -p "$TMP6/.claude"
+cat >"$TMP6/.claude/settings.json" <<'EOF'
+{"permissions": {"deny": ["Read(//$HOME/.config/rmapi/**)"]}, "hooks": {}}
+EOF
+out=$(HOME="$TMP6" bash "$CHECK" 2>&1 || true)
+grep -q '\[FAIL\] PreToolUse hook' <<<"$out" || { echo "fail: missing Check 4 FAIL; got: $out" >&2; exit 1; }
+
+rm -rf "$TMP5" "$TMP6"
+echo "OK: verifier Check 4 (hook) test passed"
