@@ -49,6 +49,10 @@ if [[ ! -f "$settings" ]]; then
   printf '[FAIL] settings.json not found at ~/.claude/settings.json (deny-rule and hook cannot be checked; see README)\n'
   fail_count=$((fail_count + 1))
 else
+  if ! jq -e . "$settings" >/dev/null 2>&1; then
+    printf '[ERROR] settings.json is not valid JSON (deny-rule and hook cannot be checked; repair the file first)\n'
+    exit 2
+  fi
   if jq -e '(.permissions.deny // []) | map(select(test("rmapi"; "i"))) | length > 0' "$settings" >/dev/null 2>&1; then
     printf '[PASS] deny-rule for rmapi conf installed in ~/.claude/settings.json\n'
   else

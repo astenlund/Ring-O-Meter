@@ -139,3 +139,15 @@ grep -q '\[FAIL\] settings.json not found' <<<"$out" || { echo "fail: missing se
 
 rm -rf "$TMP8"
 echo "OK: verifier settings.json-absent test passed"
+
+# Test: settings.json exists but malformed JSON -> ERROR exit 2
+TMP9="$(mktemp -d)"
+mkdir -p "$TMP9/.claude"
+printf 'not json {{{' > "$TMP9/.claude/settings.json"
+out=$(HOME="$TMP9" bash "$CHECK" 2>&1 || true)
+ec=$(HOME="$TMP9" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
+grep -q '\[ERROR\] settings.json is not valid JSON' <<<"$out" || { echo "fail: missing malformed-JSON ERROR; got: $out" >&2; exit 1; }
+[[ "$ec" == "2" ]] || { echo "fail: malformed settings.json should exit 2, got $ec" >&2; exit 1; }
+
+rm -rf "$TMP9"
+echo "OK: verifier malformed-settings.json test passed"
