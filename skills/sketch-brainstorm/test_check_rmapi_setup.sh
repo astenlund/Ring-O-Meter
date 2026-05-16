@@ -107,3 +107,25 @@ grep -q '\[FAIL\] PreToolUse hook' <<<"$out" || { echo "fail: missing Check 4 FA
 
 rm -rf "$TMP5" "$TMP6"
 echo "OK: verifier Check 4 (hook) test passed"
+
+# Test: jq absent -> ERROR exit 2
+TMP7="$(mktemp -d)"
+# Fake rmapi that satisfies Checks 1 and 2 so only the jq guard is exercised.
+cat >"$TMP7/rmapi" <<'EOF'
+#!/usr/bin/env bash
+[[ "${1:-}" == "--version" ]] && { echo "rmapi 0.0.33"; exit 0; }
+exit 0
+EOF
+chmod +x "$TMP7/rmapi"
+
+# Filter jq's directory out of PATH (analogous to NO_RMAPI_PATH in the first test).
+JQ_DIR=$(dirname "$(command -v jq)")
+NO_JQ_PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$JQ_DIR" | tr '\n' ':')
+
+out=$(PATH="$TMP7:$NO_JQ_PATH" bash "$CHECK" 2>&1 || true)
+ec=$(PATH="$TMP7:$NO_JQ_PATH" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
+grep -q '\[ERROR\] jq required' <<<"$out" || { echo "fail: missing jq-absent ERROR; got: $out" >&2; exit 1; }
+[[ "$ec" == "2" ]] || { echo "fail: jq-absent should exit 2, got $ec" >&2; exit 1; }
+
+rm -rf "$TMP7"
+echo "OK: verifier jq-absent test passed"
