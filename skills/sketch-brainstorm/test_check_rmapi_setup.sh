@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CHECK="$SCRIPT_DIR/check-rmapi-setup.sh"
+
+# Test: rmapi NOT on PATH -> check 1 FAIL line + non-zero exit
+TMP="$(mktemp -d)"
+# Comprehensive trap with TMPn placeholders (TMP2 onward populated by later
+# test cases as they grow). ${TMPn:+"$TMPn"} expands to "$TMPn" when set, and
+# to nothing when unset - avoiding rm -rf "" (which deletes cwd on some
+# systems) when a test failed early before reaching a given mktemp call.
+trap 'rm -rf "$TMP" ${TMP2:+"$TMP2"} ${TMP3:+"$TMP3"} ${TMP4:+"$TMP4"} ${TMP5:+"$TMP5"} ${TMP6:+"$TMP6"} ${TMP7:+"$TMP7"} ${TMP8:+"$TMP8"} ${TMP9:+"$TMP9"} ${TMP10:+"$TMP10"}' EXIT
+
+# Build a PATH that strips the rmapi binary without removing bash/system tools.
+# Setting PATH="$TMP" alone would drop bash itself (fatal on Windows Git Bash
+# where bash is not on the default stripped path), so we filter only the directory
+# that owns the real rmapi binary. If rmapi is absent, fall back to an empty-dir
+# PATH element that still keeps the rest of PATH intact.
+RMAPI_BIN="$(which rmapi 2>/dev/null || true)"
+if [[ -n "$RMAPI_BIN" ]]; then
+  RMAPI_DIR="$(dirname "$RMAPI_BIN")"
+  NO_RMAPI_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$RMAPI_DIR" | tr '\n' ':')"
+else
+  NO_RMAPI_PATH="$TMP:$PATH"
+fi
+
+out=$(PATH="$NO_RMAPI_PATH" bash "$CHECK" 2>&1 || true)
+ec=$(PATH="$NO_RMAPI_PATH" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
+grep -q '\[FAIL\] rmapi binary not on PATH' <<<"$out" || { echo "fail: missing PATH-FAIL line; got: $out" >&2; exit 1; }
+[[ "$ec" != "0" ]] || { echo "fail: rmapi-absent should produce non-zero exit, got 0" >&2; exit 1; }
+
+echo "OK: verifier Check 1 (rmapi absent) test passed"
