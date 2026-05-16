@@ -151,3 +151,38 @@ grep -q '\[ERROR\] settings.json is not valid JSON' <<<"$out" || { echo "fail: m
 
 rm -rf "$TMP9"
 echo "OK: verifier malformed-settings.json test passed"
+
+# Test: all four checks pass -> exit 0
+TMP10="$(mktemp -d)"
+mkdir -p "$TMP10/.claude"
+cat >"$TMP10/.claude/settings.json" <<'EOF'
+{
+  "permissions": {"deny": ["Read(//$HOME/.config/rmapi/**)"]},
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "bash $HOME/.claude/skills/sketch-brainstorm/rmapi-conf-deny-hook.sh"}]}
+    ]
+  }
+}
+EOF
+
+# Fake rmapi that succeeds on both --version and -ni ls.
+cat >"$TMP10/rmapi" <<'EOF'
+#!/usr/bin/env bash
+[[ "${1:-}" == "--version" ]] && { echo "rmapi 0.0.33 (fake)"; exit 0; }
+# -ni ls case: emit a fake listing and exit 0
+[[ "${1:-}" == "-ni" && "${2:-}" == "ls" ]] && { echo "[d] Trash"; exit 0; }
+exit 0
+EOF
+chmod +x "$TMP10/rmapi"
+
+ec=$(HOME="$TMP10" PATH="$TMP10:$PATH" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
+[[ "$ec" == "0" ]] || { echo "fail: all-pass scenario should exit 0, got $ec" >&2; exit 1; }
+
+out=$(HOME="$TMP10" PATH="$TMP10:$PATH" bash "$CHECK" 2>&1 || true)
+# Should have exactly four PASS lines.
+pass_count=$(grep -c '^\[PASS\]' <<<"$out" || echo 0)
+[[ "$pass_count" == "4" ]] || { echo "fail: expected 4 PASS lines, got $pass_count; output: $out" >&2; exit 1; }
+
+rm -rf "$TMP10"
+echo "OK: verifier all-pass integration test passed"
