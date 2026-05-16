@@ -1,22 +1,27 @@
 """Background polling daemon for sketch-brainstorm.
 
 Watches the current iteration's reMarkable cloud doc via `rmapi stat`
-and emits a single notification line on stdout when the user marks a
-control box and backs out: `READY:<NN>` for Finish-turn, `STOP:<NN>`
-for End-session. Idle iterations emit nothing, so notifications
-correspond one-to-one with events the main chat actually needs to
+and emits notification lines on stdout when the user marks a control
+box and backs out (`READY:<NN>` / `READY:<NN>:mode=<X>` / `STOP:<NN>`)
+or when a subprocess interaction fails persistently
+(`ERROR:<context>:<details>`). Idle iterations emit nothing, so
+notifications correspond one-to-one with events main chat needs to
 handle.
 
 This slice owns mtime short-circuit, lock acquisition with heartbeat,
-and the READY / STOP notifications. Mode-switch suffixes, ERROR
-taxonomy with exponential backoff, and bootstrap-side spawn
-integration are documented in the feature spec as separate slices.
+READY / STOP notifications, and ERROR taxonomy with per-operation
+exponential backoff (~30s budget). Bootstrap-side spawn integration
+and the fatal session-state class are documented in the feature spec
+as separate slices.
 
 Lifecycle:
   - Birth: spawned by the orchestrator via `Bash(run_in_background=true)`.
-  - Run:   refresh + stat each tick; on signature change, pull + detect.
+  - Run:   refresh + stat each tick; on signature change, pull + detect;
+           transient subprocess failures retry with backoff, persistent
+           failures emit `ERROR:` and continue polling.
   - Death: emit `READY:<NN>` or `STOP:<NN>` and exit 0; or fatal error
-           and exit 1; or SIGINT/SIGTERM from the harness.
+           outside the classified set and exit 1; or SIGINT/SIGTERM
+           from the harness.
 
 The script intentionally does not try to outlive its parent chat
 session. Durable state is on disk (the session folder, pulls/ archives);
@@ -32,10 +37,12 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, TypeVar
 
 from _atomic_write import atomic_write_text
 from _chrome_boxes import ITER_NN_RE, VALID_MODES
+
+T = TypeVar("T")
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
@@ -46,6 +53,26 @@ PULL_WRAPPER = SKILL_DIR / "pull-from-tablet.sh"
 # while staying within 2x of the lock-staleness threshold (60s) so a
 # missed iteration still keeps the lock fresh.
 DEFAULT_POLL_INTERVAL_S = 30
+
+# heuristic: exponential backoff for transient subprocess failures.
+# Four retries totaling 30s match the spec's "~30s budget" in
+# features/remarkable-tablet-brainstorm.md. Per-operation budget, not
+# per-tick: each subprocess interaction (signature fetch, pull+detect)
+# owns its own schedule.
+BACKOFF_SLEEPS: Tuple[float, ...] = (2, 4, 8, 16)
+
+# heuristic: stderr substring patterns rmapi v0.0.33 might emit when its
+# token is expired or invalid. The exact stderr signature for auth
+# failures is undocumented; tracked in .claude/QUICK_WINS.md for
+# verification once observed in the wild. Patterns are matched
+# case-insensitively against the captured stderr.
+AUTH_EXPIRED_STDERR_PATTERNS: Tuple[str, ...] = ("401", "unauthor")
+
+# Stable substring rmapi v0.0.33 prints when the requested cloud doc
+# does not exist (per README rmapi quirks). Treated as non-retryable
+# because re-pulling won't conjure the doc; the orchestrator must push
+# a new copy or the user must restore the cloud entry.
+DOC_MISSING_STDERR_PATTERN = "file doesn't exist"
 
 
 @dataclass(frozen=True)
@@ -180,6 +207,89 @@ def pull_and_detect(cloud_doc: str, pulls_dir: Path) -> DetectionResult:
     )
 
 
+def classify_subprocess_error(stage: str, exc: Exception) -> Tuple[str, bool]:
+    """Map a subprocess failure to a (context, retryable) pair.
+
+    Stage is the literal that was passed to `_run_with_retry`: one of
+    `refresh`, `stat`, `pull`, `detect`. The classifier inspects
+    `CalledProcessError.stderr` (case-insensitive, guarded against
+    `None`) for the auth-expired and doc-missing substrings; everything
+    else is retryable.
+
+    Context names contain no colons so the spec's
+    `ERROR:<context>:<details>` protocol stays parseable with
+    `str.split(":", 2)`.
+    """
+    if isinstance(exc, subprocess.CalledProcessError):
+        stderr = (exc.stderr or "").lower()
+        for pattern in AUTH_EXPIRED_STDERR_PATTERNS:
+            if pattern in stderr:
+
+                return ("auth-expired", False)
+        if stage == "pull" and DOC_MISSING_STDERR_PATTERN in stderr:
+
+            return ("rmapi-pull-failed-doc-missing", False)
+        per_stage = {
+            "refresh": "rmapi-refresh-failed",
+            "stat": "rmapi-stat-failed",
+            "pull": "rmapi-pull-failed",
+            "detect": "detect-failed",
+        }
+
+        return (per_stage.get(stage, "subprocess-error"), True)
+    if isinstance(exc, json.JSONDecodeError):
+
+        return ("parse-failed", True)
+    if isinstance(exc, RuntimeError) and stage == "pull":
+
+        return ("pull-shape-invalid", True)
+
+    return ("subprocess-error", True)
+
+
+def _build_error_details(exc: Exception) -> str:
+    """One-line excerpt for the `<details>` field of an `ERROR:` line.
+
+    Collapses `exc.stderr` newlines to spaces and returns the last 200
+    characters. Falls back to `str(exc)[:200]` when stderr is `None` or
+    empty (e.g., `RuntimeError`, `JSONDecodeError`, or a
+    `CalledProcessError` whose subprocess was launched without
+    `capture_output=True`).
+    """
+    stderr = getattr(exc, "stderr", None)
+    if stderr:
+
+        return " ".join(stderr.strip().splitlines())[-200:]
+
+    return str(exc)[:200]
+
+
+def _run_with_retry(
+    op: Callable[[], T],
+    stage: str,
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> T:
+    """Run `op()` with per-operation exponential backoff.
+
+    On a retryable failure (classifier verdict), sleeps from
+    `BACKOFF_SLEEPS` in order and retries. On exhaustion - or on a
+    non-retryable classification - does a bare `raise` so the caller
+    sees the original exception and can build `<details>` from
+    `exc.stderr`. The catch set matches the classifier's input domain:
+    anything outside it propagates unchanged.
+    """
+    attempts_left = list(BACKOFF_SLEEPS)
+    while True:
+        try:
+
+            return op()
+        except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, RuntimeError) as exc:
+            _, retryable = classify_subprocess_error(stage, exc)
+            if not retryable or not attempts_left:
+                raise
+            sleep_fn(attempts_left.pop(0))
+
+
 def write_lock(lock_path: Path, pid: int, started: str, heartbeat: str) -> None:
     """Atomic write of the lock JSON."""
     lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -228,16 +338,19 @@ def run(
     poll_interval_s: int,
     signature_fn: Callable[[str], Signature] = fetch_signature,
     pull_detect_fn: Callable[[str, Path], DetectionResult] = pull_and_detect,
+    sleep_fn: Callable[[float], None] = time.sleep,
 ) -> int:
     """Main polling loop. Returns the desired process exit code.
 
     Exits 0 after emitting a READY:<NN> or STOP:<NN> line. End-session
     takes precedence over Finish-turn so a user's explicit End-session
     mark wins over an incidental concurrent Finish-turn mark in the
-    same turn. The orchestrator respawns the poller after pushing the
-    next iteration with updated --cloud-doc and --iter; the per-iter
-    respawn shape keeps this slice independent of session-state
-    tracking.
+    same turn. Subprocess failures route through `_run_with_retry`;
+    persistent failures emit `ERROR:<context>:<details>` with
+    suppression of repeats and never exit the loop. The orchestrator
+    respawns the poller after pushing the next iteration with updated
+    --cloud-doc and --iter; the per-iter respawn shape keeps this
+    slice independent of session-state tracking.
     """
     started = utc_now_iso()
     pid = os.getpid()
@@ -255,16 +368,57 @@ def run(
     signal.signal(signal.SIGINT, _on_signal)
     signal.signal(signal.SIGTERM, _on_signal)
 
+    last_emitted_error_context: Optional[str] = None
+
+    def _emit_error(stage_local: str, exc: Exception) -> None:
+        nonlocal last_emitted_error_context
+        ctx, _ = classify_subprocess_error(stage_local, exc)
+        if ctx != last_emitted_error_context:
+            print(f"ERROR:{ctx}:{_build_error_details(exc)}", flush=True)
+            last_emitted_error_context = ctx
+
     try:
-        last_sig = signature_fn(cloud_doc)
+        # Initial pre-loop fetch: wrap with retry. On exhaustion, emit
+        # ERROR and seed last_sig with an empty Signature so the first
+        # real tick always triggers a full pull-detect.
+        try:
+            last_sig = _run_with_retry(lambda: signature_fn(cloud_doc), "stat", sleep_fn)
+        except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, RuntimeError) as exc:
+            _emit_error("stat", exc)
+            last_sig = Signature(version=0, modified_client="")
+
         while not shutdown_requested[0]:
             time.sleep(poll_interval_s)
             if shutdown_requested[0]:
                 break
             write_lock(lock_file, pid, started, utc_now_iso())
-            last_sig, result = poll_once(
-                cloud_doc, pulls_dir, last_sig, signature_fn, pull_detect_fn
-            )
+
+            try:
+                current = _run_with_retry(lambda: signature_fn(cloud_doc), "stat", sleep_fn)
+            except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, RuntimeError) as exc:
+                _emit_error("stat", exc)
+
+                continue
+
+            if current == last_sig:
+                # Idle tick; cloud unchanged, no work, suppression state untouched.
+
+                continue
+
+            try:
+                result = _run_with_retry(lambda: pull_detect_fn(cloud_doc, pulls_dir), "pull", sleep_fn)
+            except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, RuntimeError) as exc:
+                _emit_error("pull", exc)
+
+                continue
+
+            # Tick fully clean: advance last_sig, reset suppression,
+            # evaluate READY/STOP. Reset happens here (after the entire
+            # operation chain succeeded), not after each operation, so
+            # a partial-success tick does not prematurely clear it.
+            last_sig = current
+            last_emitted_error_context = None
+
             if result.end_session_marked:
                 print(f"STOP:{iter_nn}", flush=True)
 
@@ -312,6 +466,9 @@ def main(argv=None):
             poll_interval_s=args.poll_interval,
         )
     except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, RuntimeError) as e:
+        # Safety net for bugs in _run_with_retry / classify_subprocess_error;
+        # normal exhaustion is caught in run()'s loop body and surfaced as
+        # ERROR: lines rather than escaping here.
         print(f"poll_tablet: {e}", file=sys.stderr)
         return 1
 

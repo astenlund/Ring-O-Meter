@@ -1,20 +1,24 @@
 ---
 name: sketch-brainstorm
-description: Round-trip UI brainstorm loop with a reMarkable tablet. Use when the user wants to sketch on the tablet ("push to tablet", "send sketch to remarkable", "brainstorm UI on the tablet", "pull from tablet", "grab the annotated version"). Renders HTML mockups to PDF at the tablet's viewport, pushes to the reMarkable cloud via rmapi, drives an iter-by-iter render-pull-interpret-render loop. Full bootstrap dialogue and compression are deferred to follow-up slices.
+description: Round-trip UI brainstorm loop with a reMarkable tablet. Use when the user wants to sketch on the tablet ("push to tablet", "send sketch to remarkable", "brainstorm UI on the tablet", "pull from tablet", "grab the annotated version"). Renders HTML mockups to PDF at the tablet's viewport, pushes to the reMarkable cloud via rmapi, drives an iter-by-iter render-pull-interpret-render loop. The poller handles transient rmapi failures with exponential backoff and emits ERROR notifications for persistent failures. Full bootstrap dialogue and compression are deferred to follow-up slices.
 ---
 
 # sketch-brainstorm
 
 A skill for design-iteration with handwritten annotations on a reMarkable tablet. The user sketches reactions on the tablet, Claude reads the marks and emits the next mockup.
 
-## STATUS: closed loop + stroke-region detector + calibration ceremony
+## STATUS: closed loop + ERROR taxonomy with backoff
 
 Round-trip ships end-to-end and the stroke-region Finish-turn detector
 + one-time calibration ceremony are in place. Verify-before-push is
 shipped: the loop body dispatches a fresh subagent against the new
 pre-renders (plus the prior turn's pre-renders when available) and
-gates the push on a PASS verdict. Full bootstrap dialogue, compression,
-and multi-sketch are still deferred to follow-up slices.
+gates the push on a PASS verdict. The poller's ERROR taxonomy + per-
+operation exponential backoff (~30 s budget) now keep transient rmapi
+failures from collapsing long sessions; persistent failures surface as
+`ERROR:<context>:<details>` notifications with suppression of repeats.
+Full bootstrap dialogue, compression, and multi-sketch are still
+deferred to follow-up slices.
 
 - `render-html-to-pdf.sh` produces a two-page PDF at the Paper Pro viewport from a parametrised HTML template. Page 1 is the mockup page (header, mockup region, small notes area, chrome footer with the Finish-turn checkbox); page 2 is the legend page (header, vocabulary legend, larger notes area, mirrored chrome footer). The user can append further pages on the tablet for long-form notes (handled by the future interpretation slice). `--subtopic` (forward-compat for multi-sketch) and `--prerender-out <dir>` (captures per-page PNGs that the verify-before-push slice consumes).
 - `push-to-tablet.sh` uploads a rendered PDF to a named cloud folder via `rmapi put --force`. Owns just the upload step; cloud-path composition (project root + per-session slug) belongs to the future bootstrap-dialogue slice that calls this wrapper.
@@ -38,7 +42,6 @@ Not yet implemented (deferred to follow-up plans):
 
 - Auth bootstrap (`setup-rmapi.sh`, `~/.rmapi` token, deny rules, PreToolUse hook); both transport wrappers assume the machine is already paired
 - Full bootstrap dialogue (design-language briefing, lock-file check, resume-vs-fresh prompt); bootstrap-lite ships today
-- ERROR taxonomy + backoff (structured error classes from the poller, retry/backoff policy)
 - Multi-sketch iterations (N rendered sketches plus a trailing legend page, for side-by-side alternatives)
 - Compression of cross-turn state (design-state.md history pruning, archive rollover)
 - Vocabulary lifecycle (weight-based active / archived split, frecency-style scoring) and close-session ceremony
@@ -75,9 +78,9 @@ auto-detecting the user's tablet back-out.
 - `render/derive_calibration.py` -- calibration derivation: five-centroid Hungarian assignment, median scale derivation, asymmetry + residual verification, writes calibration.json.
 - `detect-marks.sh` -- bash wrapper for the per-turn detector.
 - `render/detect_marks.py` -- stroke-region detector: reads calibration.json, inverse-transforms each registered checkbox PDF rectangle to .rm coordinates, hit-tests strokes, emits structured JSON keyed by box name (finish_turn, end_session, mode_color, mode_bw, mode_wireframe).
-- `poll-tablet.sh` -- bash wrapper for the background poller that wraps the detector and emits the `READY:NN` / `READY:NN:mode=X` / `STOP:NN` protocol on stdout.
-- `render/poll_tablet.py` -- background polling implementation: rmapi-driven pull cadence, detector dispatch, mode/stop signalling.
-- `render/test_poll_tablet.py` -- unit tests for the poller's state machine and signal-emission logic.
+- `poll-tablet.sh` -- bash wrapper for the background poller that wraps the detector and emits the `READY:NN` / `READY:NN:mode=X` / `STOP:NN` / `ERROR:<context>:<details>` protocol on stdout.
+- `render/poll_tablet.py` -- background polling implementation: rmapi-driven pull cadence, detector dispatch, mode/stop signalling, ERROR classification + per-operation exponential backoff with emission suppression.
+- `render/test_poll_tablet.py` -- unit tests for the poller's state machine, signal-emission logic, error classification table, retry/backoff behavior, and ERROR-emission suppression.
 - `write-design-state.sh` -- bash wrapper for the atomic frontmatter + section update helper; reads delta on stdin.
 - `render/write_design_state.py` -- atomic write-to-temp + rename implementation; preserves prior iterations and updates `current_mode` frontmatter.
 - `render/test_write_design_state.py` -- unit tests for the atomic-write helper (frontmatter merge, iteration append, idempotency).
@@ -389,6 +392,7 @@ When main chat handles a poller notification:
 - `READY:<NN>` (no mode suffix): carry `current_mode` forward; update heading.
 - `READY:<NN>:mode=<X>`: set `current_mode: X`; update heading.
 - `STOP:<NN>`: write nothing further to `design-state.md`; run close-session ceremony.
+- `ERROR:<context>:<details>`: surface in chat with a recovery hint keyed to `<context>` (e.g., `auth-expired` -> re-pair via the future `setup-rmapi.sh`; `rmapi-pull-failed-doc-missing` -> re-push the iter or check the cloud path). The poller keeps polling silently; identical errors are suppressed until a successful tick clears the state. Do not update `design-state.md` on ERROR; the iteration's state is unchanged.
 
 Main chat invokes `bash write-design-state.sh --session-dir <path> --iter NN --mode <color|bw|wireframe>` with the iter's content delta on stdin per turn. The helper handles the write-to-temp + rename internally; main chat does not need to orchestrate the atomic-write step manually.
 
