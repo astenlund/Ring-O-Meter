@@ -144,7 +144,7 @@ fi
 # wrapper's stdout stays the single-line rm-dir contract that callers
 # can capture with $(pull-from-tablet.sh ...). Errors already go to
 # stderr; this keeps the progress chatter on the same channel.
-if ! (cd "$OUT_DIR" && rmapi get "$CLOUD_DOC" >&2); then
+if ! (cd "$OUT_DIR" && rmapi -ni get "$CLOUD_DOC" >&2); then
   echo "pull-from-tablet.sh: rmapi get failed for '$CLOUD_DOC'" >&2
   echo "  rmapi 0.0.33 reports 'file doesn't exist' for missing docs." >&2
   echo "  Check the path with $PARENT_HINT." >&2

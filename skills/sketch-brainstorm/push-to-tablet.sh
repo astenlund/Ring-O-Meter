@@ -93,7 +93,7 @@ require_rmapi_authenticated "push-to-tablet.sh"
 # a real failure (the README rmapi-quirks section captures that mkdir is
 # single-level only). If rmapi changes the wording in a future release,
 # update the literal here in lockstep with the README quirk.
-mkdir_stderr=$(rmapi mkdir "$CLOUD_FOLDER" 2>&1 >/dev/null) || {
+mkdir_stderr=$(rmapi -ni mkdir "$CLOUD_FOLDER" 2>&1 >/dev/null) || {
   if echo "$mkdir_stderr" | grep -qE "entry already exists"; then
     : # already exists; not an error in our usage
   else
@@ -103,7 +103,7 @@ mkdir_stderr=$(rmapi mkdir "$CLOUD_FOLDER" 2>&1 >/dev/null) || {
   fi
 }
 
-if ! rmapi put --force "$PDF" "$CLOUD_FOLDER"; then
+if ! rmapi -ni put --force "$PDF" "$CLOUD_FOLDER"; then
   echo "push-to-tablet.sh: rmapi put failed for '$PDF' -> '$CLOUD_FOLDER'" >&2
   echo "  Check network connectivity, cloud quota, and that the folder exists." >&2
   exit 1

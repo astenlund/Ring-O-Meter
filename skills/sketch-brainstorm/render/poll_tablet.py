@@ -60,12 +60,17 @@ DEFAULT_POLL_INTERVAL_S = 30
 # owns its own schedule.
 BACKOFF_SLEEPS: tuple[float, ...] = (2, 4, 8, 16)
 
-# heuristic: stderr substring patterns rmapi v0.0.33 might emit when its
-# token is expired or invalid. The exact stderr signature for auth
-# failures is undocumented; tracked in .claude/QUICK_WINS.md for
-# verification once observed in the wild. Patterns are matched
-# case-insensitively against the captured stderr.
-AUTH_EXPIRED_STDERR_PATTERNS: tuple[str, ...] = ("401", "unauthor")
+# Verbatim stderr substring rmapi v0.0.33 (with `-ni`) prints when its
+# token is expired or invalid, captured 2026-05-16 from a sandboxed
+# probe against a bogus token: "ERROR: <timestamp> auth.go:30: missing
+# token, not asking, aborting". Without `-ni`, rmapi enters an
+# interactive re-pair prompt instead -- and on Windows in a
+# closed-stdin subprocess that prompt loops indefinitely. Every
+# subprocess rmapi call in this skill must pass `-ni` so this pattern
+# is what we observe. Patterns are matched case-insensitively against
+# captured stderr; if rmapi changes wording in a future release, the
+# verbatim regression test in test_poll_tablet.py surfaces the drift.
+AUTH_EXPIRED_STDERR_PATTERNS: tuple[str, ...] = ("missing token, not asking, aborting",)
 
 # Stable substring rmapi v0.0.33 prints when the requested cloud doc
 # does not exist (per README rmapi quirks). Treated as non-retryable
@@ -128,13 +133,13 @@ def fetch_signature(cloud_doc: str) -> Signature:
     rmapi / parse failure; the caller decides how to surface those.
     """
     subprocess.run(
-        ["rmapi", "refresh"],
+        ["rmapi", "-ni", "refresh"],
         check=True,
         capture_output=True,
         text=True,
     )
     proc = subprocess.run(
-        ["rmapi", "stat", cloud_doc],
+        ["rmapi", "-ni", "stat", cloud_doc],
         check=True,
         capture_output=True,
         text=True,
