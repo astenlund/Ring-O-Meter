@@ -40,7 +40,7 @@ deferred to follow-up slices.
 
 Not yet implemented (deferred to follow-up plans):
 
-- Auth bootstrap (`setup-rmapi.sh`, `~/.rmapi` token, deny rules, PreToolUse hook); both transport wrappers assume the machine is already paired
+- Pairing helper (`setup-rmapi.sh`); the transport wrappers and `check-rmapi-setup.sh` verifier assume the machine is already paired via the README's one-line `rmapi help` flow
 - Full bootstrap dialogue (design-language briefing, lock-file check, resume-vs-fresh prompt); bootstrap-lite ships today
 - Multi-sketch iterations (N rendered sketches plus a trailing legend page, for side-by-side alternatives)
 - Compression of cross-turn state (design-state.md history pruning, archive rollover)
@@ -72,7 +72,7 @@ auto-detecting the user's tablet back-out.
 - `composite-annotated.sh` -- bash wrapper for the composite step; reuses the shared venv.
 - `render/prerender-pages.py` -- PyMuPDF-based PDF-to-PNG rasterizer; invoked by `render-html-to-pdf.sh`'s `--prerender-out` flag to feed the verify-before-push slice.
 - `bootstrap-session.sh` -- creates the per-session local folder skeleton and primes `design-state.md` with frontmatter + `## Iteration 00`. Idempotent.
-- `check-rmapi-setup.sh`: read-only verifier for the rmapi auth-bootstrap security posture (rmapi on PATH, auth, deny-rule, hook). Safe for Claude to invoke.
+- `check-rmapi-setup.sh`: read-only verifier for the rmapi auth-bootstrap security posture (rmapi on PATH, auth, hook). Safe for Claude to invoke.
 - `parse-interpret-json.mjs` -- shell-callable JSON parse + validate helper for the interpret subagent's response. Authoritative schema lives at the top of this file.
 - `parse-verify-response.mjs` -- shell-callable JSON parse + validate helper for the verify subagent's response (`{verdict, reason}` with asymmetric-reason rule). Authoritative schema lives at the top of this file.
 - `derive-calibration.sh` -- bash wrapper for the one-time calibration ceremony; runs derive_calibration.py against a pulled five-dot calibration rm-dir to produce calibration.json.
