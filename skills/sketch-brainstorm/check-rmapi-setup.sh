@@ -4,12 +4,11 @@
 # Read-only verifier for the auth-bootstrap security posture:
 #   1) rmapi on PATH
 #   2) rmapi authenticated (rmapi -ni ls succeeds)
-#   3) deny-rule for rmapi conf installed in ~/.claude/settings.json
-#   4) PreToolUse hook installed in ~/.claude/settings.json
+#   3) PreToolUse hook installed in ~/.claude/settings.json
 #
 # Exit codes:
-#   0 = all four checks pass
-#   1 = actionable install gap (auth, deny-rule, hook, or settings.json absent)
+#   0 = all three checks pass
+#   1 = actionable install gap (auth, hook, or settings.json absent)
 #   2 = structural prerequisite error (jq absent, settings.json malformed)
 #
 # Strictly read-only; safe for Claude to invoke on demand.
@@ -38,28 +37,21 @@ if [[ $rmapi_found == true ]]; then
   fi
 fi
 
-# Prerequisite for Checks 3 and 4: jq must be on PATH.
+# Prerequisite for Check 3: jq must be on PATH.
 if ! command -v jq >/dev/null 2>&1; then
-  printf '[ERROR] jq required (needed for checks 3 and 4)\n'
+  printf '[ERROR] jq required (needed for check 3)\n'
   exit 2
 fi
 
-# Check 3: deny-rule installed in ~/.claude/settings.json
-# Check 4: PreToolUse hook referencing rmapi-conf-deny-hook installed
+# Check 3: PreToolUse hook referencing rmapi-conf-deny-hook installed
 settings="$HOME/.claude/settings.json"
 if [[ ! -f "$settings" ]]; then
-  printf '[FAIL] settings.json not found at ~/.claude/settings.json (deny-rule and hook cannot be checked; see README)\n'
+  printf '[FAIL] settings.json not found at ~/.claude/settings.json (hook cannot be checked; see README)\n'
   fail_count=$((fail_count + 1))
 else
   if ! jq -e . "$settings" >/dev/null 2>&1; then
-    printf '[ERROR] settings.json is not valid JSON (deny-rule and hook cannot be checked; repair the file first)\n'
+    printf '[ERROR] settings.json is not valid JSON (hook cannot be checked; repair the file first)\n'
     exit 2
-  fi
-  if jq -e '(.permissions.deny // []) | map(select(test("rmapi"; "i"))) | length > 0' "$settings" >/dev/null 2>&1; then
-    printf '[PASS] deny-rule for rmapi conf installed in ~/.claude/settings.json\n'
-  else
-    printf '[FAIL] deny-rule for rmapi conf not found in ~/.claude/settings.json (see README)\n'
-    fail_count=$((fail_count + 1))
   fi
   # Must stay in sync with the hook's filename (rmapi-conf-deny-hook.sh).
   if jq -e '(.hooks.PreToolUse // []) | map(.hooks // [] | map(.command // "")) | flatten | map(select(test("rmapi-conf-deny-hook"))) | length > 0' "$settings" >/dev/null 2>&1; then

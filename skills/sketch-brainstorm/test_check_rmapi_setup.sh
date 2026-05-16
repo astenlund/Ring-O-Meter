@@ -55,37 +55,11 @@ grep -q '\[FAIL\] rmapi authentication' <<<"$out" || { echo "fail: missing Check
 rm -rf "$TMP2"
 echo "OK: verifier Check 2 (auth) test passed"
 
-# Test: settings.json with deny-rule containing "rmapi" -> Check 3 PASS
-TMP3="$(mktemp -d)"
-mkdir -p "$TMP3/.claude"
-cat >"$TMP3/.claude/settings.json" <<'EOF'
-{
-  "permissions": {
-    "deny": ["Read(//$HOME/.config/rmapi/**)"]
-  }
-}
-EOF
-out=$(HOME="$TMP3" bash "$CHECK" 2>&1 || true)
-grep -q '\[PASS\] deny-rule' <<<"$out" || { echo "fail: missing Check 3 PASS; got: $out" >&2; exit 1; }
-
-# Test: settings.json without rmapi deny entries -> Check 3 FAIL
-TMP4="$(mktemp -d)"
-mkdir -p "$TMP4/.claude"
-cat >"$TMP4/.claude/settings.json" <<'EOF'
-{"permissions": {"deny": ["Read(//$HOME/.ssh/**)"]}}
-EOF
-out=$(HOME="$TMP4" bash "$CHECK" 2>&1 || true)
-grep -q '\[FAIL\] deny-rule' <<<"$out" || { echo "fail: missing Check 3 FAIL; got: $out" >&2; exit 1; }
-
-rm -rf "$TMP3" "$TMP4"
-echo "OK: verifier Check 3 (deny-rule) test passed"
-
-# Test: settings.json with hook stanza referencing rmapi-conf-deny-hook.sh -> Check 4 PASS
+# Test: settings.json with hook stanza referencing rmapi-conf-deny-hook.sh -> Check 3 PASS
 TMP5="$(mktemp -d)"
 mkdir -p "$TMP5/.claude"
 cat >"$TMP5/.claude/settings.json" <<'EOF'
 {
-  "permissions": {"deny": ["Read(//$HOME/.config/rmapi/**)"]},
   "hooks": {
     "PreToolUse": [
       {"matcher": "Bash", "hooks": [{"type": "command", "command": "bash $HOME/.claude/skills/sketch-brainstorm/rmapi-conf-deny-hook.sh"}]}
@@ -94,19 +68,19 @@ cat >"$TMP5/.claude/settings.json" <<'EOF'
 }
 EOF
 out=$(HOME="$TMP5" bash "$CHECK" 2>&1 || true)
-grep -q '\[PASS\] PreToolUse hook' <<<"$out" || { echo "fail: missing Check 4 PASS; got: $out" >&2; exit 1; }
+grep -q '\[PASS\] PreToolUse hook' <<<"$out" || { echo "fail: missing Check 3 PASS; got: $out" >&2; exit 1; }
 
-# Test: settings.json without rmapi hook -> Check 4 FAIL
+# Test: settings.json without rmapi hook -> Check 3 FAIL
 TMP6="$(mktemp -d)"
 mkdir -p "$TMP6/.claude"
 cat >"$TMP6/.claude/settings.json" <<'EOF'
-{"permissions": {"deny": ["Read(//$HOME/.config/rmapi/**)"]}, "hooks": {}}
+{"hooks": {}}
 EOF
 out=$(HOME="$TMP6" bash "$CHECK" 2>&1 || true)
-grep -q '\[FAIL\] PreToolUse hook' <<<"$out" || { echo "fail: missing Check 4 FAIL; got: $out" >&2; exit 1; }
+grep -q '\[FAIL\] PreToolUse hook' <<<"$out" || { echo "fail: missing Check 3 FAIL; got: $out" >&2; exit 1; }
 
 rm -rf "$TMP5" "$TMP6"
-echo "OK: verifier Check 4 (hook) test passed"
+echo "OK: verifier Check 3 (hook) test passed"
 
 # Test: jq absent -> ERROR exit 2
 TMP7="$(mktemp -d)"
@@ -135,7 +109,7 @@ grep -q '\[ERROR\] jq required' <<<"$out" || { echo "fail: missing jq-absent ERR
 rm -rf "$TMP7"
 echo "OK: verifier jq-absent test passed"
 
-# Test: settings.json absent -> Checks 3/4 FAIL with "not found", exit 1
+# Test: settings.json absent -> Check 3 FAIL with "not found", exit 1
 TMP8="$(mktemp -d)"  # no .claude/settings.json inside
 out=$(HOME="$TMP8" bash "$CHECK" 2>&1 || true)
 ec=$(HOME="$TMP8" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
@@ -157,12 +131,11 @@ grep -q '\[ERROR\] settings.json is not valid JSON' <<<"$out" || { echo "fail: m
 rm -rf "$TMP9"
 echo "OK: verifier malformed-settings.json test passed"
 
-# Test: all four checks pass -> exit 0
+# Test: all three checks pass -> exit 0
 TMP10="$(mktemp -d)"
 mkdir -p "$TMP10/.claude"
 cat >"$TMP10/.claude/settings.json" <<'EOF'
 {
-  "permissions": {"deny": ["Read(//$HOME/.config/rmapi/**)"]},
   "hooks": {
     "PreToolUse": [
       {"matcher": "Bash", "hooks": [{"type": "command", "command": "bash $HOME/.claude/skills/sketch-brainstorm/rmapi-conf-deny-hook.sh"}]}
@@ -186,9 +159,9 @@ chmod +x "$TMP10/rmapi"
 out=$(HOME="$TMP10" PATH="$TMP10:$PATH" bash "$CHECK" 2>&1)
 ec=$?
 [[ "$ec" == "0" ]] || { echo "fail: all-pass scenario should exit 0, got $ec; output: $out" >&2; exit 1; }
-# Should have exactly four PASS lines.
+# Should have exactly three PASS lines.
 pass_count=$(grep -c '^\[PASS\]' <<<"$out" || echo 0)
-[[ "$pass_count" == "4" ]] || { echo "fail: expected 4 PASS lines, got $pass_count; output: $out" >&2; exit 1; }
+[[ "$pass_count" == "3" ]] || { echo "fail: expected 3 PASS lines, got $pass_count; output: $out" >&2; exit 1; }
 
 rm -rf "$TMP10"
 echo "OK: verifier all-pass integration test passed"

@@ -62,7 +62,9 @@ The full design is documented in the host project's feature backlog at `.claude/
 
 ## Installing rmapi for sketch-brainstorm
 
-This skill assumes [rmapi](https://github.com/ddvk/rmapi) v0.0.33+ is installed and paired to your reMarkable account, and that Claude Code is configured with a two-layer security boundary (a deny-rule + PreToolUse hook) that prevents Claude from reading the rmapi token. The two layers are independent: the hook is the primary enforcement layer on all platforms; the deny-rule is an additive early-rejection on Windows.
+This skill assumes [rmapi](https://github.com/ddvk/rmapi) v0.0.33+ is installed and paired to your reMarkable account, and that Claude Code is configured with a PreToolUse hook that prevents Claude from reading the rmapi token by intercepting any tool call whose command, file path, or grep path contains the literal substring `rmapi.conf`.
+
+Why hook-only and not also a `permissions.deny` rule: Claude Code's deny patterns match the literal command/path string Claude writes, with no environment-variable expansion. A pattern like `Bash(*$APPDATA*rmapi*conf*)` blocks the unexpanded form (`cat $APPDATA/rmapi/rmapi.conf`) but lets the expanded form (`cat C:/Users/<you>/AppData/Roaming/rmapi/rmapi.conf`) fall through, which is the form Claude almost always writes. Verified empirically 2026-05-17 by installing a marker-based deny-rule and observing the expanded path run unblocked. The hook's regex match on `rmapi.conf` is OS-agnostic and covers both forms, so adding a partly-effective deny-rule on top would just be cosmetic depth-in-defense.
 
 ### 1. Pair rmapi
 
@@ -78,26 +80,12 @@ On an unpaired machine, rmapi prompts for a one-time activation code from <https
 
 **Destructive-rotation caveat:** rmapi v0.0.33 zeroes both tokens in its conf to `""` on a failed authentication attempt. If you are deliberately rotating a token (not just re-pairing after expiry), back the existing conf up first: a typo in the activation code leaves the conf un-paireable until you restore the backup. Routine re-pairs after an expiry do not need this - the conf is already invalid.
 
-### 2. Install the deny-rule and PreToolUse hook
+### 2. Install the PreToolUse hook
 
-Open `~/.claude/settings.json`. If it does not exist, create it from the snippet below. If it exists with other entries, **merge** the `permissions.deny` array and the `hooks.PreToolUse` array (do not replace them). The combined snippet:
+Open `~/.claude/settings.json`. If it does not exist, create it from the snippet below. If it exists with other entries, **merge** the `hooks.PreToolUse` array (do not replace it):
 
 ```json
 {
-  "permissions": {
-    "deny": [
-      "Read(//$APPDATA/rmapi/**)",
-      "Edit(//$APPDATA/rmapi/**)",
-      "Write(//$APPDATA/rmapi/**)",
-      "Grep(//$APPDATA/rmapi/**)",
-      "Bash(*$APPDATA*rmapi*conf*)",
-      "Read(//$HOME/.config/rmapi/**)",
-      "Edit(//$HOME/.config/rmapi/**)",
-      "Write(//$HOME/.config/rmapi/**)",
-      "Grep(//$HOME/.config/rmapi/**)",
-      "Bash(*$HOME/.config/rmapi*conf*)"
-    ]
-  },
   "hooks": {
     "PreToolUse": [
       {
@@ -120,8 +108,6 @@ Open `~/.claude/settings.json`. If it does not exist, create it from the snippet
 "command": "bash <absolute-path-to-repo>/skills/sketch-brainstorm/rmapi-conf-deny-hook.sh"
 ```
 
-Users on macOS/Linux can keep all deny entries (the Windows ones are inert when `$APPDATA` is unset) or trim to just the second cluster; both are correct.
-
 ### 3. Verify
 
 Run:
@@ -130,7 +116,7 @@ Run:
 bash <skill-path>/check-rmapi-setup.sh
 ```
 
-It prints one `[PASS]` / `[FAIL]` / `[ERROR]` line per check and exits 0 if all four pass. Exit codes: 0 = all pass; 1 = at least one check fails (actionable install gap); 2 = structural prerequisite error (jq missing, settings.json malformed).
+It prints one `[PASS]` / `[FAIL]` / `[ERROR]` line per check and exits 0 if all three pass. Exit codes: 0 = all pass; 1 = at least one check fails (actionable install gap); 2 = structural prerequisite error (jq missing, settings.json malformed).
 
 ## rmapi quirks observed in practice
 
@@ -187,7 +173,7 @@ It prints one `[PASS]` / `[FAIL]` / `[ERROR]` line per check and exits 0 if all 
 - `composite-annotated.sh` -- bash wrapper for the composite step.
 - `render/prerender-pages.py` -- PyMuPDF-based PDF-to-PNG rasterizer; invoked by `render-html-to-pdf.sh`'s `--prerender-out` flag.
 - `bootstrap-session.sh` -- creates the per-session local folder skeleton and primes `design-state.md` (including `current_mode: color` frontmatter); idempotent.
-- `check-rmapi-setup.sh`: read-only four-check verifier (rmapi on PATH, conf valid, deny-rule installed, PreToolUse hook installed). Exit 0/1/2 with rationale. Safe for Claude to invoke on demand. See "Installing rmapi for sketch-brainstorm" above and the design rationale in `.claude/features/remarkable-tablet-brainstorm.md` (Transport section).
+- `check-rmapi-setup.sh`: read-only three-check verifier (rmapi on PATH, conf valid, PreToolUse hook installed). Exit 0/1/2 with rationale. Safe for Claude to invoke on demand. See "Installing rmapi for sketch-brainstorm" above and the design rationale in `.claude/features/remarkable-tablet-brainstorm.md` (Transport section).
 - `parse-interpret-json.mjs` -- shell-callable JSON parse + validate helper for the interpret subagent's response.
 - `parse-verify-response.mjs` -- shell-callable JSON parse + validate helper for the verify subagent's response (`{verdict, reason}` with asymmetric-reason rule + forward-compat unknown-field tolerance).
 - `render/test_composite_annotated.py` -- unit tests covering: page-pattern regex and numeric sort (`composite-annotated.py`); resolution-constants invariant between composite and prerender-pages modules; `collect_lines` single-point-stroke contract (`_rm_strokes.py`).
