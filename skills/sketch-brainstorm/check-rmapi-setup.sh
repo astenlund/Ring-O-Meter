@@ -26,6 +26,14 @@ else
   fail_count=$((fail_count + 1))
 fi
 
-# (Checks 2-4 added in following tasks.)
+# Check 2: rmapi authenticated
+if command -v rmapi >/dev/null 2>&1; then
+  if rmapi -ni ls >/dev/null 2>&1; then
+    printf '[PASS] rmapi authenticated (rmapi -ni ls returned)\n'
+  else
+    printf '[FAIL] rmapi authentication failed (run `rmapi help` to re-pair; see README)\n'
+    fail_count=$((fail_count + 1))
+  fi
+fi
 
 [[ $fail_count -eq 0 ]] && exit 0 || exit 1
