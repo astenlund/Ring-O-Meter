@@ -37,6 +37,18 @@ def _run_with_stdout(**kwargs):
     return rc, buf.getvalue()
 
 
+# Verbatim stderr captured 2026-05-16 from `rmapi -ni refresh` against a
+# sandboxed bogus token. Single source of truth for three test fixtures:
+# ClassifierTests (primary regression canary), RunWithRetryTests
+# (verifies non-retryable short-circuit), and ErrorEmissionTests (verifies
+# ERROR:auth-expired emission). When rmapi upgrades change the wording, the
+# canary test fails first; update this constant and AUTH_EXPIRED_STDERR_PATTERNS
+# in poll_tablet.py in lockstep, then re-probe to capture the new verbatim string.
+_RMAPI_AUTH_EXPIRED_STDERR = (
+    "ERROR: 2026/05/16 16:17:57 auth.go:30: missing token, not asking, aborting\n"
+)
+
+
 class LockFileTests(unittest.TestCase):
     """Atomic write contract for poller.lock."""
 
@@ -435,7 +447,7 @@ class ClassifierTests(unittest.TestCase):
         exc = subprocess.CalledProcessError(
             returncode=1,
             cmd=["rmapi", "-ni", "refresh"],
-            stderr="ERROR: 2026/05/16 16:17:57 auth.go:30: missing token, not asking, aborting\n",
+            stderr=_RMAPI_AUTH_EXPIRED_STDERR,
         )
 
         # Act
@@ -594,7 +606,7 @@ class RunWithRetryTests(unittest.TestCase):
         original = subprocess.CalledProcessError(
             returncode=1,
             cmd=["rmapi", "-ni", "stat"],
-            stderr="ERROR: 2026/05/16 16:17:57 auth.go:30: missing token, not asking, aborting\n",
+            stderr=_RMAPI_AUTH_EXPIRED_STDERR,
         )
 
         def op():
@@ -817,7 +829,7 @@ class ErrorEmissionTests(unittest.TestCase):
                     raise subprocess.CalledProcessError(
                         returncode=1,
                         cmd=["rmapi", "-ni", "stat"],
-                        stderr="ERROR: 2026/05/16 16:17:57 auth.go:30: missing token, not asking, aborting\n",
+                        stderr=_RMAPI_AUTH_EXPIRED_STDERR,
                     )
 
                 return poll_tablet.Signature(version=tick["n"], modified_client=str(tick["n"]))
