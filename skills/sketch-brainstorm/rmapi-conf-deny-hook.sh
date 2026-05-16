@@ -19,7 +19,8 @@ if ! tool_command=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/
 fi
 
 file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // ""' 2>/dev/null || echo "")
-haystack="$tool_command $file_path"
+grep_path=$(printf '%s' "$input" | jq -r '.tool_input.path // ""' 2>/dev/null || echo "")
+haystack="$tool_command $file_path $grep_path"
 
 if printf '%s' "$haystack" | grep -iq 'rmapi\.conf'; then
   printf 'Blocked: rmapi conf access\n' >&2
