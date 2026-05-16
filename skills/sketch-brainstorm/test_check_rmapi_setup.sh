@@ -129,3 +129,13 @@ grep -q '\[ERROR\] jq required' <<<"$out" || { echo "fail: missing jq-absent ERR
 
 rm -rf "$TMP7"
 echo "OK: verifier jq-absent test passed"
+
+# Test: settings.json absent -> Checks 3/4 FAIL with "not found", exit 1
+TMP8="$(mktemp -d)"  # no .claude/settings.json inside
+out=$(HOME="$TMP8" bash "$CHECK" 2>&1 || true)
+ec=$(HOME="$TMP8" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
+grep -q '\[FAIL\] settings.json not found' <<<"$out" || { echo "fail: missing settings.json-not-found FAIL; got: $out" >&2; exit 1; }
+[[ "$ec" == "1" ]] || { echo "fail: settings.json-absent should exit 1, got $ec" >&2; exit 1; }
+
+rm -rf "$TMP8"
+echo "OK: verifier settings.json-absent test passed"
