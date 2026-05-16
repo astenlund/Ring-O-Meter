@@ -17,17 +17,19 @@
 set -uo pipefail
 
 fail_count=0
+rmapi_found=false
 
 # Check 1: rmapi on PATH
 if command -v rmapi >/dev/null 2>&1; then
+  rmapi_found=true
   printf '[PASS] rmapi binary on PATH (%s)\n' "$(rmapi --version 2>/dev/null | head -1 || echo unknown)"
 else
   printf '[FAIL] rmapi binary not on PATH\n'
   fail_count=$((fail_count + 1))
 fi
 
-# Check 2: rmapi authenticated
-if command -v rmapi >/dev/null 2>&1; then
+# Check 2: rmapi authenticated (skipped silently if Check 1 failed)
+if [[ $rmapi_found == true ]]; then
   if rmapi -ni ls >/dev/null 2>&1; then
     printf '[PASS] rmapi authenticated (rmapi -ni ls returned)\n'
   else
@@ -59,6 +61,7 @@ else
     printf '[FAIL] deny-rule for rmapi conf not found in ~/.claude/settings.json (see README)\n'
     fail_count=$((fail_count + 1))
   fi
+  # Must stay in sync with the hook's filename (rmapi-conf-deny-hook.sh).
   if jq -e '(.hooks.PreToolUse // []) | map(.hooks // [] | map(.command // "")) | flatten | map(select(test("rmapi-conf-deny-hook"))) | length > 0' "$settings" >/dev/null 2>&1; then
     printf '[PASS] PreToolUse hook for rmapi-conf-deny-hook.sh installed\n'
   else

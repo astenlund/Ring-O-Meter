@@ -119,8 +119,13 @@ EOF
 chmod +x "$TMP7/rmapi"
 
 # Filter jq's directory out of PATH (analogous to NO_RMAPI_PATH in the first test).
-JQ_DIR=$(dirname "$(command -v jq)")
-NO_JQ_PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$JQ_DIR" | tr '\n' ':')
+JQ_BIN="$(command -v jq 2>/dev/null || true)"
+if [[ -n "$JQ_BIN" ]]; then
+  JQ_DIR="$(dirname "$JQ_BIN")"
+  NO_JQ_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$JQ_DIR" | tr '\n' ':')"
+else
+  NO_JQ_PATH="$TMP7:$PATH"
+fi
 
 out=$(PATH="$TMP7:$NO_JQ_PATH" bash "$CHECK" 2>&1 || true)
 ec=$(PATH="$TMP7:$NO_JQ_PATH" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
@@ -176,10 +181,11 @@ exit 0
 EOF
 chmod +x "$TMP10/rmapi"
 
-ec=$(HOME="$TMP10" PATH="$TMP10:$PATH" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
-[[ "$ec" == "0" ]] || { echo "fail: all-pass scenario should exit 0, got $ec" >&2; exit 1; }
-
-out=$(HOME="$TMP10" PATH="$TMP10:$PATH" bash "$CHECK" 2>&1 || true)
+# All-pass: capture both output and exit code from one invocation (this
+# scenario always exits 0, so $? is unambiguous after the subshell).
+out=$(HOME="$TMP10" PATH="$TMP10:$PATH" bash "$CHECK" 2>&1)
+ec=$?
+[[ "$ec" == "0" ]] || { echo "fail: all-pass scenario should exit 0, got $ec; output: $out" >&2; exit 1; }
 # Should have exactly four PASS lines.
 pass_count=$(grep -c '^\[PASS\]' <<<"$out" || echo 0)
 [[ "$pass_count" == "4" ]] || { echo "fail: expected 4 PASS lines, got $pass_count; output: $out" >&2; exit 1; }
