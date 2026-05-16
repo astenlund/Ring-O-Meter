@@ -11,6 +11,7 @@ or:
 """
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -409,6 +410,439 @@ class RunLifecycleTests(unittest.TestCase):
             self.assertIn("STOP:00", out)
             self.assertNotIn("READY:00", out)
             self.assertFalse(lock.exists())
+
+
+class ClassifierTests(unittest.TestCase):
+    """classify_subprocess_error returns (context, retryable) per the plan's table."""
+
+    def test_auth_expired_via_401_substring(self):
+        # Arrange
+        exc = subprocess.CalledProcessError(
+            returncode=1, cmd=["rmapi", "refresh"], stderr="HTTP 401 from cloud",
+        )
+
+        # Act
+        ctx, retryable = poll_tablet.classify_subprocess_error("refresh", exc)
+
+        # Assert
+        self.assertEqual(ctx, "auth-expired")
+        self.assertFalse(retryable)
+
+    def test_auth_expired_via_unauthor_substring_case_insensitive(self):
+        # Arrange
+        exc = subprocess.CalledProcessError(
+            returncode=1, cmd=["rmapi", "stat"], stderr="Unauthorized: token expired",
+        )
+
+        # Act
+        ctx, retryable = poll_tablet.classify_subprocess_error("stat", exc)
+
+        # Assert
+        self.assertEqual(ctx, "auth-expired")
+        self.assertFalse(retryable)
+
+    def test_doc_missing_substring_in_pull_stage(self):
+        # Arrange
+        exc = subprocess.CalledProcessError(
+            returncode=1, cmd=["rmapi", "get"], stderr="rmapi: file doesn't exist on remote",
+        )
+
+        # Act
+        ctx, retryable = poll_tablet.classify_subprocess_error("pull", exc)
+
+        # Assert
+        self.assertEqual(ctx, "rmapi-pull-failed-doc-missing")
+        self.assertFalse(retryable)
+
+    def test_called_process_error_per_stage_table(self):
+        # Arrange
+        cases = [
+            ("refresh", "rmapi-refresh-failed"),
+            ("stat", "rmapi-stat-failed"),
+            ("pull", "rmapi-pull-failed"),
+            ("detect", "detect-failed"),
+        ]
+        for stage, expected_ctx in cases:
+            with self.subTest(stage=stage):
+                exc = subprocess.CalledProcessError(
+                    returncode=1, cmd=["rmapi", stage], stderr="connection refused",
+                )
+
+                # Act
+                ctx, retryable = poll_tablet.classify_subprocess_error(stage, exc)
+
+                # Assert
+                self.assertEqual(ctx, expected_ctx)
+                self.assertTrue(retryable)
+
+    def test_json_decode_error_classifies_parse_failed(self):
+        # Arrange
+        exc = json.JSONDecodeError("Expecting value", "bad", 0)
+
+        # Act
+        ctx, retryable = poll_tablet.classify_subprocess_error("stat", exc)
+
+        # Assert
+        self.assertEqual(ctx, "parse-failed")
+        self.assertTrue(retryable)
+
+    def test_runtime_error_in_pull_classifies_shape_invalid(self):
+        # Arrange
+        exc = RuntimeError("pull-from-tablet.sh produced no output")
+
+        # Act
+        ctx, retryable = poll_tablet.classify_subprocess_error("pull", exc)
+
+        # Assert
+        self.assertEqual(ctx, "pull-shape-invalid")
+        self.assertTrue(retryable)
+
+    def test_os_error_classifies_subprocess_error(self):
+        # Arrange
+        exc = OSError("permission denied")
+
+        # Act
+        ctx, retryable = poll_tablet.classify_subprocess_error("pull", exc)
+
+        # Assert
+        self.assertEqual(ctx, "subprocess-error")
+        self.assertTrue(retryable)
+
+    def test_none_stderr_does_not_crash(self):
+        """CalledProcessError with no captured stderr still classifies cleanly."""
+        # Arrange: default constructor leaves stderr=None
+        exc = subprocess.CalledProcessError(returncode=1, cmd=["rmapi", "stat"])
+
+        # Act
+        ctx, retryable = poll_tablet.classify_subprocess_error("stat", exc)
+
+        # Assert: falls through to generic stage classification, no crash
+        self.assertEqual(ctx, "rmapi-stat-failed")
+        self.assertTrue(retryable)
+
+
+class RunWithRetryTests(unittest.TestCase):
+    """_run_with_retry retries retryable ops with backoff; raises on exhaustion or non-retryable."""
+
+    def test_succeeds_on_first_attempt(self):
+        # Arrange
+        calls = {"n": 0}
+
+        def op():
+            calls["n"] += 1
+
+            return "ok"
+
+        sleeps = []
+
+        # Act
+        result = poll_tablet._run_with_retry(op, "stat", sleep_fn=sleeps.append)
+
+        # Assert
+        self.assertEqual(result, "ok")
+        self.assertEqual(calls["n"], 1)
+        self.assertEqual(sleeps, [], "successful op must not sleep")
+
+    def test_retries_then_succeeds(self):
+        # Arrange
+        calls = {"n": 0}
+
+        def op():
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise subprocess.CalledProcessError(
+                    returncode=1, cmd=["rmapi", "stat"], stderr="timeout",
+                )
+
+            return "ok"
+
+        sleeps = []
+
+        # Act
+        result = poll_tablet._run_with_retry(op, "stat", sleep_fn=sleeps.append)
+
+        # Assert: 2 failures + 1 success means 2 sleeps from BACKOFF_SLEEPS prefix
+        self.assertEqual(result, "ok")
+        self.assertEqual(calls["n"], 3)
+        self.assertEqual(sleeps, list(poll_tablet.BACKOFF_SLEEPS[:2]))
+
+    def test_exhaustion_reraises_original_exception(self):
+        # Arrange: always raise; budget exhausts after len(BACKOFF_SLEEPS) retries
+        original = subprocess.CalledProcessError(
+            returncode=1, cmd=["rmapi", "stat"], stderr="timeout",
+        )
+
+        def op():
+            raise original
+
+        sleeps = []
+
+        # Act + Assert: bare re-raise preserves the original instance
+        with self.assertRaises(subprocess.CalledProcessError) as ctx:
+            poll_tablet._run_with_retry(op, "stat", sleep_fn=sleeps.append)
+        self.assertIs(ctx.exception, original)
+        # Sleep count equals the backoff schedule length (one sleep per retry attempt)
+        self.assertEqual(sleeps, list(poll_tablet.BACKOFF_SLEEPS))
+
+    def test_non_retryable_short_circuits_with_no_sleeps(self):
+        """Auth-expired classification skips the backoff loop entirely."""
+        # Arrange
+        original = subprocess.CalledProcessError(
+            returncode=1, cmd=["rmapi", "stat"], stderr="401 Unauthorized",
+        )
+
+        def op():
+            raise original
+
+        sleeps = []
+
+        # Act + Assert
+        with self.assertRaises(subprocess.CalledProcessError) as ctx:
+            poll_tablet._run_with_retry(op, "stat", sleep_fn=sleeps.append)
+        self.assertIs(ctx.exception, original)
+        self.assertEqual(sleeps, [], "non-retryable must not enter the backoff loop")
+
+
+class ErrorEmissionTests(unittest.TestCase):
+    """run() emits ERROR lines per the spec, with suppression and recovery semantics."""
+
+    def _run(self, **kwargs):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = poll_tablet.run(**kwargs)
+
+        return rc, buf.getvalue()
+
+    def test_emits_error_for_retryable_exhaustion_then_recovers(self):
+        """Retryable failure exhausts the budget on loop iter 1, then loop iter 2 succeeds and READY fires."""
+        # Arrange: retry exhaustion calls op() 1 + len(BACKOFF_SLEEPS) = 5 times.
+        # Initial fetch (tick 1) succeeds; loop iter 1's signature_fn raises 5 consecutive times (ticks 2-6);
+        # loop iter 2's signature_fn succeeds (tick 7) and detect fires READY.
+        budget = 1 + len(poll_tablet.BACKOFF_SLEEPS)
+        first_fail = 2
+        last_fail = first_fail + budget - 1
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / "poller.lock"
+            pulls = Path(tmp) / "pulls"
+            tick = {"n": 0}
+
+            def signature_fn(_doc):
+                tick["n"] += 1
+                if first_fail <= tick["n"] <= last_fail:
+                    raise subprocess.CalledProcessError(
+                        returncode=1, cmd=["rmapi", "stat"], stderr="timeout",
+                    )
+
+                return poll_tablet.Signature(version=tick["n"], modified_client=str(tick["n"]))
+
+            def pull_detect_fn(_doc, _dir):
+                return poll_tablet.DetectionResult(
+                    finish_turn_marked=True, end_session_marked=False, mode_winner=None,
+                )
+
+            # Act
+            rc, out = self._run(
+                cloud_doc="x",
+                iter_nn="00",
+                pulls_dir=pulls,
+                lock_file=lock,
+                poll_interval_s=0,
+                signature_fn=signature_fn,
+                pull_detect_fn=pull_detect_fn,
+                sleep_fn=lambda _: None,
+            )
+
+            # Assert
+            self.assertEqual(rc, 0)
+            error_lines = [line for line in out.splitlines() if line.startswith("ERROR:")]
+            self.assertEqual(len(error_lines), 1, f"got {error_lines}")
+            self.assertTrue(error_lines[0].startswith("ERROR:rmapi-stat-failed:"))
+            self.assertIn("timeout", error_lines[0])
+            self.assertIn("READY:00", out)
+            self.assertFalse(lock.exists())
+
+    def test_suppresses_repeated_identical_errors(self):
+        """Two back-to-back exhaustions with the same context emit ERROR only once."""
+        # Arrange: each exhausted iter consumes `budget` ticks. Iter1 + iter2 both exhaust;
+        # iter3 succeeds and fires READY.
+        budget = 1 + len(poll_tablet.BACKOFF_SLEEPS)
+        success_tick = 1 + 2 * budget + 1  # initial fetch + 2 exhausted iters + 1 success
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / "poller.lock"
+            pulls = Path(tmp) / "pulls"
+            tick = {"n": 0}
+
+            def signature_fn(_doc):
+                tick["n"] += 1
+                if 2 <= tick["n"] < success_tick:
+                    raise subprocess.CalledProcessError(
+                        returncode=1, cmd=["rmapi", "stat"], stderr="timeout",
+                    )
+
+                return poll_tablet.Signature(version=tick["n"], modified_client=str(tick["n"]))
+
+            def pull_detect_fn(_doc, _dir):
+                return poll_tablet.DetectionResult(
+                    finish_turn_marked=True, end_session_marked=False, mode_winner=None,
+                )
+
+            # Act
+            _rc, out = self._run(
+                cloud_doc="x",
+                iter_nn="00",
+                pulls_dir=pulls,
+                lock_file=lock,
+                poll_interval_s=0,
+                signature_fn=signature_fn,
+                pull_detect_fn=pull_detect_fn,
+                sleep_fn=lambda _: None,
+            )
+
+            # Assert: exactly one ERROR despite two consecutive identical-context exhaustions
+            error_lines = [line for line in out.splitlines() if line.startswith("ERROR:")]
+            self.assertEqual(len(error_lines), 1, f"got {error_lines}")
+            self.assertIn("READY:00", out)
+
+    def test_resets_suppression_after_clean_success_tick(self):
+        """A fully clean tick between two identical exhaustions must re-emit the second ERROR."""
+        # Arrange: iter 1 exhausts (ERROR #1), iter 2 succeeds with no marks (suppression reset),
+        # iter 3 exhausts again (ERROR #2), iter 4 succeeds with no marks, iter 5 fires READY.
+        budget = 1 + len(poll_tablet.BACKOFF_SLEEPS)
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / "poller.lock"
+            pulls = Path(tmp) / "pulls"
+            tick = {"n": 0}
+            # Iter 1 exhaustion: ticks 2..(1+budget) — i.e. 2..6.
+            iter1_range = range(2, 2 + budget)
+            # After iter 1, one success tick at (2+budget) = 7.
+            # Iter 3 exhaustion: ticks (2+budget+1)..(1+2*budget+1) — i.e. 8..12.
+            iter3_first = 2 + budget + 1
+            iter3_range = range(iter3_first, iter3_first + budget)
+            fail_ticks = set(iter1_range) | set(iter3_range)
+            detect_calls = {"n": 0}
+
+            def signature_fn(_doc):
+                tick["n"] += 1
+                if tick["n"] in fail_ticks:
+                    raise subprocess.CalledProcessError(
+                        returncode=1, cmd=["rmapi", "stat"], stderr="timeout",
+                    )
+
+                return poll_tablet.Signature(version=tick["n"], modified_client=str(tick["n"]))
+
+            def pull_detect_fn(_doc, _dir):
+                detect_calls["n"] += 1
+                if detect_calls["n"] >= 3:
+                    return poll_tablet.DetectionResult(
+                        finish_turn_marked=True, end_session_marked=False, mode_winner=None,
+                    )
+
+                return poll_tablet.DetectionResult(
+                    finish_turn_marked=False, end_session_marked=False, mode_winner=None,
+                )
+
+            # Act
+            _rc, out = self._run(
+                cloud_doc="x",
+                iter_nn="00",
+                pulls_dir=pulls,
+                lock_file=lock,
+                poll_interval_s=0,
+                signature_fn=signature_fn,
+                pull_detect_fn=pull_detect_fn,
+                sleep_fn=lambda _: None,
+            )
+
+            # Assert: TWO ERROR lines because the clean tick between them reset suppression
+            error_lines = [line for line in out.splitlines() if line.startswith("ERROR:")]
+            self.assertEqual(len(error_lines), 2, f"got {error_lines}")
+            self.assertIn("READY:00", out)
+
+    def test_initial_fetch_failure_emits_error_then_loop_recovers(self):
+        """Pre-loop fetch exhausts → emits ERROR, loop seeds with empty sig, next tick fires READY."""
+        # Arrange: initial fetch exhaustion calls op() len(BACKOFF_SLEEPS)+1 = 5 times,
+        # consuming ticks 1..5. First successful tick is 6.
+        budget = 1 + len(poll_tablet.BACKOFF_SLEEPS)
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / "poller.lock"
+            pulls = Path(tmp) / "pulls"
+            tick = {"n": 0}
+
+            def signature_fn(_doc):
+                tick["n"] += 1
+                if tick["n"] <= budget:
+                    raise subprocess.CalledProcessError(
+                        returncode=1, cmd=["rmapi", "stat"], stderr="connection refused",
+                    )
+
+                return poll_tablet.Signature(version=tick["n"], modified_client=str(tick["n"]))
+
+            def pull_detect_fn(_doc, _dir):
+                return poll_tablet.DetectionResult(
+                    finish_turn_marked=True, end_session_marked=False, mode_winner=None,
+                )
+
+            # Act
+            rc, out = self._run(
+                cloud_doc="x",
+                iter_nn="00",
+                pulls_dir=pulls,
+                lock_file=lock,
+                poll_interval_s=0,
+                signature_fn=signature_fn,
+                pull_detect_fn=pull_detect_fn,
+                sleep_fn=lambda _: None,
+            )
+
+            # Assert: ERROR from initial fetch exhaustion, then loop recovered to READY
+            self.assertEqual(rc, 0)
+            error_lines = [line for line in out.splitlines() if line.startswith("ERROR:")]
+            self.assertEqual(len(error_lines), 1, f"got {error_lines}")
+            self.assertTrue(error_lines[0].startswith("ERROR:rmapi-stat-failed:"))
+            self.assertIn("READY:00", out)
+
+    def test_auth_expired_short_circuits_to_immediate_error_emission(self):
+        """Non-retryable auth-expired emits ERROR on the first failure with no sleeps."""
+        # Arrange: initial fetch (tick 1) succeeds, loop iter 1 raises auth-expired (tick 2) -
+        # auth-expired is non-retryable, so a single op() call (no retries, no sleeps).
+        # Loop iter 2 (tick 3) succeeds and fires READY.
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / "poller.lock"
+            pulls = Path(tmp) / "pulls"
+            tick = {"n": 0}
+            sleeps = []
+
+            def signature_fn(_doc):
+                tick["n"] += 1
+                if tick["n"] == 2:
+                    raise subprocess.CalledProcessError(
+                        returncode=1, cmd=["rmapi", "stat"], stderr="HTTP 401 Unauthorized",
+                    )
+
+                return poll_tablet.Signature(version=tick["n"], modified_client=str(tick["n"]))
+
+            def pull_detect_fn(_doc, _dir):
+                return poll_tablet.DetectionResult(
+                    finish_turn_marked=True, end_session_marked=False, mode_winner=None,
+                )
+
+            # Act
+            _rc, out = self._run(
+                cloud_doc="x",
+                iter_nn="00",
+                pulls_dir=pulls,
+                lock_file=lock,
+                poll_interval_s=0,
+                signature_fn=signature_fn,
+                pull_detect_fn=pull_detect_fn,
+                sleep_fn=sleeps.append,
+            )
+
+            # Assert: ERROR:auth-expired emitted, zero sleeps for the auth-expired branch
+            error_lines = [line for line in out.splitlines() if line.startswith("ERROR:")]
+            self.assertEqual(len(error_lines), 1, f"got {error_lines}")
+            self.assertTrue(error_lines[0].startswith("ERROR:auth-expired:"))
+            self.assertEqual(sleeps, [], "auth-expired must not trigger backoff sleeps")
 
 
 if __name__ == "__main__":
