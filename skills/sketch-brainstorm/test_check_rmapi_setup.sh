@@ -17,7 +17,7 @@ trap 'rm -rf "$TMP" ${TMP2:+"$TMP2"} ${TMP3:+"$TMP3"} ${TMP4:+"$TMP4"} ${TMP5:+"
 # where bash is not on the default stripped path), so we filter only the directory
 # that owns the real rmapi binary. If rmapi is absent, fall back to an empty-dir
 # PATH element that still keeps the rest of PATH intact.
-RMAPI_BIN="$(which rmapi 2>/dev/null || true)"
+RMAPI_BIN="$(command -v rmapi 2>/dev/null || true)"
 if [[ -n "$RMAPI_BIN" ]]; then
   RMAPI_DIR="$(dirname "$RMAPI_BIN")"
   NO_RMAPI_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$RMAPI_DIR" | tr '\n' ':')"
