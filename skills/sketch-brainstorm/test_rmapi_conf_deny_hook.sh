@@ -17,3 +17,9 @@ ec=$(printf '{"tool_name":"Bash","tool_input":{"command":"cat ~/.config/rmapi/rm
 [[ "$ec" == "2" ]] || { echo "fail: Bash rmapi.conf read should exit 2, got $ec" >&2; exit 1; }
 
 echo "OK: hook Bash-match test passed"
+
+# Test: Read tool with file_path containing rmapi.conf -> exit 2
+ec=$(printf '{"tool_name":"Read","tool_input":{"file_path":"/home/user/.config/rmapi/rmapi.conf"}}' | bash "$HOOK" >/dev/null 2>&1 && echo 0 || echo $?)
+[[ "$ec" == "2" ]] || { echo "fail: Read of rmapi.conf should exit 2, got $ec" >&2; exit 1; }
+
+echo "OK: hook Read-file_path test passed"
