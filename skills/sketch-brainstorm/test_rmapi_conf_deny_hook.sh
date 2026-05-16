@@ -57,3 +57,32 @@ ec=$(printf '' | bash "$HOOK" >/dev/null 2>&1 && echo 0 || echo $?)
 [[ "$ec" == "0" ]] || { echo "fail: empty stdin should exit 0, got $ec" >&2; exit 1; }
 
 echo "OK: hook fail-open tests passed"
+
+# Test: audit log entry created on block
+# The hook accepts an optional positional arg for the audit log path; the
+# tests use it for hermetic isolation. Production callers (Claude Code's
+# PreToolUse harness) pass no args, so the hook falls back to its default
+# path.
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+printf '{"tool_name":"Bash","tool_input":{"command":"cat ~/.config/rmapi/rmapi.conf"}}' | \
+  bash "$HOOK" "$TMP/audit.log" >/dev/null 2>&1 || true
+[[ -f "$TMP/audit.log" ]] || { echo "fail: audit log not created" >&2; exit 1; }
+grep -q "rmapi.conf" "$TMP/audit.log" || { echo "fail: audit log missing command excerpt" >&2; exit 1; }
+
+echo "OK: hook audit log creation test passed"
+
+# Test: exit 2 fires even when audit log path is unwritable
+ec=$(printf '{"tool_name":"Bash","tool_input":{"command":"cat ~/.config/rmapi/rmapi.conf"}}' | \
+       bash "$HOOK" "/nonexistent/dir/that/cannot/be/created/audit.log" >/dev/null 2>&1 && echo 0 || echo $?)
+[[ "$ec" == "2" ]] || { echo "fail: hook must exit 2 even when log write fails, got $ec" >&2; exit 1; }
+
+echo "OK: hook exit-2-on-unwritable-log test passed"
+
+# Test: no audit entry on no-match (different filename so the positive test's
+# log doesn't confuse the assertion)
+printf '{"tool_name":"Bash","tool_input":{"command":"ls /tmp"}}' | \
+  bash "$HOOK" "$TMP/no-match.log" >/dev/null 2>&1 || true
+[[ ! -f "$TMP/no-match.log" ]] || { echo "fail: audit log created on no-match" >&2; exit 1; }
+
+echo "OK: hook no-audit-on-no-match test passed"
