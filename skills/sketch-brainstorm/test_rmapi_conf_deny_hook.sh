@@ -47,3 +47,13 @@ ec=$(printf '{"tool_name":"Bash","tool_input":{"command":"rmapi -ni ls"}}' | bas
 [[ "$ec" == "0" ]] || { echo "fail: rmapi -ni ls should exit 0, got $ec" >&2; exit 1; }
 
 echo "OK: hook negative-case rmapi command test passed"
+
+# Test: malformed stdin → exit 0 fail-open (not exit 2)
+ec=$(printf 'not json' | bash "$HOOK" >/dev/null 2>&1 && echo 0 || echo $?)
+[[ "$ec" == "0" ]] || { echo "fail: malformed stdin should exit 0, got $ec" >&2; exit 1; }
+
+# Test: empty stdin → exit 0
+ec=$(printf '' | bash "$HOOK" >/dev/null 2>&1 && echo 0 || echo $?)
+[[ "$ec" == "0" ]] || { echo "fail: empty stdin should exit 0, got $ec" >&2; exit 1; }
+
+echo "OK: hook fail-open tests passed"
