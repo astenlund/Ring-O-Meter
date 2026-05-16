@@ -36,4 +36,15 @@ if command -v rmapi >/dev/null 2>&1; then
   fi
 fi
 
+# Check 3: deny-rule installed in ~/.claude/settings.json
+settings="$HOME/.claude/settings.json"
+if [[ -f "$settings" ]]; then
+  if jq -e '(.permissions.deny // []) | map(select(test("rmapi"; "i"))) | length > 0' "$settings" >/dev/null 2>&1; then
+    printf '[PASS] deny-rule for rmapi conf installed in ~/.claude/settings.json\n'
+  else
+    printf '[FAIL] deny-rule for rmapi conf not found in ~/.claude/settings.json (see README)\n'
+    fail_count=$((fail_count + 1))
+  fi
+fi
+
 [[ $fail_count -eq 0 ]] && exit 0 || exit 1
