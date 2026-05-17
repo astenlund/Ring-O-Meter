@@ -10,7 +10,7 @@ TMP="$(mktemp -d)"
 # test cases as they grow). ${TMPn:+"$TMPn"} expands to "$TMPn" when set, and
 # to nothing when unset - avoiding rm -rf "" (which deletes cwd on some
 # systems) when a test failed early before reaching a given mktemp call.
-trap 'rm -rf "$TMP" ${TMP2:+"$TMP2"} ${TMP3:+"$TMP3"} ${TMP4:+"$TMP4"} ${TMP5:+"$TMP5"} ${TMP6:+"$TMP6"} ${TMP7:+"$TMP7"} ${TMP8:+"$TMP8"} ${TMP9:+"$TMP9"} ${TMP10:+"$TMP10"}' EXIT
+trap 'rm -rf "$TMP" ${TMP2:+"$TMP2"} ${TMP3:+"$TMP3"} ${TMP4:+"$TMP4"} ${TMP5:+"$TMP5"} ${TMP6:+"$TMP6"} ${TMP7:+"$TMP7"} ${TMP8:+"$TMP8"}' EXIT
 
 # Build a PATH that strips the rmapi binary without removing bash/system tools.
 # Setting PATH="$TMP" alone would drop bash itself (fatal on Windows Git Bash
@@ -56,9 +56,9 @@ rm -rf "$TMP2"
 echo "OK: verifier Check 2 (auth) test passed"
 
 # Test: settings.json with hook stanza referencing rmapi-conf-deny-hook.sh -> Check 3 PASS
-TMP5="$(mktemp -d)"
-mkdir -p "$TMP5/.claude"
-cat >"$TMP5/.claude/settings.json" <<'EOF'
+TMP3="$(mktemp -d)"
+mkdir -p "$TMP3/.claude"
+cat >"$TMP3/.claude/settings.json" <<'EOF'
 {
   "hooks": {
     "PreToolUse": [
@@ -67,30 +67,30 @@ cat >"$TMP5/.claude/settings.json" <<'EOF'
   }
 }
 EOF
-out=$(HOME="$TMP5" bash "$CHECK" 2>&1 || true)
+out=$(HOME="$TMP3" bash "$CHECK" 2>&1 || true)
 grep -q '\[PASS\] PreToolUse hook' <<<"$out" || { echo "fail: missing Check 3 PASS; got: $out" >&2; exit 1; }
 
 # Test: settings.json without rmapi hook -> Check 3 FAIL
-TMP6="$(mktemp -d)"
-mkdir -p "$TMP6/.claude"
-cat >"$TMP6/.claude/settings.json" <<'EOF'
+TMP4="$(mktemp -d)"
+mkdir -p "$TMP4/.claude"
+cat >"$TMP4/.claude/settings.json" <<'EOF'
 {"hooks": {}}
 EOF
-out=$(HOME="$TMP6" bash "$CHECK" 2>&1 || true)
+out=$(HOME="$TMP4" bash "$CHECK" 2>&1 || true)
 grep -q '\[FAIL\] PreToolUse hook' <<<"$out" || { echo "fail: missing Check 3 FAIL; got: $out" >&2; exit 1; }
 
-rm -rf "$TMP5" "$TMP6"
+rm -rf "$TMP3" "$TMP4"
 echo "OK: verifier Check 3 (hook) test passed"
 
 # Test: jq absent -> ERROR exit 2
-TMP7="$(mktemp -d)"
+TMP5="$(mktemp -d)"
 # Fake rmapi that satisfies Checks 1 and 2 so only the jq guard is exercised.
-cat >"$TMP7/rmapi" <<'EOF'
+cat >"$TMP5/rmapi" <<'EOF'
 #!/usr/bin/env bash
 [[ "${1:-}" == "--version" ]] && { echo "rmapi 0.0.33"; exit 0; }
 exit 0
 EOF
-chmod +x "$TMP7/rmapi"
+chmod +x "$TMP5/rmapi"
 
 # Filter jq's directory out of PATH (analogous to NO_RMAPI_PATH in the first test).
 JQ_BIN="$(command -v jq 2>/dev/null || true)"
@@ -98,43 +98,43 @@ if [[ -n "$JQ_BIN" ]]; then
   JQ_DIR="$(dirname "$JQ_BIN")"
   NO_JQ_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$JQ_DIR" | tr '\n' ':')"
 else
-  NO_JQ_PATH="$TMP7:$PATH"
+  NO_JQ_PATH="$TMP5:$PATH"
 fi
 
-out=$(PATH="$TMP7:$NO_JQ_PATH" bash "$CHECK" 2>&1 || true)
-ec=$(PATH="$TMP7:$NO_JQ_PATH" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
+out=$(PATH="$TMP5:$NO_JQ_PATH" bash "$CHECK" 2>&1 || true)
+ec=$(PATH="$TMP5:$NO_JQ_PATH" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
 grep -q '\[ERROR\] jq required' <<<"$out" || { echo "fail: missing jq-absent ERROR; got: $out" >&2; exit 1; }
 [[ "$ec" == "2" ]] || { echo "fail: jq-absent should exit 2, got $ec" >&2; exit 1; }
 
-rm -rf "$TMP7"
+rm -rf "$TMP5"
 echo "OK: verifier jq-absent test passed"
 
 # Test: settings.json absent -> Check 3 FAIL with "not found", exit 1
-TMP8="$(mktemp -d)"  # no .claude/settings.json inside
-out=$(HOME="$TMP8" bash "$CHECK" 2>&1 || true)
-ec=$(HOME="$TMP8" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
+TMP6="$(mktemp -d)"  # no .claude/settings.json inside
+out=$(HOME="$TMP6" bash "$CHECK" 2>&1 || true)
+ec=$(HOME="$TMP6" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
 grep -q '\[FAIL\] settings.json not found' <<<"$out" || { echo "fail: missing settings.json-not-found FAIL; got: $out" >&2; exit 1; }
 [[ "$ec" == "1" ]] || { echo "fail: settings.json-absent should exit 1, got $ec" >&2; exit 1; }
 
-rm -rf "$TMP8"
+rm -rf "$TMP6"
 echo "OK: verifier settings.json-absent test passed"
 
 # Test: settings.json exists but malformed JSON -> ERROR exit 2
-TMP9="$(mktemp -d)"
-mkdir -p "$TMP9/.claude"
-printf 'not json {{{' > "$TMP9/.claude/settings.json"
-out=$(HOME="$TMP9" bash "$CHECK" 2>&1 || true)
-ec=$(HOME="$TMP9" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
+TMP7="$(mktemp -d)"
+mkdir -p "$TMP7/.claude"
+printf 'not json {{{' > "$TMP7/.claude/settings.json"
+out=$(HOME="$TMP7" bash "$CHECK" 2>&1 || true)
+ec=$(HOME="$TMP7" bash "$CHECK" >/dev/null 2>&1 && echo 0 || echo $?)
 grep -q '\[ERROR\] settings.json is not valid JSON' <<<"$out" || { echo "fail: missing malformed-JSON ERROR; got: $out" >&2; exit 1; }
 [[ "$ec" == "2" ]] || { echo "fail: malformed settings.json should exit 2, got $ec" >&2; exit 1; }
 
-rm -rf "$TMP9"
+rm -rf "$TMP7"
 echo "OK: verifier malformed-settings.json test passed"
 
 # Test: all three checks pass -> exit 0
-TMP10="$(mktemp -d)"
-mkdir -p "$TMP10/.claude"
-cat >"$TMP10/.claude/settings.json" <<'EOF'
+TMP8="$(mktemp -d)"
+mkdir -p "$TMP8/.claude"
+cat >"$TMP8/.claude/settings.json" <<'EOF'
 {
   "hooks": {
     "PreToolUse": [
@@ -145,23 +145,23 @@ cat >"$TMP10/.claude/settings.json" <<'EOF'
 EOF
 
 # Fake rmapi that succeeds on both --version and -ni ls.
-cat >"$TMP10/rmapi" <<'EOF'
+cat >"$TMP8/rmapi" <<'EOF'
 #!/usr/bin/env bash
 [[ "${1:-}" == "--version" ]] && { echo "rmapi 0.0.33 (fake)"; exit 0; }
 # -ni ls case: emit a fake listing and exit 0
 [[ "${1:-}" == "-ni" && "${2:-}" == "ls" ]] && { echo "[d] Trash"; exit 0; }
 exit 0
 EOF
-chmod +x "$TMP10/rmapi"
+chmod +x "$TMP8/rmapi"
 
 # All-pass: capture both output and exit code from one invocation (this
 # scenario always exits 0, so $? is unambiguous after the subshell).
-out=$(HOME="$TMP10" PATH="$TMP10:$PATH" bash "$CHECK" 2>&1)
+out=$(HOME="$TMP8" PATH="$TMP8:$PATH" bash "$CHECK" 2>&1)
 ec=$?
 [[ "$ec" == "0" ]] || { echo "fail: all-pass scenario should exit 0, got $ec; output: $out" >&2; exit 1; }
 # Should have exactly three PASS lines.
 pass_count=$(grep -c '^\[PASS\]' <<<"$out" || echo 0)
 [[ "$pass_count" == "3" ]] || { echo "fail: expected 3 PASS lines, got $pass_count; output: $out" >&2; exit 1; }
 
-rm -rf "$TMP10"
+rm -rf "$TMP8"
 echo "OK: verifier all-pass integration test passed"
