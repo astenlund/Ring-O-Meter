@@ -70,14 +70,21 @@ EOF
 out=$(HOME="$TMP3" bash "$CHECK" 2>&1 || true)
 grep -q '\[PASS\] PreToolUse hook' <<<"$out" || { echo "fail: missing Check 3 PASS; got: $out" >&2; exit 1; }
 
-# Test: settings.json without rmapi hook -> Check 3 FAIL
+# Test: settings.json without rmapi hook (empty hooks object) -> Check 3 FAIL
 TMP4="$(mktemp -d)"
 mkdir -p "$TMP4/.claude"
 cat >"$TMP4/.claude/settings.json" <<'EOF'
 {"hooks": {}}
 EOF
 out=$(HOME="$TMP4" bash "$CHECK" 2>&1 || true)
-grep -q '\[FAIL\] PreToolUse hook' <<<"$out" || { echo "fail: missing Check 3 FAIL; got: $out" >&2; exit 1; }
+grep -q '\[FAIL\] PreToolUse hook' <<<"$out" || { echo "fail: missing Check 3 FAIL (empty hooks); got: $out" >&2; exit 1; }
+
+# Test: settings.json with PreToolUse hooks present but none referencing rmapi-conf-deny-hook -> Check 3 FAIL
+cat >"$TMP4/.claude/settings.json" <<'EOF'
+{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "bash $HOME/.claude/hooks/other-hook.sh"}]}]}}
+EOF
+out=$(HOME="$TMP4" bash "$CHECK" 2>&1 || true)
+grep -q '\[FAIL\] PreToolUse hook' <<<"$out" || { echo "fail: missing Check 3 FAIL (non-rmapi hooks present); got: $out" >&2; exit 1; }
 
 rm -rf "$TMP3" "$TMP4"
 echo "OK: verifier Check 3 (hook) test passed"
