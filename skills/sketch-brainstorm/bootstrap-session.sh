@@ -52,6 +52,23 @@ done
 # lines, the second without a key, breaking downstream parsers.
 [[ "$TOPIC" != *$'\n'* ]] || { echo "bootstrap-session.sh: --topic must not contain newlines" >&2; exit 1; }
 
+# Defense-in-depth: verify the rmapi auth-bootstrap posture before any
+# filesystem mutation. The verifier runs in THIS shell, outside Claude's
+# tool dispatch layer, so it survives a ~/.claude/settings.json reset
+# that would silently disable the PreToolUse hook. Env override exists
+# so tests can substitute a stub; production callers leave it unset.
+CHECK_RMAPI="${SKETCH_BRAINSTORM_CHECK_RMAPI_OVERRIDE:-$SCRIPT_DIR/check-rmapi-setup.sh}"
+status=0
+"$CHECK_RMAPI" >&2 || status=$?
+if [[ $status -ne 0 ]]; then
+  if [[ $status -eq 1 ]]; then
+    echo "bootstrap-session.sh: check-rmapi-setup.sh reported an install gap; aborting" >&2
+  else
+    echo "bootstrap-session.sh: check-rmapi-setup.sh exited with status $status; aborting" >&2
+  fi
+  exit "$status"
+fi
+
 # Repo root: env override for tests; otherwise walk up from $PWD
 # looking for the canonical Ring-O-Meter.slnx marker. Hard-fails
 # rather than silently writing under whatever happens to be $PWD,
@@ -104,3 +121,12 @@ fi
 
 # Print the session-folder path to stdout for orchestrator consumption.
 printf '%s\n' "$SESSION_DIR"
+
+# Register the new session as active in current-session.json. Idempotent
+# (re-runs against an existing session_dir do not append duplicate
+# entries; see session_index.add_session).
+SESSION_BASENAME="${TODAY}-${SLUG}"
+SKETCH_BRAINSTORM_REPO_ROOT="$REPO_ROOT" \
+  bash "$SCRIPT_DIR/update-session-index.sh" add \
+    --session-dir "$SESSION_BASENAME" \
+    --slug "$SLUG" >&2

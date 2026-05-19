@@ -8,7 +8,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # layered a second `trap '...' RETURN` we'd leak the second tmp dir.
 TMP="$(mktemp -d)"
 TMP2="$(mktemp -d)"
-trap 'rm -rf "$TMP" "$TMP2"' EXIT
+PASS_STUB_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP" "$TMP2" "$PASS_STUB_DIR"' EXIT
+
+# Default passing stub for the rmapi verifier so the test runs hermetically
+# on any host (no real rmapi binary, hook, or settings.json required). The
+# gate test further down overrides this with its own failing stub.
+cat > "$PASS_STUB_DIR/check-rmapi-setup.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$PASS_STUB_DIR/check-rmapi-setup.sh"
+export SKETCH_BRAINSTORM_CHECK_RMAPI_OVERRIDE="$PASS_STUB_DIR/check-rmapi-setup.sh"
 
 # Run bootstrap-session.sh into a sandboxed SKETCH_BRAINSTORM_REPO_ROOT.
 SKETCH_BRAINSTORM_REPO_ROOT="$TMP" \
@@ -43,6 +54,14 @@ grep -q "^current_mode: color$" "$DS" || { echo "fail: design-state.md missing '
 grep -q "^## Iteration 00$" "$DS" || { echo "fail: ## Iteration 00 heading missing" >&2; exit 1; }
 grep -q "warmup confirmation gate" "$DS" || { echo "fail: description not embedded" >&2; exit 1; }
 
+# Assert current-session.json was created and points at this session.
+INDEX="$TMP/.tmp/sketch-brainstorm/current-session.json"
+[[ -f "$INDEX" ]] || { echo "fail: current-session.json not created" >&2; exit 1; }
+grep -q '"active_session": "sessions/'"$TODAY"'-warmup-gate"' "$INDEX" \
+  || { echo "fail: active_session not registered" >&2; exit 1; }
+grep -q '"slug": "warmup-gate"' "$INDEX" \
+  || { echo "fail: slug missing from history" >&2; exit 1; }
+
 # Idempotency re-run: bootstrap-session.sh should not overwrite design-state.md.
 SKETCH_BRAINSTORM_REPO_ROOT="$TMP" \
   bash "$SCRIPT_DIR/bootstrap-session.sh" \
@@ -75,7 +94,7 @@ grep -q "^## Iteration 00$" "$DS2" || { echo "fail: blank-path iter heading miss
 # Negative test: slug with path separators must be rejected.
 TMP3="$(mktemp -d)"
 TMP4="$(mktemp -d)"
-trap 'rm -rf "$TMP" "$TMP2" "$TMP3" "$TMP4"' EXIT
+trap 'rm -rf "$TMP" "$TMP2" "$TMP3" "$TMP4" "$PASS_STUB_DIR"' EXIT
 if SKETCH_BRAINSTORM_REPO_ROOT="$TMP3" \
      bash "$SCRIPT_DIR/bootstrap-session.sh" \
        --slug "evil/../boom" \
@@ -124,5 +143,32 @@ case "$NEG_OUTPUT" in
     exit 1
     ;;
 esac
+
+# Gate test: bootstrap-session.sh must invoke check-rmapi-setup.sh and
+# exit non-zero when the verifier reports an install gap. Achieved by
+# putting a check-rmapi-setup.sh stub earlier on PATH that exits 1 with
+# a known message; assert bootstrap-session.sh propagates the failure.
+STUB_DIR="$(mktemp -d)"
+cat > "$STUB_DIR/check-rmapi-setup.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "[FAIL] stubbed-out-for-test" >&2
+exit 1
+STUB
+chmod +x "$STUB_DIR/check-rmapi-setup.sh"
+
+TMP_GATE="$(mktemp -d)"
+trap 'rm -rf "$TMP" "$TMP2" "$TMP3" "$TMP4" "$PASS_STUB_DIR" "$TMP_GATE" "$STUB_DIR"' EXIT
+
+if SKETCH_BRAINSTORM_REPO_ROOT="$TMP_GATE" \
+   SKETCH_BRAINSTORM_CHECK_RMAPI_OVERRIDE="$STUB_DIR/check-rmapi-setup.sh" \
+   bash "$SCRIPT_DIR/bootstrap-session.sh" \
+     --slug gated --topic "gated test" >/dev/null 2>&1; then
+  echo "fail: bootstrap-session.sh should exit non-zero when check-rmapi-setup.sh fails" >&2
+  exit 1
+fi
+
+# The session folder must NOT have been created when the gate fails.
+[[ ! -d "$TMP_GATE/.tmp/sketch-brainstorm/sessions/${TODAY}-gated" ]] \
+  || { echo "fail: session folder created despite failed precondition" >&2; exit 1; }
 
 echo "all tests passed"
