@@ -13,6 +13,18 @@ simultaneous bootstrap invocations against the same project could
 produce a lost update. Single-user single-machine scope makes this
 implausible in practice; no mutex is added.
 
+Index schema:
+  {
+    "active_session": "sessions/<session_dir>",
+    "history": [
+      {"session_dir": "<YYYY-MM-DD-slug>", "slug": "<slug>", "status": "active|dormant", "turns": N}
+    ]
+  }
+active_session stores a "sessions/"-prefixed pointer for relative path
+construction; history entries store the bare session_dir. Consumers that
+need to correlate the active pointer back to a history entry must strip
+the _SESSIONS_PREFIX.
+
 Stdlib-only; runs under the existing sketch-brainstorm venv but has no
 venv-specific dependencies.
 """
@@ -22,6 +34,8 @@ from pathlib import Path
 from typing import Any
 
 from _atomic_write import atomic_write_text
+
+_SESSIONS_PREFIX = "sessions/"
 
 
 class SessionIndexError(Exception):
@@ -33,10 +47,10 @@ def read_index(path: Path) -> dict[str, Any]:
 
     Raises SessionIndexError on JSON-parse failure.
     """
-    if not path.exists():
-        return {"active_session": None, "history": []}
     try:
         return json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"active_session": None, "history": []}
     except json.JSONDecodeError as exc:
         raise SessionIndexError(f"malformed JSON in {path}: {exc}") from exc
 
@@ -52,12 +66,8 @@ def add_session(path: Path, *, session_dir: str, slug: str) -> None:
     index = read_index(path)
     history = index["history"]
 
-    already_present = any(e["session_dir"] == session_dir for e in history)
-    if already_present:
-        for entry in history:
-            entry["status"] = "active" if entry["session_dir"] == session_dir else _demote(entry["status"])
-        index["active_session"] = f"sessions/{session_dir}"
-        _write(path, index)
+    if any(e["session_dir"] == session_dir for e in history):
+        set_active(path, session_dir=session_dir)
         return
 
     for entry in history:
@@ -69,7 +79,7 @@ def add_session(path: Path, *, session_dir: str, slug: str) -> None:
         "status": "active",
         "turns": 0,
     })
-    index["active_session"] = f"sessions/{session_dir}"
+    index["active_session"] = f"{_SESSIONS_PREFIX}{session_dir}"
     _write(path, index)
 
 
@@ -87,7 +97,7 @@ def set_active(path: Path, *, session_dir: str) -> None:
 
     for entry in history:
         entry["status"] = "active" if entry is match else _demote(entry["status"])
-    index["active_session"] = f"sessions/{session_dir}"
+    index["active_session"] = f"{_SESSIONS_PREFIX}{session_dir}"
     _write(path, index)
 
 
