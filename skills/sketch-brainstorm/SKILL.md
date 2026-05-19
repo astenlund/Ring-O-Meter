@@ -1,24 +1,28 @@
 ---
 name: sketch-brainstorm
-description: Round-trip UI brainstorm loop with a reMarkable tablet. Use when the user wants to sketch on the tablet ("push to tablet", "send sketch to remarkable", "brainstorm UI on the tablet", "pull from tablet", "grab the annotated version"). Renders HTML mockups to PDF at the tablet's viewport, pushes to the reMarkable cloud via rmapi, drives an iter-by-iter render-pull-interpret-render loop. The poller handles transient rmapi failures with exponential backoff and emits ERROR notifications for persistent failures. Full bootstrap dialogue and compression are deferred to follow-up slices.
+description: Round-trip UI brainstorm loop with a reMarkable tablet. Use when the user wants to sketch on the tablet ("push to tablet", "send sketch to remarkable", "brainstorm UI on the tablet", "pull from tablet", "grab the annotated version"). Renders HTML mockups to PDF at the tablet's viewport, pushes to the reMarkable cloud via rmapi, drives an iter-by-iter render-pull-interpret-render loop. Bootstrap covers lock-conflict check, resume-vs-fresh prompt, and design-language briefing. The poller handles transient rmapi failures with exponential backoff and emits ERROR notifications for persistent failures. Compression of cross-turn state is deferred to a follow-up slice.
 ---
 
 # sketch-brainstorm
 
 A skill for design-iteration with handwritten annotations on a reMarkable tablet. The user sketches reactions on the tablet, Claude reads the marks and emits the next mockup.
 
-## STATUS: closed loop + ERROR taxonomy with backoff
+## STATUS: closed loop + full bootstrap dialogue
 
 Round-trip ships end-to-end and the stroke-region Finish-turn detector
 + one-time calibration ceremony are in place. Verify-before-push is
 shipped: the loop body dispatches a fresh subagent against the new
 pre-renders (plus the prior turn's pre-renders when available) and
 gates the push on a PASS verdict. The poller's ERROR taxonomy + per-
-operation exponential backoff (~30 s budget) now keep transient rmapi
+operation exponential backoff (~30 s budget) keep transient rmapi
 failures from collapsing long sessions; persistent failures surface as
 `ERROR:<context>:<details>` notifications with suppression of repeats.
-Full bootstrap dialogue, compression, and multi-sketch are still
-deferred to follow-up slices.
+The full bootstrap dialogue now ships too: lock-file conflict check
+(`check-poller-lock.sh`), resume-vs-fresh prompt against
+`current-session.json`, and design-language briefing that primes
+`<repo-root>/.claude/sketch-brainstorm-mockup.css` on first run.
+Compression of cross-turn state and multi-sketch are still deferred
+to follow-up slices.
 
 - `render-html-to-pdf.sh` produces a two-page PDF at the Paper Pro viewport from a parametrised HTML template. Page 1 is the mockup page (header, mockup region, small notes area, chrome footer with the Finish-turn checkbox); page 2 is the legend page (header, vocabulary legend, larger notes area, mirrored chrome footer). The user can append further pages on the tablet for long-form notes (handled by the future interpretation slice). `--subtopic` (forward-compat for multi-sketch) and `--prerender-out <dir>` (captures per-page PNGs that the verify-before-push slice consumes).
 - `push-to-tablet.sh` uploads a rendered PDF to a named cloud folder via `rmapi put --force`. Owns just the upload step; cloud-path composition (project root + per-session slug) belongs to the future bootstrap-dialogue slice that calls this wrapper.
@@ -41,16 +45,15 @@ deferred to follow-up slices.
 Not yet implemented (deferred to follow-up plans):
 
 - Pairing helper (`setup-rmapi.sh`); the transport wrappers and `check-rmapi-setup.sh` verifier assume the machine is already paired via the README's one-line `rmapi help` flow
-- Full bootstrap dialogue (design-language briefing, lock-file check, resume-vs-fresh prompt); bootstrap-lite ships today
 - Multi-sketch iterations (N rendered sketches plus a trailing legend page, for side-by-side alternatives)
 - Compression of cross-turn state (design-state.md history pruning, archive rollover)
 - Vocabulary lifecycle (weight-based active / archived split, frecency-style scoring) and close-session ceremony
 
-The automated loop ships today: bootstrap-lite + iter01+ render loop +
-structured interpret JSON. The full bootstrap dialogue is deferred to
-a follow-up slice, so the orchestrator drives the loop via manual
-chat triggers (`go` / `pull` / `next` / `iter NN`) rather than
-auto-detecting the user's tablet back-out.
+The automated loop ships today: full bootstrap dialogue + iter01+
+render loop + structured interpret JSON. The orchestrator drives the
+loop via manual chat triggers (`go` / `pull` / `next` / `iter NN`)
+rather than auto-detecting the user's tablet back-out; auto-detection
+remains future work.
 
 ## Files in this skill
 
@@ -71,7 +74,15 @@ auto-detecting the user's tablet back-out.
 - `render/composite-annotated.py` -- composites stroke SVGs onto PDF pages as PNGs (PyMuPDF + Pillow).
 - `composite-annotated.sh` -- bash wrapper for the composite step; reuses the shared venv.
 - `render/prerender-pages.py` -- PyMuPDF-based PDF-to-PNG rasterizer; invoked by `render-html-to-pdf.sh`'s `--prerender-out` flag to feed the verify-before-push slice.
-- `bootstrap-session.sh` -- creates the per-session local folder skeleton and primes `design-state.md` with frontmatter + `## Iteration 00`. Idempotent.
+- `bootstrap-session.sh` -- creates the per-session local folder skeleton and primes `design-state.md` with frontmatter + `## Iteration 00`. Idempotent. Invokes `check-rmapi-setup.sh` as a defense-in-depth precondition before any filesystem mutation, and registers the new session via `update-session-index.sh add` after creating the folder.
+- `update-session-index.sh` -- bash wrapper around `session_index.py`; subcommands `add --session-dir <dir> --slug <slug>` (called by `bootstrap-session.sh`) and `set-active --session-dir <dir>` (called by the orchestrator's resume / pick-older branches in the full bootstrap dialogue).
+- `render/session_index.py` -- read / write `.tmp/sketch-brainstorm/current-session.json`: `read_index`, `add_session` (idempotent on session_dir), `set_active`, `SessionIndexError`. Atomic writes via `_atomic_write`.
+- `test_update_session_index.sh` -- bash test for the wrapper (subcommand routing, repo-root resolution, error paths).
+- `render/test_session_index.py` -- unit tests for the index library (add idempotency, active-pointer demotion, malformed-JSON handling).
+- `check-poller-lock.sh` -- bash wrapper that prints one JSON line on stdout classifying `.tmp/sketch-brainstorm/poller.lock` as `absent`, `stale`, or `alive`. Always exits 0; lock states are data, not errors. The full bootstrap dialogue's step 1 reads this and branches into the force-claim prompt on `alive`.
+- `render/check_poller_lock.py` -- read-only lock classifier: `check_lock(path)` returns a dict with `status` plus supporting fields (pid, heartbeat_age_s, reason). PID-alive uses `os.kill(pid, 0)`; heartbeat staleness threshold is 60 s to tolerate one missed iteration at the 30 s poll cadence.
+- `test_check_poller_lock.sh` -- bash test for the wrapper (JSON parse, repo-root override, exit-0 invariant).
+- `render/test_check_poller_lock.py` -- unit tests for `check_lock` covering absent / alive / stale-pid-dead / stale-heartbeat / stale-malformed branches.
 - `check-rmapi-setup.sh`: read-only verifier for the rmapi auth-bootstrap security posture (rmapi on PATH, auth, hook). Safe for Claude to invoke.
 - `parse-interpret-json.mjs` -- shell-callable JSON parse + validate helper for the interpret subagent's response. Authoritative schema lives at the top of this file.
 - `parse-verify-response.mjs` -- shell-callable JSON parse + validate helper for the verify subagent's response (`{verdict, reason}` with asymmetric-reason rule). Authoritative schema lives at the top of this file.
@@ -142,7 +153,7 @@ CLI flags:
 - `--topic <string>` (required): substituted into the page header on each rendered page.
 - `--iteration <string>` (required): two-digit zero-padded number (00, 01, 02, ...). The seed render uses 00; subsequent loop-body iterations increment. Substituted into the page header as `<topic> #NN`.
 - `--out <path>` (required): output PDF path, conventionally `<slug>-NN.pdf`. Parent directory is created if missing.
-- `--mockup-html <path>` (optional): file whose contents are substituted into the mockup region. Iter 00 renders may pass an empty mockup or a description-driven mockup, depending on the bootstrap-lite path; iter 01+ pass orchestrator-composed mockup HTML derived from the prior turn's `user_intent`.
+- `--mockup-html <path>` (optional): file whose contents are substituted into the mockup region. Iter 00 renders may pass an empty mockup or a description-driven mockup, depending on the user's answer to the bootstrap "initial description or blank page?" prompt; iter 01+ pass orchestrator-composed mockup HTML derived from the prior turn's `user_intent`.
 - `--subtopic <string>` (optional): forward-compat hook for the deferred multi-sketch slice; substituted into the page header alongside the topic when present.
 - `--prerender-out <dir>` (optional): captures per-page PNGs of the rendered PDF (`<slug>-NN-page1.png`, `-page2.png`, ...) via PyMuPDF; consumed by the verify-before-push slice and useful for spot-checking what was pushed.
 
@@ -292,7 +303,7 @@ After `render-html-to-pdf.sh --prerender-out` produces the per-page PNGs for the
 2. Substitute the bracketed tokens:
    - `{NEW_PRERENDER_PATHS}` - newline-bullet absolute paths to the just-rendered `<session>/prerender/<slug>-NN-page*.png` files.
    - `{PRIOR_PRERENDER_PATHS}` - newline-bullet absolute paths to the prior iteration's `<session>/prerender/<slug>-(NN-1)-page*.png` files when present (NN > 00 and the prior turn's pre-renders are on disk); the literal string `none` otherwise (iter 00 or prior absent). With `none`, the verifier runs in absolute-only layout-sanity mode; with paths, it adds the differential "did the requested change visually manifest?" check.
-   - `{USER_INTENT}` - this turn's `user_intent` text from the prior interpret turn for loop-body iterations. For bootstrap-lite iter 00 there is no prior interpret turn, so the substitution depends on the sub-path: the user's initial description verbatim for the description-driven path, and the literal string `(blank page; no specific intent; absolute layout-sanity only)` for the blank-page path. Threading this literal text into the prompt keeps the differential-vs-absolute mode explicit to the verifier and stops the orchestrator from improvising substitution per session.
+   - `{USER_INTENT}` - this turn's `user_intent` text from the prior interpret turn for loop-body iterations. For the iter 00 bootstrap render there is no prior interpret turn, so the substitution depends on the sub-path: the user's initial description verbatim for the description-driven path, and the literal string `(blank page; no specific intent; absolute layout-sanity only)` for the blank-page path. Threading this literal text into the prompt keeps the differential-vs-absolute mode explicit to the verifier and stops the orchestrator from improvising substitution per session.
 3. Dispatch via the Agent tool with `subagent_type: general-purpose`. Pass the substituted prompt body.
 4. Receive the subagent's response. Parse the fenced JSON block via `node skills/sketch-brainstorm/parse-verify-response.mjs` (stdin = raw response; stdout = canonicalized JSON; exit 0 on valid). The parsed object has two fields: `verdict` (`"PASS"` or `"FAIL"`, strict-cased) and `reason` (empty string on PASS, non-empty sentence naming the failure mode on FAIL). The asymmetric-reason rule (PASS implies empty reason, FAIL implies non-empty reason) is hard-validated; a subagent that returns `{"verdict":"PASS","reason":"looks good"}` is rejected, not coerced. On parse failure (parse helper exits non-zero), retry the verify dispatch once with a "JSON only, no preamble; conform to the contract" reminder appended to the prompt; on a second parse failure, surface the raw response in chat with the caveat *"verifier returned malformed output twice; proceeding to push without verify-gate."* and proceed to the push step. Parse failures do NOT consume the FAIL retry budget below.
 5. Branch on the verdict:
@@ -438,95 +449,182 @@ the active mode comes from one of three sources in priority order:
 The iter-number comparison data is the same data bootstrap uses for
 iter-counter resolution; no additional rmapi call is needed.
 
-## Cold-start (per-session bootstrap-lite)
+## Full bootstrap (per-session)
 
-On a fresh session - when no current session folder exists - run
-bootstrap-lite. The full bootstrap-dialogue slice (design-language
-briefing, lock-file check, resume-vs-fresh prompt) is deferred; this
-is the minimum viable preamble that gets iter 00 onto the tablet.
+On a fresh session - when no current session folder exists, or when
+the user wants to switch sessions - run the full bootstrap dialogue.
+This is the per-session preamble that resolves lock conflicts, offers
+resume of an existing brainstorm, primes the project's design-language
+CSS on first run, and gets `<slug>-00.pdf` onto the tablet.
 
-1. `rmapi ls` precondition (exit-status only; no contents into
-   context). Surface the auth-expired path verbatim if it fails.
-2. If `.tmp/sketch-brainstorm/config.json` is absent, ask once where
-   on the reMarkable cloud this project's brainstorms should live.
-   Save the answer as `{"cloud_path": "<the user's answer>"}` -
-   single-key JSON, additive shape (future slices add keys, never
-   rename `cloud_path`). Then ensure every segment of `cloud_path`
-   exists on the cloud: `rmapi mkdir` is single-level only (no
-   `--parents`), so walk the segments and `rmapi mkdir` each one,
-   tolerating the literal `entry already exists` error - match the
-   exact phrase, not a substring, because the missing-parent error
-   reads `directory doesn't exist` and a loose match would silently
-   swallow it (see push-to-tablet.sh's `mkdir_stderr` block for the
-   precedent). Normalize the path before walking: trim whitespace,
-   strip leading and trailing slashes, collapse `//` runs, and skip
-   the cloud-root case (empty result has no `rmapi mkdir` target).
-   Runs only on this config-absent branch; later sessions skip the
-   whole step, and later pushes need only the leaf `<slug>` under
-   the now-existing parent tree, which push-to-tablet.sh handles
-   directly.
-3. Ask the topic. Derive a kebab-case slug silently (lowercase,
-   replace non-alphanumerics with `-`, collapse repeats, trim).
-4. Ask: *"Initial description for the first sketch, or blank page?"*
-5. Cloud collision check: `rmapi ls <cloud-path>/<slug>`. On exit 0,
-   prompt the user: resume / rename / "I've deleted the previous
-   one, check again". See the feature spec's "Bootstrap and
-   chat-launch > step 5a" for the branch behaviors.
-6. Run
+Precondition: rmapi readiness. The orchestrator no longer needs to
+run `check-rmapi-setup.sh` as a separate gate; `bootstrap-session.sh`
+invokes it internally as a defense-in-depth precondition (see step 6
+below). The verifier remains available for diagnostic use when the
+user reports a pairing-completed-but-still-broken state.
+
+1. **Lock check.** Run `bash check-poller-lock.sh`. Parse the JSON
+   line on stdout (always exits 0; lock states are data, not errors).
+   The `status` field is one of `absent`, `stale`, or `alive`.
+   - `status: absent` or `status: stale`: proceed to step 2. The
+     poller spawn at step 8 claims the lock cleanly; no orchestrator
+     action is needed to clear a stale lock.
+   - `status: alive`: surface the force-claim prompt:
+     > Existing polling script for this project: PID {pid}, last
+     > heartbeat {heartbeat_age_s}s ago. Cancel (resume in the other
+     > chat) or force-claim (kill the held PID and take over)?
+
+     On cancel, exit the bootstrap and tell the user to use the other
+     chat. On force-claim, kill the PID (`kill {pid}` on Unix,
+     `taskkill /F /PID {pid}` on Windows), then proceed to step 2.
+
+2. **Active-session check.** Read
+   `.tmp/sketch-brainstorm/current-session.json` if present. If
+   `active_session` is set or `history` is non-empty, surface the
+   resume-vs-fresh prompt:
+   > Existing state found: N turns on "{slug}" (last activity
+   > {date}). Resume, start fresh, or pick up an older brainstorm?
+
+   The `{date}` derives from the active session's `session_dir`
+   basename (`<YYYY-MM-DD>-<slug>`); `N` is the entry's `turns` count.
+   - **Resume**: skip ahead to step 9 (tablet handoff). The latest
+     `<slug>-NN.pdf` is already on the tablet from before, so no new
+     render or push is needed. If the previously-active session is
+     the resume target the index is already correct; otherwise call
+     `bash update-session-index.sh set-active --session-dir <chosen>`
+     (no-op when already active).
+   - **Older brainstorm**: list `history` entries by slug for the
+     user to pick from, then call
+     `bash update-session-index.sh set-active --session-dir <chosen>`
+     and skip to step 9.
+   - **Fresh**: continue to step 3.
+
+3. **Topic and optional initial description.** Ask the topic
+   ("warmup gate UI", "pitch display layout"). Derive a kebab-case
+   slug silently (lowercase, replace non-alphanumerics with `-`,
+   collapse repeats, trim). At the same prompt, ask: *"Initial
+   description for the first sketch, or blank page?"* Either way the
+   user reacts to `<slug>-00.pdf` on the tablet; there is no
+   "skip iter-00" branch.
+
+4. **Cloud path resolution.** If `.tmp/sketch-brainstorm/config.json`
+   is absent, ask once where on the reMarkable cloud this project's
+   brainstorms should live. Save the answer as
+   `{"cloud_path": "<the user's answer>"}` - single-key JSON, additive
+   shape (future slices add keys, never rename `cloud_path`). Then
+   ensure every segment of `cloud_path` exists on the cloud: `rmapi
+   mkdir` is single-level only (no `--parents`), so walk the segments
+   and `rmapi mkdir` each one, tolerating the literal `entry already
+   exists` error - match the exact phrase, not a substring, because
+   the missing-parent error reads `directory doesn't exist` and a
+   loose match would silently swallow it (see push-to-tablet.sh's
+   `mkdir_stderr` block for the precedent). Normalize the path before
+   walking: trim whitespace, strip leading and trailing slashes,
+   collapse `//` runs, and skip the cloud-root case (empty result has
+   no `rmapi mkdir` target). Runs only on this config-absent branch;
+   later sessions skip the whole step, and later pushes need only the
+   leaf `<slug>` under the now-existing parent tree, which
+   push-to-tablet.sh handles directly.
+
+5. **Design-language briefing.** On first run in a project (when
+   `<repo-root>/.claude/sketch-brainstorm-mockup.css` does not exist),
+   ask: *"What's the feel for these mockups? A sentence about the
+   aesthetic, a reference URL, or a few preference words all work; or
+   say `skip` to iterate later."* On a substantive answer, compose a
+   baseline CSS reflecting the agreement and write it to
+   `<repo-root>/.claude/sketch-brainstorm-mockup.css` via the Write
+   tool. On `skip`, proceed without the file; `render.mjs` falls back
+   to chrome-only styling. Returning to a project with the file
+   already present skips the prompt.
+
+5a. **Cloud collision check.** Run `rmapi ls <cloud-path>/<slug>`. On
+    exit 0, prompt the user: resume / rename / "I've deleted the
+    previous one, check again". See the feature spec's "Bootstrap
+    and chat-launch > step 5a" for the branch behaviors. Cross-machine
+    resume (the cloud folder exists but no local session folder
+    matches) is a known gap routed to a future slice.
+
+6. **Session folder creation.** Run
    `bash bootstrap-session.sh --slug <slug> --topic "<topic>"
-   [--description "<description>"]`.
-   Capture the printed session-folder path on stdout.
-7. Compose `mockups/<slug>-00.html`: description-driven mockup body
-   when a description was supplied, empty `<main>` otherwise.
-8a. Render:
+   [--description "<description>"]`. Capture the printed
+   session-folder path on stdout. The wrapper (a) invokes
+   `check-rmapi-setup.sh` as a defense-in-depth precondition before
+   any filesystem mutation, and (b) registers the new session as
+   active in `current-session.json` via `update-session-index.sh add`
+   after creating the folder.
+
+7. **Initial render and push.** Compose `mockups/<slug>-00.html`:
+   description-driven mockup body when a description was supplied,
+   empty `<main>` otherwise. Render:
    `render-html-to-pdf.sh ... --iteration 00 ... --prerender-out
-   <session>/prerender/`. The `--prerender-out` PNGs feed step 8b.
-8b. Dispatch the verify subagent per the "Verify entry point" section
-   above. Token substitutions for the iter-00 bootstrap-lite path:
+   <session>/prerender/`. `render-html-to-pdf.sh` auto-detects
+   `<repo-root>/.claude/sketch-brainstorm-mockup.css` when present and
+   injects it; with no project CSS, chrome-only styling applies. The
+   `--prerender-out` PNGs feed the verify dispatch.
+
+   Dispatch the verify subagent per the "Verify entry point" section
+   above. Token substitutions for the iter-00 bootstrap path:
    - `{NEW_PRERENDER_PATHS}` = newline-bullet absolute paths to
      `<session>/prerender/<slug>-00-page*.png`.
    - `{PRIOR_PRERENDER_PATHS}` = the literal string `none` (iter 00
      has no prior turn; the verifier runs in absolute-only
      layout-sanity mode).
-   - `{USER_INTENT}` depends on the bootstrap-lite sub-path the user
-     answered in step 4:
+   - `{USER_INTENT}` depends on the sub-path from step 3:
      - Description-driven: the user's initial description verbatim.
      - Blank-page: the literal string `(blank page; no specific
        intent; absolute layout-sanity only)`. Threading this literal
        text into the prompt keeps the differential-vs-absolute mode
        explicit to the verifier and stops the orchestrator from
        improvising substitution per session.
-   Verdict branching, retry budget, push-anyway caveat, and parse-failure
-   handling all follow the Verify entry point section's rules verbatim.
-   On `FAIL` retry, regenerate `mockups/<slug>-00.html` from step 7 with
-   the verifier's `reason` folded in as a constraint, re-render, and
-   re-dispatch verify.
-8c. Push:
-   `push-to-tablet.sh ... --cloud-folder <cloud-path>/<slug>`.
-9. Tell the user: *"iter 00 pushed; annotate and back out, then say
-   `go`."*
+
+   Verdict branching, retry budget, push-anyway caveat, and
+   parse-failure handling all follow the Verify entry point section's
+   rules verbatim. On `FAIL` retry, regenerate `mockups/<slug>-00.html`
+   with the verifier's `reason` folded in as a constraint, re-render,
+   and re-dispatch verify.
+
+   On PASS (or push-anyway after retries), push:
+   `push-to-tablet.sh ... --pdf <session>/<slug>-00.pdf
+   --cloud-folder <cloud-path>/<slug>`.
+
+8. **Spawn polling script.** Launch `bash poll-tablet.sh ...` as a
+   background process via `Bash(run_in_background=true)`. The poller
+   writes `.tmp/sketch-brainstorm/poller.lock` at startup and updates
+   `last_heartbeat` each tick.
+
+9. **Tablet handoff.** Tell the user: *"iter 00 pushed; annotate and
+   back out, then say `go`."* (For the resume / older-brainstorm
+   branches above, adapt the message: *"`<slug>-NN.pdf` is on the
+   tablet from your prior session; annotate and back out, then say
+   `go`."*) The orchestrator now waits on poller notifications or
+   manual chat triggers (`go` / `pull` / `next` / `iter NN`) before
+   driving the next loop body iteration.
 
 ### Principles
 
-- **Bootstrap-lite is the smallest viable preamble.** Don't expand
-  its question count beyond what's needed to render iter 00. The
-  full bootstrap-dialogue slice is what handles design-language
-  briefing, lock check, and resume-vs-fresh.
 - **Atomic session-folder creation.** Run `bootstrap-session.sh` only
-  after the user has answered all bootstrap-lite questions and the
+  after the user has answered all bootstrap questions and the
   collision check has passed. If the user aborts mid-bootstrap, no
   orphan folder appears.
+- **Lock-conflict resolution is a chat decision, not an automated
+  retry.** Never force-claim the lock without surfacing the
+  force-claim prompt first; the cancel branch exists so the user can
+  resume the other chat without losing it.
+- **Design-language briefing is skippable.** The orchestrator never
+  blocks iter 00 on the user composing a CSS vocabulary up-front;
+  the fallback to chrome-only styling keeps the loop moving while
+  the user iterates on the design language through sketching itself.
 
 ## Smoke test (post-impl validation)
 
-A seven-step end-to-end exercise the user runs once after the slice
-lands to validate it:
+An end-to-end exercise the user runs once after a slice lands to
+validate it:
 
 1. Start a fresh session by sending a triggering message in chat (e.g.,
    "let's brainstorm a UI on the tablet for <topic>" or "push a sketch
-   to remarkable for <topic>"). Confirm bootstrap-lite asks the
-   expected questions, runs the collision check, creates the session
-   folder, renders `<slug>-00.pdf`, pushes to cloud.
+   to remarkable for <topic>"). Confirm bootstrap asks the expected
+   questions, runs the collision check, creates the session folder,
+   renders `<slug>-00.pdf`, pushes to cloud.
 2. Open `<slug>-00.pdf` on the tablet; sketch a small annotation
    (one circle, one arrow, one text note in the notes region); mark
    the Finish-turn checkbox; back out to the file picker.
@@ -556,6 +654,34 @@ lands to validate it:
    the orchestrator regenerates and re-renders, and after at most
    2 retries either lands PASS or surfaces the push-anyway caveat
    in chat with the verifier's last reason.
+8. Full-bootstrap branches test, four checks (run each from a clean
+   chat against the same project):
+   - **Lock-conflict force-claim.** With a poller running from a
+     prior chat, start a new chat and trigger bootstrap. Confirm
+     `check-poller-lock.sh` returns `status: alive`, the orchestrator
+     surfaces the force-claim prompt with the PID and heartbeat age,
+     and choosing force-claim kills the held PID before proceeding to
+     step 2.
+   - **Resume-vs-fresh prompt.** With at least one entry in
+     `current-session.json` history, trigger bootstrap and confirm
+     the resume prompt fires with turn count, slug, and date.
+     Choosing resume jumps to the tablet handoff without re-rendering;
+     choosing fresh continues into step 3; choosing pick-older lists
+     the available slugs and routes through
+     `update-session-index.sh set-active`.
+   - **Design-language briefing.** With no
+     `<repo-root>/.claude/sketch-brainstorm-mockup.css` present,
+     trigger bootstrap and answer the design-language prompt with a
+     short aesthetic. Confirm the file is written and the iter-00
+     render injects its styles. Then re-run with the file present and
+     confirm the prompt is skipped. Run once more with the `skip`
+     answer (after removing the file) and confirm the render falls
+     back to chrome-only styling.
+   - **Defense-in-depth gate.** Disable the `~/.claude/settings.json`
+     PreToolUse hook for `rmapi conf` access, then trigger bootstrap.
+     Confirm `bootstrap-session.sh` runs `check-rmapi-setup.sh`
+     internally and refuses to mutate the filesystem when the gate
+     trips.
 
 ### Crash-recovery test
 
