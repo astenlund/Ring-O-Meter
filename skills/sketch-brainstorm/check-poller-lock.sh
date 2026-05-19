@@ -25,10 +25,10 @@ VENV_DIR="$SCRIPT_DIR/.venv"
 REQUIREMENTS="$SCRIPT_DIR/requirements.txt"
 ensure_skill_venv "check-poller-lock.sh"
 
-# Pass paths via env vars, single-quoted body, same pattern as
-# update-session-index.sh. The try/except wraps the check so a venv
-# or import failure emits a fallback JSON rather than a non-zero exit
-# (contract: always exits 0).
+# Inline python -c instead of a direct-script invocation: the try/except
+# wraps the check so a venv or import failure emits a fallback JSON
+# rather than a non-zero exit (contract: always exits 0). A direct-script
+# helper would push that error-handling responsibility back into bash.
 LOCK_PATH="$LOCK_PATH" RENDER_DIR="$SCRIPT_DIR/render" \
   "$VENV_PYTHON" -c '
 import json, os, sys
