@@ -14,18 +14,16 @@ Stdlib-only; runs under the shared venv but has no venv-specific
 dependencies.
 """
 import json
-import re
 import sys
 from pathlib import Path
+
+from _compression import ITER_HEADING_RE, next_archive_nnn
 
 # Active head retains the most recent (1 + WATERMARK_OFFSET) turns
 # verbatim; anything older rotates into the archive chain. With
 # WATERMARK_OFFSET = 5, a session holding turns 00..10 keeps 05..10
 # (six turns) and archives 00..04. User-set per design Q&A 2026-05-19.
 WATERMARK_OFFSET = 5
-
-_ITER_HEADING_RE = re.compile(r"^## Iteration (\d+)\s*$", re.MULTILINE)
-_ARCHIVE_NAME_RE = re.compile(r"^(\d{3})-pre-summary\.md$")
 
 
 def check_trigger(session_dir: Path) -> dict:
@@ -40,7 +38,7 @@ def check_trigger(session_dir: Path) -> dict:
         return {"trigger": False, "reason": "design-state.md absent"}
 
     text = state_path.read_text(encoding="utf-8")
-    turns = sorted(int(n) for n in _ITER_HEADING_RE.findall(text))
+    turns = sorted(int(n) for n in ITER_HEADING_RE.findall(text))
     if not turns:
         return {"trigger": False, "reason": "no iteration sections"}
 
@@ -56,27 +54,10 @@ def check_trigger(session_dir: Path) -> dict:
         "trigger": True,
         "turns_to_archive": [f"{n:02d}" for n in to_archive],
         "turns_to_keep": [f"{n:02d}" for n in to_keep],
-        "archive_nnn": _next_archive_nnn(session_dir / "archive"),
+        "archive_nnn": next_archive_nnn(session_dir / "archive", tolerate_missing=True),
         "latest_turn": f"{latest:02d}",
         "watermark_turn": f"{watermark:02d}",
     }
-
-
-def _next_archive_nnn(archive_dir: Path) -> str:
-    """Return the next zero-padded archive sequence number as 3 digits.
-
-    Resolution is max(existing NNN) + 1, tolerant of gaps so a manually
-    deleted archive does not reuse its number.
-    """
-    if not archive_dir.exists():
-        return "001"
-    highest = 0
-    for entry in archive_dir.iterdir():
-        m = _ARCHIVE_NAME_RE.match(entry.name)
-        if m:
-            highest = max(highest, int(m.group(1)))
-
-    return f"{highest + 1:03d}"
 
 
 def main(argv=None):

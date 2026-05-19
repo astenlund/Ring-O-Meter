@@ -18,14 +18,11 @@ Stdlib-only; reuses _atomic_write.atomic_write_text.
 """
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 
 from _atomic_write import atomic_write_text
-
-_ITER_HEADING_RE = re.compile(r"^## Iteration (\d+)\s*$", re.MULTILINE)
-_ARCHIVE_NAME_RE = re.compile(r"^(\d{3})-pre-summary\.md$")
+from _compression import ITER_HEADING_RE, next_archive_nnn
 
 
 class ArchiveStructureError(ValueError):
@@ -55,7 +52,7 @@ def write(
 
     archive_dir = session_dir / "archive"
     archive_dir.mkdir(parents=True, exist_ok=True)
-    nnn = _next_archive_nnn(archive_dir)
+    nnn = next_archive_nnn(archive_dir, tolerate_missing=False)
     archive_path = archive_dir / f"{nnn}-pre-summary.md"
 
     # Step 1: archive write (durable record).
@@ -80,7 +77,7 @@ def _validate_invariants(
 
     Raises ArchiveStructureError on any violation.
     """
-    head_turns = {int(n) for n in _ITER_HEADING_RE.findall(new_head)}
+    head_turns = {int(n) for n in ITER_HEADING_RE.findall(new_head)}
     archived_ints = {int(n) for n in turns_to_archive}
     kept_ints = {int(n) for n in turns_to_keep}
 
@@ -102,23 +99,6 @@ def _validate_invariants(
             f"new_active_head_content contains unexpected turns not in "
             f"keep or archive list: {[f'{n:02d}' for n in extra]}"
         )
-
-
-def _next_archive_nnn(archive_dir: Path) -> str:
-    """Return next zero-padded sequence number as 3 digits; max + 1.
-
-    Caller must ensure archive_dir exists before calling (write() runs mkdir
-    first). No existence guard here -- contrast with check_compression_needed's
-    parallel function which adds one for the read-only trigger path where mkdir
-    is not performed.
-    """
-    highest = 0
-    for entry in archive_dir.iterdir():
-        m = _ARCHIVE_NAME_RE.match(entry.name)
-        if m:
-            highest = max(highest, int(m.group(1)))
-
-    return f"{highest + 1:03d}"
 
 
 def _parse_csv_list(arg: str) -> list[str]:
