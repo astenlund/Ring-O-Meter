@@ -1,6 +1,6 @@
 ---
 name: sketch-brainstorm
-description: Round-trip UI brainstorm loop with a reMarkable tablet. Use when the user wants to sketch on the tablet ("push to tablet", "send sketch to remarkable", "brainstorm UI on the tablet", "pull from tablet", "grab the annotated version"). Renders HTML mockups to PDF at the tablet's viewport, pushes to the reMarkable cloud via rmapi, drives an iter-by-iter render-pull-interpret-render loop. Bootstrap covers lock-conflict check, resume-vs-fresh prompt, and design-language briefing. The poller handles transient rmapi failures with exponential backoff and emits ERROR notifications for persistent failures. Compression of cross-turn state is deferred to a follow-up slice.
+description: Round-trip UI brainstorm loop with a reMarkable tablet. Use when the user wants to sketch on the tablet ("push to tablet", "send sketch to remarkable", "brainstorm UI on the tablet", "pull from tablet", "grab the annotated version"). Renders HTML mockups to PDF at the tablet's viewport, pushes to the reMarkable cloud via rmapi, drives an iter-by-iter render-pull-interpret-render loop. Bootstrap covers lock-conflict check, resume-vs-fresh prompt, and design-language briefing. The poller handles transient rmapi failures with exponential backoff and emits ERROR notifications for persistent failures. Cross-turn compression ships too: the orchestrator runs compression after each push and dispatches a background subagent to archive older turns. Multi-sketch is still deferred to a follow-up slice.
 ---
 
 # sketch-brainstorm
@@ -21,8 +21,12 @@ The full bootstrap dialogue now ships too: lock-file conflict check
 (`check-poller-lock.sh`), resume-vs-fresh prompt against
 `current-session.json`, and design-language briefing that primes
 `<repo-root>/.claude/sketch-brainstorm-mockup.css` on first run.
-Compression of cross-turn state and multi-sketch are still deferred
-to follow-up slices.
+Cross-turn compression ships too: after each push, the orchestrator runs
+`check-compression-needed.sh` and, when triggered, dispatches a background
+compression subagent that summarizes turns older than the watermark
+(`latest - 5`) into `archive/NNN-pre-summary.md` and rewrites
+`design-state.md` to keep only the most recent 6 turns. Multi-sketch is
+still deferred to a follow-up slice.
 
 - `render-html-to-pdf.sh` produces a two-page PDF at the Paper Pro viewport from a parametrised HTML template. Page 1 is the mockup page (header, mockup region, small notes area, chrome footer with the Finish-turn checkbox); page 2 is the legend page (header, vocabulary legend, larger notes area, mirrored chrome footer). The user can append further pages on the tablet for long-form notes (handled by the future interpretation slice). `--subtopic` (forward-compat for multi-sketch) and `--prerender-out <dir>` (captures per-page PNGs that the verify-before-push slice consumes).
 - `push-to-tablet.sh` uploads a rendered PDF to a named cloud folder via `rmapi put --force`. Owns just the upload step; cloud-path composition (project root + per-session slug) belongs to the future bootstrap-dialogue slice that calls this wrapper.
@@ -46,7 +50,6 @@ Not yet implemented (deferred to follow-up plans):
 
 - Pairing helper (`setup-rmapi.sh`); the transport wrappers and `check-rmapi-setup.sh` verifier assume the machine is already paired via the README's one-line `rmapi help` flow
 - Multi-sketch iterations (N rendered sketches plus a trailing legend page, for side-by-side alternatives)
-- Compression of cross-turn state (design-state.md history pruning, archive rollover)
 - Vocabulary lifecycle (weight-based active / archived split, frecency-style scoring) and close-session ceremony
 
 The automated loop ships today: full bootstrap dialogue + iter01+
@@ -83,6 +86,17 @@ remains future work.
 - `render/check_poller_lock.py` -- read-only lock classifier: `check_lock(path)` returns a dict with `status` plus supporting fields (pid, heartbeat_age_s, reason). PID-alive uses `os.kill(pid, 0)`; heartbeat staleness threshold is 60 s to tolerate one missed iteration at the 30 s poll cadence.
 - `test_check_poller_lock.sh` -- bash test for the wrapper (JSON parse, repo-root override, exit-0 invariant).
 - `render/test_check_poller_lock.py` -- unit tests for `check_lock` covering absent / alive / stale-pid-dead / stale-heartbeat / stale-malformed branches.
+- `check-compression-needed.sh` -- bash wrapper printing a single JSON line classifying whether the named session needs compression. Exits 0 when a valid session-dir is supplied and the helper succeeds; exits 2 on argument error or unreadable session (e.g., permission error scanning `archive/`). Trigger states (true/false) are data, not errors. The loop body's step 8.6 reads this and dispatches the compression subagent on `trigger: true`.
+- `render/check_compression_needed.py` -- compression trigger logic: scans `## Iteration NN` headings in `design-state.md`, applies the watermark rule (latest - WATERMARK_OFFSET; default 5). Returns `{trigger, reason}` on no-trigger; adds `turns_to_archive`, `turns_to_keep`, `archive_nnn`, `latest_turn`, `watermark_turn` on trigger. Stdlib-only; reads design-state.md and lists `archive/` for sequence-number resolution but never parses archive YAML.
+- `render/test_check_compression_needed.py` -- unit tests for the trigger logic (no-trigger, single-turn trigger, multi-turn trigger, gap handling, NNN resolution with existing archives, absent design-state.md).
+- `test_check_compression_needed.sh` -- bash wrapper test (absent state, below-threshold, above-threshold, missing argument).
+- `write-archive.sh` -- bash wrapper for the archive writer; reads parsed compression-subagent JSON on stdin, takes `--session-dir`, `--turns-to-archive`, `--turns-to-keep`.
+- `render/write_archive.py` -- archive writer + active-head rewriter. Validates structural invariants (archived turns absent from new head; kept turns present; no extra turns), resolves next NNN, performs the two-step atomic write (archive first then design-state.md). Stdlib-only; reuses `_atomic_write`.
+- `render/test_write_archive.py` -- unit tests for the writer (happy path, gap-tolerant NNN resolution, three-way structural-invariant rejection, archive dir auto-create, archive-before-active-head write order).
+- `test_write_archive.sh` -- bash wrapper test (happy path, structural rejection, missing-flag rejection).
+- `parse-compress-response.mjs` -- shell-callable JSON parse + validate helper for the compression subagent's response (`{archive_content, new_active_head_content}` with frontmatter-prefix rule on both fields + forward-compat unknown-field tolerance). Authoritative schema in module docblock.
+- `test_compress_parse.mjs` -- node:test cases for `parseCompressResponse` (happy path, CRLF, missing/empty fields, malformed JSON, frontmatter-prefix rule on both fields, forward-compat tolerance, tight-block trailing-newline constraint).
+- `compress-prompt.md` -- prompt template for the compression subagent. Read by the orchestrator; not directly executable. Tokens: `{ACTIVE_HEAD_PATH}`, `{TURNS_TO_ARCHIVE}`, `{TURNS_TO_KEEP}`, `{PRIOR_ARCHIVES}`, `{ARCHIVE_NNN}`, `{CREATED_TIMESTAMP}`.
 - `check-rmapi-setup.sh`: read-only verifier for the rmapi auth-bootstrap security posture (rmapi on PATH, auth, hook). Safe for Claude to invoke.
 - `parse-interpret-json.mjs` -- shell-callable JSON parse + validate helper for the interpret subagent's response. Authoritative schema lives at the top of this file.
 - `parse-verify-response.mjs` -- shell-callable JSON parse + validate helper for the verify subagent's response (`{verdict, reason}` with asymmetric-reason rule). Authoritative schema lives at the top of this file.
@@ -314,6 +328,72 @@ After `render-html-to-pdf.sh --prerender-out` produces the per-page PNGs for the
 
 This step is orchestrator-side, not a shell wrapper: the Agent tool is Claude Code's; shells can't dispatch it. The fresh-per-turn discipline matches the interpretation entry point - the verifier sees only the pre-render PNGs plus the substituted text, no prior chat context.
 
+## Compress entry point
+
+After a successful `push-to-tablet.sh` (step 8) and the
+`update-session-index.sh increment-turn` call (step 8.5), check whether
+the active session needs cross-turn compression and, when triggered,
+dispatch a background compression subagent.
+
+1. Run `bash skills/sketch-brainstorm/check-compression-needed.sh <session-dir>`.
+   The wrapper prints a single JSON line on stdout. Parse it. The
+   `trigger` field is `true` or `false`.
+2. On `trigger: false`, proceed to step 9 (tablet handoff) with no
+   compression work.
+3. On `trigger: true`, the JSON also carries `turns_to_archive`,
+   `turns_to_keep`, `archive_nnn`, `latest_turn`, and `watermark_turn`.
+   Read `skills/sketch-brainstorm/compress-prompt.md`. Substitute the
+   tokens:
+   - `{ACTIVE_HEAD_PATH}`: absolute path to `<session>/design-state.md`.
+   - `{TURNS_TO_ARCHIVE}`: the comma-joined `turns_to_archive` list.
+   - `{TURNS_TO_KEEP}`: the comma-joined `turns_to_keep` list.
+   - `{PRIOR_ARCHIVES}`: newline-bullet absolute paths to existing
+     `<session>/archive/*-pre-summary.md` files in sort order, or the
+     literal string `none` if the directory is empty.
+   - `{ARCHIVE_NNN}`: the `archive_nnn` field verbatim.
+   - `{CREATED_TIMESTAMP}`: a fresh ISO 8601 UTC timestamp.
+4. Dispatch via the Agent tool with `subagent_type: general-purpose`
+   and `run_in_background: true`. Compression is off the critical path
+   per design ("Async compression off the critical path"); proceed to
+   step 9 (tablet handoff) immediately. When the background agent's
+   completion notification arrives (delivered asynchronously by the
+   harness), continue with the parse-and-write sequence below.
+   On agent completion, pipe the response through
+   `node skills/sketch-brainstorm/parse-compress-response.mjs`
+   (stdin = raw response; stdout = canonicalized JSON; exit 0 on valid).
+5. On parse success, invoke
+   `bash skills/sketch-brainstorm/write-archive.sh
+   --session-dir <session> --turns-to-archive <list>
+   --turns-to-keep <list>` with the parsed JSON on stdin.
+6. On parse failure, write failure, or structural-invariant rejection,
+   surface the error in chat with the prefix `compression skipped: `
+   and continue. The next turn re-triggers from the unchanged
+   `design-state.md` (idempotent retry per design).
+
+### Deferring a dispatch
+
+If a new `READY:<NN>` notification fires while a previous compression
+subagent is still running, the orchestrator does NOT spawn a second
+compression in parallel. Instead, the new turn's loop body skips
+the compression step; the next turn's check re-evaluates and dispatches
+then. Active state grows briefly above the watermark in that case,
+bounded by turn cadence rather than unbounded. This avoids overlapping
+writes to `design-state.md` from concurrent subagents.
+
+The in-flight tracking is session-local: the orchestrator's memory of
+"a compression is running" clears on chat restart. A background agent
+that times out or silently fails will not deliver a completion
+notification; on the next triggered turn the orchestrator sees no
+pending agent and dispatches a fresh one. Permanent suppression cannot
+happen across sessions; within a session a stuck agent is resolved by
+restarting the chat (the orphan archive, if any, is harmless; the
+next cycle re-archives idempotently).
+
+This step is orchestrator-side, not a shell wrapper: the Agent tool is
+Claude Code's; shells can't dispatch it. The fresh-per-turn discipline
+matches interpret + verify: the subagent reads the active head and
+prior archives via its own Read tool, no parent-context overlap.
+
 ## Loop body (orchestrator-driven)
 
 When the user signals progress on the active session - `go`, `pull`,
@@ -365,6 +445,13 @@ body iteration:
    next bootstrap surfaces an honest count. Iter 00 (initial bootstrap
    render) does not increment; only completed loop-body iterations count
    as turns.
+8.6. Run `bash skills/sketch-brainstorm/check-compression-needed.sh <session-dir>`.
+   On `trigger: true`, dispatch the compression subagent per the
+   "Compress entry point" section above (background; do not block step 9
+   on completion). On `trigger: false`, proceed directly to step 9.
+   On non-zero exit (e.g., permission error on the archive directory),
+   surface `compression skipped: <stderr>` in chat and continue; the
+   next loop body re-evaluates from the unchanged `design-state.md`.
 9. Tell the user: "iter NN pushed; annotate and back out, then say `go`."
 
 ### Principles
