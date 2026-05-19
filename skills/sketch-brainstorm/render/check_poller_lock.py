@@ -33,11 +33,10 @@ def check_lock(path: Path) -> dict[str, Any]:
     Never raises on read-side errors; treats malformed JSON and missing
     fields as stale-malformed so bootstrap can claim and proceed.
     """
-    if not path.exists():
-        return {"status": "absent"}
-
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"status": "absent"}
     except json.JSONDecodeError:
         return {"status": "stale", "reason": "malformed"}
 
@@ -94,4 +93,4 @@ def _heartbeat_age_s(heartbeat_str: str) -> float | None:
         return None
     delta = datetime.now(timezone.utc) - when
 
-    return delta.total_seconds()
+    return max(0.0, delta.total_seconds())
