@@ -40,6 +40,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$SESSION_DIR" ]] || { echo "update-session-index.sh: --session-dir is required" >&2; exit 1; }
+# Slug character class [a-z0-9]+(-[a-z0-9]+)* must stay in sync with
+# bootstrap-session.sh's --slug validation regex.
+[[ "$SESSION_DIR" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$ ]] || {
+  echo "update-session-index.sh: --session-dir must match YYYY-MM-DD-<kebab-slug> (got: $SESSION_DIR)" >&2
+  exit 1
+}
 
 REPO_ROOT="${SKETCH_BRAINSTORM_REPO_ROOT:-}"
 if [[ -z "$REPO_ROOT" ]]; then
