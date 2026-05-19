@@ -3,13 +3,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Register both temp dirs in a single EXIT trap. RETURN traps only fire
+# Register all temp dirs in a single EXIT trap. RETURN traps only fire
 # from functions or sourced scripts, NOT from top-level execution; if we
-# layered a second `trap '...' RETURN` we'd leak the second tmp dir.
+# layered a second `trap '...' EXIT` we'd leak any dir added after the
+# earlier registration.
 TMP="$(mktemp -d)"
 TMP2="$(mktemp -d)"
+TMP3="$(mktemp -d)"
+TMP4="$(mktemp -d)"
 PASS_STUB_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP" "$TMP2" "$PASS_STUB_DIR"' EXIT
+STUB_DIR="$(mktemp -d)"
+TMP_GATE="$(mktemp -d)"
+trap 'rm -rf "$TMP" "$TMP2" "$TMP3" "$TMP4" "$PASS_STUB_DIR" "$STUB_DIR" "$TMP_GATE"' EXIT
 
 # Default passing stub for the rmapi verifier so the test runs hermetically
 # on any host (no real rmapi binary, hook, or settings.json required). The
@@ -92,9 +97,6 @@ grep -q "^## Iteration 00$" "$DS2" || { echo "fail: blank-path iter heading miss
 [[ -f "$SESSION_DIR2/usage.json" ]] || { echo "fail: blank-path usage.json missing" >&2; exit 1; }
 
 # Negative test: slug with path separators must be rejected.
-TMP3="$(mktemp -d)"
-TMP4="$(mktemp -d)"
-trap 'rm -rf "$TMP" "$TMP2" "$TMP3" "$TMP4" "$PASS_STUB_DIR"' EXIT
 if SKETCH_BRAINSTORM_REPO_ROOT="$TMP3" \
      bash "$SCRIPT_DIR/bootstrap-session.sh" \
        --slug "evil/../boom" \
@@ -148,16 +150,12 @@ esac
 # exit non-zero when the verifier reports an install gap. Achieved by
 # putting a check-rmapi-setup.sh stub earlier on PATH that exits 1 with
 # a known message; assert bootstrap-session.sh propagates the failure.
-STUB_DIR="$(mktemp -d)"
 cat > "$STUB_DIR/check-rmapi-setup.sh" <<'STUB'
 #!/usr/bin/env bash
 echo "[FAIL] stubbed-out-for-test" >&2
 exit 1
 STUB
 chmod +x "$STUB_DIR/check-rmapi-setup.sh"
-
-TMP_GATE="$(mktemp -d)"
-trap 'rm -rf "$TMP" "$TMP2" "$TMP3" "$TMP4" "$PASS_STUB_DIR" "$TMP_GATE" "$STUB_DIR"' EXIT
 
 if SKETCH_BRAINSTORM_REPO_ROOT="$TMP_GATE" \
    SKETCH_BRAINSTORM_CHECK_RMAPI_OVERRIDE="$STUB_DIR/check-rmapi-setup.sh" \
