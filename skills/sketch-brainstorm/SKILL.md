@@ -100,6 +100,8 @@ remains future work.
 - `check-rmapi-setup.sh`: read-only verifier for the rmapi auth-bootstrap security posture (rmapi on PATH, auth, hook). Safe for Claude to invoke.
 - `parse-interpret-json.mjs` -- shell-callable JSON parse + validate helper for the interpret subagent's response. Authoritative schema lives at the top of this file.
 - `parse-verify-response.mjs` -- shell-callable JSON parse + validate helper for the verify subagent's response (`{verdict, reason}` with asymmetric-reason rule). Authoritative schema lives at the top of this file.
+- `_parse_cli_runner.mjs` -- internal shared CLI driver re-used by the three `parse-*-response.mjs` modules (stdin -> parseFn -> stdout JSON or stderr+exit-1). Stderr prefix derived from `process.argv[1]` so a parser rename needs no call-site update. Not a public entry point; imported only by sibling parsers.
+- `_parse_fence.mjs` -- internal shared fence-extraction helper exporting `extractFencedJson(text)`. Single source of truth for the fenced-JSON regex + CRLF-tolerant decode used by all three parsers; each parser layers its schema-specific validation on top of the returned object.
 - `derive-calibration.sh` -- bash wrapper for the one-time calibration ceremony; runs derive_calibration.py against a pulled five-dot calibration rm-dir to produce calibration.json.
 - `render/derive_calibration.py` -- calibration derivation: five-centroid Hungarian assignment, median scale derivation, asymmetry + residual verification, writes calibration.json.
 - `detect-marks.sh` -- bash wrapper for the per-turn detector.

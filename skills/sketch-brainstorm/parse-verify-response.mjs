@@ -12,6 +12,9 @@
 
 import { pathToFileURL } from 'node:url';
 
+import { runParseCli } from './_parse_cli_runner.mjs';
+import { extractFencedJson } from './_parse_fence.mjs';
+
 /**
  * Schema for the verify subagent's response (single source of truth):
  *
@@ -32,22 +35,8 @@ import { pathToFileURL } from 'node:url';
  * AND SKILL.md "Verify entry point" in the same commit.
  */
 
-const FENCE_PATTERN = /```json\s*\n([\s\S]*?)\n```/;
-
 export function parseVerifyResponse(text) {
-  const match = FENCE_PATTERN.exec(text);
-  if (!match) {
-    throw new Error(
-      'no fenced ```json block found in subagent response',
-    );
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(match[1].replace(/\r/g, ''));
-  } catch (err) {
-    throw new Error(`malformed JSON in fenced block: ${err.message}`);
-  }
+  const parsed = extractFencedJson(text);
 
   if (parsed.verdict !== 'PASS' && parsed.verdict !== 'FAIL') {
     throw new Error(
@@ -72,19 +61,7 @@ export function parseVerifyResponse(text) {
   return parsed;
 }
 
-// CLI entry point: when invoked directly, read stdin, parse, print
-// canonicalized JSON to stdout, exit 1 on any error.
+// CLI entry point: shared driver in _parse_cli_runner.mjs.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const chunks = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(chunk);
-  }
-  const input = Buffer.concat(chunks).toString('utf8');
-  try {
-    const result = parseVerifyResponse(input);
-    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
-  } catch (err) {
-    process.stderr.write(`parse-verify-response: ${err.message}\n`);
-    process.exit(1);
-  }
+  await runParseCli(parseVerifyResponse);
 }
