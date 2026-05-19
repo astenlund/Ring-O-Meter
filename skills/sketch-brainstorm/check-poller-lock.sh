@@ -38,6 +38,6 @@ try:
     import check_poller_lock
     result = check_poller_lock.check_lock(Path(os.environ["LOCK_PATH"]))
 except Exception as exc:
-    result = {"status": "absent", "_error": str(exc)}
+    result = {"status": "stale", "reason": "error", "_error": str(exc)}
 print(json.dumps(result))
 '
