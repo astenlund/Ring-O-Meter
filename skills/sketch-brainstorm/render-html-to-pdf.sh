@@ -75,6 +75,7 @@ MOCKUP_HTML=""
 CURRENT_MODE="color"
 OUT=""
 PRERENDER_OUT=""
+PROJECT_MOCKUP_CSS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -99,6 +100,9 @@ while [[ $# -gt 0 ]]; do
     --prerender-out)
       [[ $# -ge 2 ]] || { echo "render-html-to-pdf.sh: --prerender-out requires a value" >&2; exit 1; }
       PRERENDER_OUT="$2"; shift 2;;
+    --project-mockup-css)
+      [[ $# -ge 2 ]] || { echo "render-html-to-pdf.sh: --project-mockup-css requires a value" >&2; exit 1; }
+      PROJECT_MOCKUP_CSS="$2"; shift 2;;
     *)
       echo "render-html-to-pdf.sh: unknown flag: $1" >&2
       exit 1
@@ -106,16 +110,27 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Auto-detect <repo-root>/.claude/sketch-brainstorm-mockup.css if the
+# caller did not pass --project-mockup-css explicitly. The file is
+# authored by the design-language briefing at bootstrap.
+if [[ -z "$PROJECT_MOCKUP_CSS" ]] && [[ -f "$REPO_ROOT/.claude/sketch-brainstorm-mockup.css" ]]; then
+  PROJECT_MOCKUP_CSS="$REPO_ROOT/.claude/sketch-brainstorm-mockup.css"
+fi
+
 # Build node argv: --topic, --iteration, --out are required by render.mjs;
-# --subtopic, --mockup-html, and --current-mode are forwarded only when set.
-# --current-mode always has a value (defaults to color above), so always
-# forward it; render.mjs validates against the allowed set.
+# --subtopic, --mockup-html, --current-mode, and --project-mockup-css are
+# forwarded only when set. --current-mode always has a value (defaults to
+# color above), so always forward it; render.mjs validates the allowed set.
+# Flag names must stay in sync with the parseArgs declaration in render.mjs.
 NODE_ARGS=( --topic "$TOPIC" --iteration "$ITERATION" --out "$OUT" --current-mode "$CURRENT_MODE" )
 if [[ -n "$SUBTOPIC" ]]; then
   NODE_ARGS+=( --subtopic "$SUBTOPIC" )
 fi
 if [[ -n "$MOCKUP_HTML" ]]; then
   NODE_ARGS+=( --mockup-html "$MOCKUP_HTML" )
+fi
+if [[ -n "$PROJECT_MOCKUP_CSS" ]]; then
+  NODE_ARGS+=( --project-mockup-css "$PROJECT_MOCKUP_CSS" )
 fi
 
 node "$SCRIPT_DIR/render/render.mjs" "${NODE_ARGS[@]}"

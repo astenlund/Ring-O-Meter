@@ -128,6 +128,7 @@ async function main() {
       out: { type: 'string' },
       'mockup-html': { type: 'string' },
       'current-mode': { type: 'string' },
+      'project-mockup-css': { type: 'string' },
     },
     strict: true,
   });
@@ -221,6 +222,15 @@ async function main() {
     }
     if (currentMode === 'wireframe') {
       await page.addStyleTag({ path: join(SCRIPT_DIR, 'page-chrome-wireframe.css') });
+    }
+    // Project-local design-language sheet. Written to <repo-root>/.claude/
+    // sketch-brainstorm-mockup.css by the design-language briefing at
+    // bootstrap. Injecting AFTER the mode sheet means the project CSS wins
+    // on conflict; intentional, since the project is the design-language
+    // source of truth. Placement BEFORE page.pdf() is load-bearing:
+    // stylesheets added after pdf() are ignored.
+    if (values['project-mockup-css']) {
+      await page.addStyleTag({ path: values['project-mockup-css'] });
     }
     // printBackground: true so CSS backgrounds (header strip fill, legend
     // panel fill, checkbox border) actually render. Without it the
