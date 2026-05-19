@@ -90,15 +90,35 @@ def set_active(path: Path, *, session_dir: str) -> None:
     """
     index = read_index(path)
     history = index["history"]
-
-    match = next((e for e in history if e["session_dir"] == session_dir), None)
-    if match is None:
-        raise SessionIndexError(f"session_dir not in history: {session_dir}")
+    match = _find_entry(history, session_dir)
 
     for entry in history:
         entry["status"] = "active" if entry is match else _demote(entry["status"])
     index["active_session"] = f"{_SESSIONS_PREFIX}{session_dir}"
     _write(path, index)
+
+
+def increment_turns(path: Path, *, session_dir: str) -> None:
+    """Advance the named session's turns counter by one.
+
+    Raises SessionIndexError if the session_dir is not in history. Called
+    once per round-trip iteration from the loop body so the resume prompt
+    surfaces a meaningful turns count.
+    """
+    index = read_index(path)
+    history = index["history"]
+    match = _find_entry(history, session_dir)
+
+    match["turns"] = match.get("turns", 0) + 1
+    _write(path, index)
+
+
+def _find_entry(history: list[dict[str, Any]], session_dir: str) -> dict[str, Any]:
+    """Return the history entry for session_dir, or raise SessionIndexError."""
+    entry = next((e for e in history if e["session_dir"] == session_dir), None)
+    if entry is None:
+        raise SessionIndexError(f"session_dir not in history: {session_dir}")
+    return entry
 
 
 def _demote(status: str) -> str:

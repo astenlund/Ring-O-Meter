@@ -37,6 +37,41 @@ SKETCH_BRAINSTORM_REPO_ROOT="$TMP" \
 grep -q '"active_session": "sessions/2026-05-19-warmup-gate"' "$INDEX" \
   || { echo "fail: set-active did not promote session" >&2; exit 1; }
 
+# increment-turn: advances the named session's turns counter
+SKETCH_BRAINSTORM_REPO_ROOT="$TMP" \
+  bash "$SCRIPT_DIR/update-session-index.sh" increment-turn \
+    --session-dir 2026-05-19-warmup-gate
+
+grep -q '"turns": 1' "$INDEX" \
+  || { echo "fail: increment-turn did not advance turns" >&2; exit 1; }
+
+# increment-turn is cumulative
+SKETCH_BRAINSTORM_REPO_ROOT="$TMP" \
+  bash "$SCRIPT_DIR/update-session-index.sh" increment-turn \
+    --session-dir 2026-05-19-warmup-gate
+SKETCH_BRAINSTORM_REPO_ROOT="$TMP" \
+  bash "$SCRIPT_DIR/update-session-index.sh" increment-turn \
+    --session-dir 2026-05-19-warmup-gate
+
+grep -q '"turns": 3' "$INDEX" \
+  || { echo "fail: increment-turn not cumulative" >&2; exit 1; }
+
+# Negative: increment-turn on unknown session must exit non-zero
+if SKETCH_BRAINSTORM_REPO_ROOT="$TMP" \
+     bash "$SCRIPT_DIR/update-session-index.sh" increment-turn \
+       --session-dir 2026-05-19-never-existed >/dev/null 2>&1; then
+  echo "fail: increment-turn on unknown session must exit non-zero" >&2
+  exit 1
+fi
+
+# Negative: increment-turn with malformed --session-dir must be rejected by format guard.
+if SKETCH_BRAINSTORM_REPO_ROOT="$TMP" \
+     bash "$SCRIPT_DIR/update-session-index.sh" increment-turn \
+       --session-dir "warmup-gate-only" >/dev/null 2>&1; then
+  echo "fail: increment-turn --session-dir without date prefix must exit non-zero" >&2
+  exit 1
+fi
+
 # Negative: set-active on unknown session must exit non-zero (exercises SessionIndexError,
 # not format rejection — use a valid YYYY-MM-DD-<slug> that is absent from history).
 if SKETCH_BRAINSTORM_REPO_ROOT="$TMP" \

@@ -2,8 +2,9 @@
 # update-session-index.sh
 #
 # Bash wrapper around session_index.py. Subcommands:
-#   add        --session-dir <dir> --slug <slug>
-#   set-active --session-dir <dir>
+#   add            --session-dir <dir> --slug <slug>
+#   set-active     --session-dir <dir>
+#   increment-turn --session-dir <dir>
 #
 # Uses SKETCH_BRAINSTORM_REPO_ROOT (test override) or walks up to find
 # Ring-O-Meter.slnx, then anchors current-session.json at
@@ -17,8 +18,9 @@ source "$SCRIPT_DIR/_lib.sh"
 
 usage() {
   cat >&2 <<'EOF'
-update-session-index.sh add        --session-dir <dir> --slug <slug>
-update-session-index.sh set-active --session-dir <dir>
+update-session-index.sh add            --session-dir <dir> --slug <slug>
+update-session-index.sh set-active     --session-dir <dir>
+update-session-index.sh increment-turn --session-dir <dir>
 EOF
 }
 
@@ -92,6 +94,25 @@ from pathlib import Path
 import session_index
 try:
     session_index.set_active(
+        Path(os.environ["INDEX_PATH"]),
+        session_dir=os.environ["SESSION_DIR"],
+    )
+except session_index.SessionIndexError as exc:
+    print(f"update-session-index.sh: {exc}", file=sys.stderr)
+    sys.exit(1)
+'
+    ;;
+  increment-turn)
+    # Caller is responsible for not invoking this on iter 00; only completed
+    # loop-body iterations (iter 01+) count as turns for the resume prompt.
+    INDEX_PATH="$INDEX_PATH" SESSION_DIR="$SESSION_DIR" RENDER_DIR="$RENDER_DIR" \
+      "$VENV_PYTHON" -c '
+import os, sys
+sys.path.insert(0, os.environ["RENDER_DIR"])
+from pathlib import Path
+import session_index
+try:
+    session_index.increment_turns(
         Path(os.environ["INDEX_PATH"]),
         session_dir=os.environ["SESSION_DIR"],
     )
