@@ -75,10 +75,10 @@ remains future work.
 - `composite-annotated.sh` -- bash wrapper for the composite step; reuses the shared venv.
 - `render/prerender-pages.py` -- PyMuPDF-based PDF-to-PNG rasterizer; invoked by `render-html-to-pdf.sh`'s `--prerender-out` flag to feed the verify-before-push slice.
 - `bootstrap-session.sh` -- creates the per-session local folder skeleton and primes `design-state.md` with frontmatter + `## Iteration 00`. Idempotent. Invokes `check-rmapi-setup.sh` as a defense-in-depth precondition before any filesystem mutation, and registers the new session via `update-session-index.sh add` after creating the folder.
-- `update-session-index.sh` -- bash wrapper around `session_index.py`; subcommands `add --session-dir <dir> --slug <slug>` (called by `bootstrap-session.sh`) and `set-active --session-dir <dir>` (called by the orchestrator's resume / pick-older branches in the full bootstrap dialogue).
-- `render/session_index.py` -- read / write `.tmp/sketch-brainstorm/current-session.json`: `read_index`, `add_session` (idempotent on session_dir), `set_active`, `SessionIndexError`. Atomic writes via `_atomic_write`.
-- `test_update_session_index.sh` -- bash test for the wrapper (subcommand routing, repo-root resolution, error paths).
-- `render/test_session_index.py` -- unit tests for the index library (add idempotency, active-pointer demotion, malformed-JSON handling).
+- `update-session-index.sh` -- bash wrapper around `session_index.py`; subcommands `add --session-dir <dir> --slug <slug>` (called by `bootstrap-session.sh`), `set-active --session-dir <dir>` (called by the orchestrator's resume / pick-older branches in the full bootstrap dialogue), and `increment-turn --session-dir <dir>` (called by the iter01+ loop body after each successful push).
+- `render/session_index.py` -- read / write `.tmp/sketch-brainstorm/current-session.json`: `read_index`, `add_session` (idempotent on session_dir), `set_active`, `increment_turns`, `SessionIndexError`. Atomic writes via `_atomic_write`.
+- `test_update_session_index.sh` -- bash test for the wrapper (subcommand routing, repo-root resolution, error paths, increment-turn cumulative + negative).
+- `render/test_session_index.py` -- unit tests for the index library (add idempotency, active-pointer demotion, increment_turns cumulative + negative, malformed-JSON handling).
 - `check-poller-lock.sh` -- bash wrapper that prints one JSON line on stdout classifying `.tmp/sketch-brainstorm/poller.lock` as `absent`, `stale`, or `alive`. Always exits 0; lock states are data, not errors. The full bootstrap dialogue's step 1 reads this and branches into the force-claim prompt on `alive`.
 - `render/check_poller_lock.py` -- read-only lock classifier: `check_lock(path)` returns a dict with `status` plus supporting fields (pid, heartbeat_age_s, reason). PID-alive uses `os.kill(pid, 0)`; heartbeat staleness threshold is 60 s to tolerate one missed iteration at the 30 s poll cadence.
 - `test_check_poller_lock.sh` -- bash test for the wrapper (JSON parse, repo-root override, exit-0 invariant).
@@ -359,6 +359,12 @@ body iteration:
    entry point section's rules verbatim.
 8. `push-to-tablet.sh --pdf <session>/<slug>-NN.pdf --cloud-folder
    <cloud-path>/<slug>`.
+8.5. `bash skills/sketch-brainstorm/update-session-index.sh increment-turn
+   --session-dir <session>`. Advances the session's `turns` counter in
+   `current-session.json` so the resume-vs-fresh prompt at the top of the
+   next bootstrap surfaces an honest count. Iter 00 (initial bootstrap
+   render) does not increment; only completed loop-body iterations count
+   as turns.
 9. Tell the user: "iter NN pushed; annotate and back out, then say `go`."
 
 ### Principles

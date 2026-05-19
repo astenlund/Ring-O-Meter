@@ -82,6 +82,48 @@ class SessionIndexTests(unittest.TestCase):
         with self.assertRaises(session_index.SessionIndexError):
             session_index.set_active(self.index_path, session_dir="never-existed")
 
+    def test_increment_turns_advances_count(self) -> None:
+        session_index.add_session(
+            self.index_path, session_dir="2026-05-19-warmup-gate", slug="warmup-gate",
+        )
+        session_index.increment_turns(
+            self.index_path, session_dir="2026-05-19-warmup-gate",
+        )
+        loaded = json.loads(self.index_path.read_text())
+        self.assertEqual(loaded["history"][0]["turns"], 1)
+
+    def test_increment_turns_is_cumulative(self) -> None:
+        session_index.add_session(
+            self.index_path, session_dir="2026-05-19-warmup-gate", slug="warmup-gate",
+        )
+        for _ in range(3):
+            session_index.increment_turns(
+                self.index_path, session_dir="2026-05-19-warmup-gate",
+            )
+        loaded = json.loads(self.index_path.read_text())
+        self.assertEqual(loaded["history"][0]["turns"], 3)
+
+    def test_increment_turns_targets_only_named_session(self) -> None:
+        session_index.add_session(
+            self.index_path, session_dir="2026-05-18-old", slug="old",
+        )
+        session_index.add_session(
+            self.index_path, session_dir="2026-05-19-new", slug="new",
+        )
+        session_index.increment_turns(
+            self.index_path, session_dir="2026-05-18-old",
+        )
+        loaded = json.loads(self.index_path.read_text())
+        turns = {e["session_dir"]: e["turns"] for e in loaded["history"]}
+        self.assertEqual(turns["2026-05-18-old"], 1)
+        self.assertEqual(turns["2026-05-19-new"], 0)
+
+    def test_increment_turns_raises_on_unknown_session(self) -> None:
+        with self.assertRaises(session_index.SessionIndexError):
+            session_index.increment_turns(
+                self.index_path, session_dir="never-existed",
+            )
+
     def test_read_index_raises_on_malformed_json(self) -> None:
         self.index_path.parent.mkdir(parents=True)
         self.index_path.write_text("{not valid json")
