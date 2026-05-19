@@ -46,6 +46,8 @@ done
 
 # Reject path-traversal slugs and other shapes that would escape the
 # session folder boundary; require strict kebab-case.
+# Slug character class [a-z0-9]+(-[a-z0-9]+)* must stay in sync with
+# update-session-index.sh's --session-dir validation regex.
 [[ "$SLUG" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || { echo "bootstrap-session.sh: --slug must be kebab-case (got: $SLUG)" >&2; exit 1; }
 
 # Reject newlines in topic; an embedded newline would emit two YAML
