@@ -117,6 +117,7 @@ remains future work.
 - `test_verify_parse.mjs` -- node:test cases for `parseVerifyResponse` (PASS/FAIL happy paths, CRLF, asymmetric-reason rule, missing/wrong-cased fields, forward-compat unknown-field tolerance, missing-fence rejection).
 - `test_bootstrap_session.sh` -- bash test for `bootstrap-session.sh` (folder skeleton, frontmatter, idempotency re-run, negative-input rejection).
 - `render/test_render_format.mjs` -- node:test cases for `formatIterationLabel`.
+- `render/test_project_css_injection.mjs` -- node:test cases for the `--project-mockup-css` CLI flag plumbing through `render.mjs`'s `parseArgs` (option accepted, correct failure mode on missing required flags; visual injection covered by smoke test).
 - `render/test_prerender_pages.py` -- end-to-end test for `prerender-pages.py` against a real two-page PDF.
 - `render/test_render_strokes.py` -- unit tests covering `render-strokes.py` main() calibration-present and auto-fit branches; also checks PAGE_W/PAGE_H parity with composite-annotated; uses shared kebab-module stub harness from _test_helpers.py.
 - `render/test_composite_annotated.py` -- unit tests for `composite-annotated.py`'s page-pattern regex, numeric sort, and resolution constants (now also cross-checks `prerender-pages.py`); uses shared kebab-module stub harness from _test_helpers.py.
@@ -468,7 +469,10 @@ user reports a pairing-completed-but-still-broken state.
    The `status` field is one of `absent`, `stale`, or `alive`.
    - `status: absent` or `status: stale`: proceed to step 2. The
      poller spawn at step 8 claims the lock cleanly; no orchestrator
-     action is needed to clear a stale lock.
+     action is needed to clear a stale lock. If `stale` includes
+     `"reason": "error"` (the Python check failed to import — venv or
+     path issue), surface a one-line note in chat before proceeding so
+     the user can diagnose the tool failure independently.
    - `status: alive`: surface the force-claim prompt:
      > Existing polling script for this project: PID {pid}, last
      > heartbeat {heartbeat_age_s}s ago. Cancel (resume in the other

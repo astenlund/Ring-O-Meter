@@ -189,6 +189,7 @@ It prints one `[PASS]` / `[FAIL]` / `[ERROR]` line per check and exits 0 if all 
 - `render/test_calibration.py` -- unit tests for `_calibration.py` schema validation: rejects unknown version, rejects missing-schema (implied v1), accepts current version; stdlib-only.
 - `render/test_prerender_pages.py` -- end-to-end test for `prerender-pages.py` against a real two-page PDF.
 - `render/test_render_format.mjs` -- node:test cases for `formatIterationLabel`.
+- `render/test_project_css_injection.mjs` -- node:test cases for the `--project-mockup-css` CLI flag plumbing through `render.mjs`'s `parseArgs`.
 - `test_interpret_parse.mjs` -- node:test cases for `parseInterpretResponse`.
 - `test_verify_parse.mjs` -- node:test cases for `parseVerifyResponse` (12 cases including PASS/FAIL happy paths, the asymmetric-reason rule both directions, CRLF, chatty preamble, no-fence, malformed JSON, missing fields, wrong-cased verdict, unknown-field tolerance).
 - `test_bootstrap_session.sh` -- bash test for `bootstrap-session.sh`.
