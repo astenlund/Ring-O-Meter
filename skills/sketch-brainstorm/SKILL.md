@@ -114,7 +114,7 @@ remains future work.
 - `render/write_design_state.py` -- atomic write-to-temp + rename implementation; preserves prior iterations and updates `current_mode` frontmatter.
 - `render/test_write_design_state.py` -- unit tests for the atomic-write helper (frontmatter merge, iteration append, idempotency).
 - `read-prefill.sh` -- bash wrapper for the pixel-read pre-fill helper used by the resume flow's mode-recovery fallback.
-- `rmapi-conf-deny-hook.sh`: PreToolUse hook blocking access to the rmapi token conf. Wired via `~/.claude/settings.json` per the install instructions in `README.md`.
+- `rmapi-conf-deny-hook.sh`: PreToolUse hook blocking access to the rmapi token conf. Canonicalizes `file_path` / `path` inputs via `realpath` before the literal-`rmapi.conf` match so symlink-bypass attempts on `Read` / `Edit` / `Write` / `NotebookEdit` / `Grep` resolve and get blocked too; the `Bash` command field stays literal-match-only per the README's Threat model. Audit log entries are 4 tab-separated columns (`ts`, `tool_name`, `context`, `resolved_path_or_dash`). Wired via `~/.claude/settings.json` per the install instructions in `README.md`.
 - `render/read_prefill.py` -- rasterizes a pulled PDF and reads a known pixel sample to infer the active mode; accepts calibration dict as a parameter (main() loads via load_calibration() and passes down); emits `{"active_mode": "..."}` on success.
 - `render/test_read_prefill.py` -- unit tests for the pixel-read mode inference.
 - `render/test_geometry.py` -- capsule-area geometry tests; stdlib-only (imports _geometry.py directly; no venv or rmscene stub required).
