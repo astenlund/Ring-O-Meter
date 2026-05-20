@@ -4,6 +4,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/rmapi-conf-deny-hook.sh"
 
+# Hermetic sandbox shared by all tests that need filesystem fixtures or a
+# scratch audit log. Hoisted to the top per the global rule "declare all
+# mktemp -d temp dirs at the top of the script and register one trap EXIT".
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
 # Test: innocuous Bash call → exit 0 silent
 out=$(printf '{"tool_name":"Bash","tool_input":{"command":"ls /tmp"}}' | bash "$HOOK" 2>&1 || true)
 ec=$(printf '{"tool_name":"Bash","tool_input":{"command":"ls /tmp"}}' | bash "$HOOK" >/dev/null 2>&1 && echo 0 || echo $?)
@@ -63,12 +69,16 @@ echo "OK: hook fail-open tests passed"
 # tests use it for hermetic isolation. Production callers (Claude Code's
 # PreToolUse harness) pass no args, so the hook falls back to its default
 # path.
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
 printf '{"tool_name":"Bash","tool_input":{"command":"cat ~/.config/rmapi/rmapi.conf"}}' | \
   bash "$HOOK" "$TMP/audit.log" >/dev/null 2>&1 || true
 [[ -f "$TMP/audit.log" ]] || { echo "fail: audit log not created" >&2; exit 1; }
-grep -q "rmapi.conf" "$TMP/audit.log" || { echo "fail: audit log missing command excerpt" >&2; exit 1; }
+# Column-exact assertion: context (col 3) contains the rmapi.conf excerpt
+# AND resolved column (col 4) is literally "-" for a direct match (the
+# Bash command field matched the regex literally, no symlink resolution
+# triggered). Mirrors the column-exact awk style used by the symlink test
+# below, so a regression that swaps the column layout fails here too.
+awk -F'\t' '$3 ~ /rmapi\.conf/ && $4 == "-" {found=1} END {exit !found}' "$TMP/audit.log" \
+  || { echo "fail: audit log direct-match expected col-3 to contain rmapi.conf and col-4 == \"-\"" >&2; cat "$TMP/audit.log" >&2; exit 1; }
 
 echo "OK: hook audit log creation test passed"
 
@@ -96,3 +106,51 @@ grep -q "Blocked: rmapi conf access via" <<<"$stderr_out" || \
   { echo "fail: missing Blocked stderr; got: $stderr_out" >&2; exit 1; }
 
 echo "OK: hook stderr message test passed"
+
+# Test: Write tool with a non-existent absolute path -> exit 0. Pass chain:
+# GNU realpath -m returns the absolute path unchanged; BSD realpath fails-
+# open to empty; either way the haystack contains only the non-rmapi path.
+ec=$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$TMP/new-file.txt" \
+       | bash "$HOOK" >/dev/null 2>&1 && echo 0 || echo $?)
+[[ "$ec" == "0" ]] || { echo "fail: non-existent path Write should exit 0, got $ec" >&2; exit 1; }
+
+echo "OK: hook non-existent path test passed"
+
+# Test: symlink-bypass blocked via realpath canonicalization.
+# On Windows Git Bash / MSYS2, `ln -s` typically creates a copy rather than
+# a real symlink unless MSYS=winsymlinks:nativestrict is set; skip symlink-
+# creation tests there. The hook itself still works on Windows in production;
+# only the test fixture setup is fragile. Glob match covers `msys` (Git
+# Bash) and `msys2` (MSYS2 native bash).
+if [[ "${OSTYPE:-}" == msys* ]]; then
+  echo "SKIP: Windows symlink creation requires MSYS=winsymlinks:nativestrict"
+else
+  echo "fake-token" > "$TMP/fake-rmapi.conf"
+  ln -s "$TMP/fake-rmapi.conf" "$TMP/token"
+  # Fresh audit log path per-test so the awk column-exact assertion below
+  # scans only this test's output, not earlier tests that share `$TMP/audit.log`.
+  ec=$(printf '{"tool_name":"Read","tool_input":{"file_path":"%s"}}' "$TMP/token" \
+         | bash "$HOOK" "$TMP/audit-symlink.log" >/dev/null 2>&1 && echo 0 || echo $?)
+  [[ "$ec" == "2" ]] || { echo "fail: symlink to rmapi.conf should exit 2, got $ec" >&2; exit 1; }
+
+  echo "OK: hook symlink-bypass blocked test passed"
+
+  # Column-exact assertion: the 4th tab-separated column must contain the
+  # resolved path (the symlink's target), not the symlink name. Substring
+  # grep would also pass on a bug that put the resolved path in the wrong
+  # column; awk -F'\t' on $4 is column-exact.
+  awk -F'\t' '$4 ~ /fake-rmapi\.conf/ {found=1} END {exit !found}' "$TMP/audit-symlink.log" \
+    || { echo "fail: audit log 4th column missing resolved path" >&2; cat "$TMP/audit-symlink.log" >&2; exit 1; }
+
+  echo "OK: hook symlink-bypass 4th column test passed"
+
+  # Test: legitimate symlink to a NON-rmapi file -> exit 0 (must not over-block).
+  # Confirms realpath canonicalization doesn't false-positive on unrelated symlinks.
+  echo "other-content" > "$TMP/other.txt"
+  ln -s "$TMP/other.txt" "$TMP/alias"
+  ec=$(printf '{"tool_name":"Read","tool_input":{"file_path":"%s"}}' "$TMP/alias" \
+         | bash "$HOOK" >/dev/null 2>&1 && echo 0 || echo $?)
+  [[ "$ec" == "0" ]] || { echo "fail: symlink to non-rmapi target should exit 0, got $ec" >&2; exit 1; }
+
+  echo "OK: hook symlink-to-non-rmapi test passed"
+fi

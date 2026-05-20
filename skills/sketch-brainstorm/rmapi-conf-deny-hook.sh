@@ -28,7 +28,26 @@ if ! fields=$(printf '%s' "$input" | jq -r '
   exit 0
 fi
 IFS=$'\t' read -r tool_command file_path grep_path <<< "$fields"
-haystack="$tool_command $file_path $grep_path"
+
+# Canonicalize path fields so a symlink pointing at the rmapi conf cannot
+# bypass the literal-substring check. The Bash command field stays
+# unresolved - statically resolving filesystem accesses inside a shell
+# command is the documented anti-goal (see README "Threat model").
+# Fallback chain: GNU realpath -m handles not-yet-existing paths (Write
+# tool); plain realpath covers BSD (macOS lacks -m); `|| true` catches
+# any remaining error (missing binary, ELOOP, etc.) - fail-open to empty,
+# matching the JSON-parse fail-open philosophy above.
+resolved_file_path=""
+resolved_grep_path=""
+if [[ -n "$file_path" ]]; then
+  resolved_file_path=$(realpath -m -- "$file_path" 2>/dev/null \
+    || realpath -- "$file_path" 2>/dev/null || true)
+fi
+if [[ -n "$grep_path" ]]; then
+  resolved_grep_path=$(realpath -m -- "$grep_path" 2>/dev/null \
+    || realpath -- "$grep_path" 2>/dev/null || true)
+fi
+haystack="$tool_command $file_path $resolved_file_path $grep_path $resolved_grep_path"
 
 if printf '%s' "$haystack" | grep -iq 'rmapi\.conf'; then
   # Optional positional arg overrides the audit log path (used by tests for
@@ -52,10 +71,22 @@ if printf '%s' "$haystack" | grep -iq 'rmapi\.conf'; then
       break
     fi
   done
+  # 4th column distinguishes direct-match blocks from symlink-bypass blocks.
+  # Re-run the grep against only the original fields: if that matches, the
+  # block was a direct hit (emit `-`); otherwise a resolved path caused it
+  # (emit the resolved path). file_path and grep_path are mutually exclusive
+  # across all current tool schemas (Read/Edit/Write/NotebookEdit use file_path;
+  # Grep uses path -> grep_path), so the :- chain is equivalent to "the
+  # non-empty one".
+  if printf '%s' "$tool_command $file_path $grep_path" | grep -iq 'rmapi\.conf'; then
+    resolved_col="-"
+  else
+    resolved_col="${resolved_file_path:-${resolved_grep_path:-}}"
+  fi
   # Best-effort: directory create + append both ignored on failure so a
   # log-write problem does not prevent the exit 2 block.
   mkdir -p "$(dirname "$log_path")" 2>/dev/null || true
-  printf '%s\t%s\t%s\n' "$ts" "$tool_name" "$context" >> "$log_path" 2>/dev/null || true
+  printf '%s\t%s\t%s\t%s\n' "$ts" "$tool_name" "$context" "$resolved_col" >> "$log_path" 2>/dev/null || true
   printf 'Blocked: rmapi conf access via %s\n' "$tool_name" >&2
   exit 2
 fi
