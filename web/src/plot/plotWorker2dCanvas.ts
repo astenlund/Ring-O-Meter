@@ -34,6 +34,7 @@ import {
     type VoicePoint,
 } from './vowelModule';
 import {hexToRgba} from './color';
+import * as chordBarsModule from './chordBarsModule';
 import {PlotMessageType, type PlotMessage, type VoiceEntry} from './plotMessages';
 
 let canvas: OffscreenCanvas | null = null;
@@ -41,6 +42,14 @@ let ctx: OffscreenCanvasRenderingContext2D | null = null;
 const backing: CanvasBacking = {cssWidth: 0, cssHeight: 0, dpr: 1};
 let voices: ReadonlyArray<VoiceEntry> = [];
 const rings: RingsRecord = {};
+
+// Chord-bars module state. channelIdToSlot is populated by AttachChannel
+// (insert at next sequential index) and DetachChannel (remove entry).
+// Passed to chordBarsModule.update() on every SetChordClassification.
+let chordBarsInitialised = false;
+// Sequential insertion-order slot assignment: next slot index to assign.
+let _nextChordSlotIndex = 0;
+const channelIdToSlot: Map<string, number> = new Map();
 
 let range: HzRange = {minHz: 80, maxHz: 600};
 let windowMs = 10_000;
@@ -393,6 +402,10 @@ function paint(): void {
 
     paintVowel();
 
+    if (chordBarsInitialised) {
+        chordBarsModule.draw();
+    }
+
     rafId = requestAnimationFrame(paint);
 }
 
@@ -433,11 +446,15 @@ self.onmessage = (event: MessageEvent<PlotMessage>) => {
         }
         case PlotMessageType.AttachChannel: {
             rings[msg.channelId] = new FrameRingReader(msg.source.sab, msg.source.epochOffsetMs);
+            if (!channelIdToSlot.has(msg.channelId)) {
+                channelIdToSlot.set(msg.channelId, _nextChordSlotIndex++);
+            }
 
             return;
         }
         case PlotMessageType.DetachChannel: {
             delete rings[msg.channelId];
+            channelIdToSlot.delete(msg.channelId);
 
             return;
         }
@@ -498,12 +515,37 @@ self.onmessage = (event: MessageEvent<PlotMessage>) => {
 
             return;
         }
-        case PlotMessageType.InitChordBarsCanvas:
-        case PlotMessageType.SetChordBarsBacking:
-        case PlotMessageType.SetChordClassification:
-            // Task 18 wires the real handlers; stubs here keep the exhaustiveness
-            // check happy across intermediate commits.
+        case PlotMessageType.InitChordBarsCanvas: {
+            chordBarsModule.init(
+                msg.canvas,
+                {width: 0, height: 0},
+                1,
+            );
+            chordBarsInitialised = true;
+
             return;
+        }
+        case PlotMessageType.SetChordBarsBacking: {
+            if (!chordBarsInitialised) {
+                return;
+            }
+            chordBarsModule.setBacking(msg.cssWidth, msg.cssHeight, msg.dpr);
+
+            return;
+        }
+        case PlotMessageType.SetChordClassification: {
+            if (!chordBarsInitialised) {
+                return;
+            }
+            chordBarsModule.update({
+                lockedChordType: msg.lockedChordType,
+                residualsBySlot: msg.residualsBySlot,
+                rootChannelId: msg.rootChannelId,
+                channelIdToSlot,
+            });
+
+            return;
+        }
         default: {
             const _exhaustive: never = msg;
             void _exhaustive;
