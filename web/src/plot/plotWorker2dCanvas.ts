@@ -35,6 +35,7 @@ import {
 } from './vowelModule';
 import {hexToRgba} from './color';
 import * as chordBarsModule from './chordBarsModule';
+import {allocateLowestFreeSlot} from './chordSlotAllocator';
 import {PlotMessageType, type PlotMessage, type VoiceEntry} from './plotMessages';
 
 let canvas: OffscreenCanvas | null = null;
@@ -44,11 +45,10 @@ let voices: ReadonlyArray<VoiceEntry> = [];
 const rings: RingsRecord = {};
 
 // Chord-bars module state. channelIdToSlot is populated by AttachChannel
-// (insert at next sequential index) and DetachChannel (remove entry).
-// Passed to chordBarsModule.update() on every SetChordClassification.
+// (lowest free slot via allocateLowestFreeSlot) and DetachChannel (remove
+// entry; slot returns to the free pool). Passed to chordBarsModule.update()
+// on every SetChordClassification.
 let chordBarsInitialised = false;
-// Sequential insertion-order slot assignment: next slot index to assign.
-let _nextChordSlotIndex = 0;
 const channelIdToSlot: Map<string, number> = new Map();
 
 let range: HzRange = {minHz: 80, maxHz: 600};
@@ -447,7 +447,10 @@ self.onmessage = (event: MessageEvent<PlotMessage>) => {
         case PlotMessageType.AttachChannel: {
             rings[msg.channelId] = new FrameRingReader(msg.source.sab, msg.source.epochOffsetMs);
             if (!channelIdToSlot.has(msg.channelId)) {
-                channelIdToSlot.set(msg.channelId, _nextChordSlotIndex++);
+                const slot = allocateLowestFreeSlot(channelIdToSlot.values(), MAX_VOICES);
+                if (slot >= 0) {
+                    channelIdToSlot.set(msg.channelId, slot);
+                }
             }
 
             return;
