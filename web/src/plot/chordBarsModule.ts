@@ -11,6 +11,7 @@
 // pattern.
 
 import {GREEN_THRESHOLD_CENTS} from '../audio/ringThresholds';
+import {applyCanvasBacking, type CanvasBacking, type CanvasSize} from './paint';
 import {MAX_VOICES} from './vowelModule';
 
 // heuristic: chord-bars-track-height-css - track height in CSS pixels.
@@ -86,9 +87,11 @@ for (let i = 0; i < MAX_VOICES; i++) {
 
 let _canvas: OffscreenCanvas | null = null;
 let _ctx: OffscreenCanvasRenderingContext2D | null = null;
-let _cssWidth = 0;
-let _cssHeight = 0;
-let _dpr = 1;
+// Backing dims (CSS px + DPR). Set by init/setBacking, read by draw.
+// _sizeOut is a write-only scratch for applyCanvasBacking's out-param
+// contract; the same numeric values live in _backing.cssWidth/cssHeight.
+const _backing: CanvasBacking = {cssWidth: 0, cssHeight: 0, dpr: 1};
+const _sizeOut: CanvasSize = {width: 0, height: 0};
 
 // Scratch scalar: voice count from last update().
 let _voiceCount = 0;
@@ -101,16 +104,16 @@ export function init(
     dpr: number,
 ): void {
     _canvas = canvas;
-    _cssWidth = size.width;
-    _cssHeight = size.height;
-    _dpr = dpr;
+    _backing.cssWidth = size.width;
+    _backing.cssHeight = size.height;
+    _backing.dpr = dpr;
 
     const ctx = canvas.getContext('2d', {alpha: true});
     if (!ctx) {
         throw new Error('chordBarsModule: 2d context unavailable');
     }
     _ctx = ctx;
-    applyBacking();
+    applyCanvasBacking(canvas, ctx, _backing, _sizeOut);
 }
 
 export interface ChordBarsInput {
@@ -121,9 +124,9 @@ export interface ChordBarsInput {
 }
 
 export function setBacking(cssWidth: number, cssHeight: number, dpr: number): void {
-    _cssWidth = cssWidth;
-    _cssHeight = cssHeight;
-    _dpr = dpr;
+    _backing.cssWidth = cssWidth;
+    _backing.cssHeight = cssHeight;
+    _backing.dpr = dpr;
 }
 
 export function update(input: ChordBarsInput): void {
@@ -184,13 +187,13 @@ export function draw(): void {
         return;
     }
 
-    // Re-apply backing if canvas dimensions need updating. applyBacking
+    // Re-apply backing if canvas dimensions need updating. applyCanvasBacking
     // is a no-op on size/dpr match so this is safe to call every frame.
-    applyBacking();
+    applyCanvasBacking(_canvas, _ctx, _backing, _sizeOut);
 
     const ctx = _ctx;
-    const w = _cssWidth;
-    const h = _cssHeight;
+    const w = _backing.cssWidth;
+    const h = _backing.cssHeight;
 
     // Per spec: clearRect not fillRect — alpha:true canvas, overlays may
     // composite on top.
@@ -290,27 +293,12 @@ export function draw(): void {
 export function dispose(): void {
     _canvas = null;
     _ctx = null;
-    _cssWidth = 0;
-    _cssHeight = 0;
+    _backing.cssWidth = 0;
+    _backing.cssHeight = 0;
     _voiceCount = 0;
 }
 
 // --- Helpers ---
-
-// Apply canvas backing dimensions + DPR transform. Only writes
-// canvas.width/height when they actually change (resize-only cost).
-function applyBacking(): void {
-    if (!_canvas || !_ctx) {
-        return;
-    }
-    const backingW = Math.round(_cssWidth * _dpr);
-    const backingH = Math.round(_cssHeight * _dpr);
-    if (_canvas.width !== backingW || _canvas.height !== backingH) {
-        _canvas.width = backingW;
-        _canvas.height = backingH;
-        _ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0);
-    }
-}
 
 // Format a cents value as a signed string with one decimal place.
 // Pre-allocated scratch string pool cannot be used for floating-point
