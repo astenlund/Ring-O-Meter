@@ -9,12 +9,10 @@
 
 import {hexToRgba} from './color';
 import {GREEN_THRESHOLD_CENTS, YELLOW_BAND_OUTER_CENTS} from '../audio/ringThresholds';
+import {MAX_VOICES} from './vowelModule';
 
 // heuristic: chord-bars-range-cents
 const RANGE_CENTS = 50;
-
-// heuristic: max-voices-chord-classification
-const MAX_VOICES = 8;
 
 // Vertex layout: position (f32x2) at offset 0, color (f32x4) at offset 8.
 // Stride = 24 bytes.
