@@ -103,8 +103,15 @@ describe('frame-state allocation budget', () => {
 
         expect(after - baseline).toBeLessThan(HEAP_DELTA_BUDGET_BYTES);
 
-        control.unregisterReader('a');
-        control.unregisterReader('b');
+        // unregisterReader synchronously calls setLatest (see
+        // useFrameState.ts); without act() the dev-mode "update was
+        // not wrapped in act(...)" warning fires on cleanup and the
+        // warning's stack-trace walk allocates tens of KB - the same
+        // noise source the publish-loop act() wrapper above silences.
+        await act(async () => {
+            control.unregisterReader('a');
+            control.unregisterReader('b');
+        });
         await act(async () => {
             root.unmount();
         });
