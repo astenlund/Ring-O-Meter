@@ -7,8 +7,7 @@
 // See voiceChannel.ts for the production single-ring counterpart and
 // the start()/stop() ordering invariants this file extends to N rings.
 //
-// Cleanup: rm this file along with fanoutConstants.ts and
-// fanoutWorklet.ts when the fanout test mode is retired.
+// Permanent dev-mode infrastructure; gated by devModesEnabled in /config.json.
 
 // `?worker&url` suffix is mandatory: plain `?url` returns the raw .ts
 // path which AudioWorkletGlobalScope cannot resolve. Same contract as

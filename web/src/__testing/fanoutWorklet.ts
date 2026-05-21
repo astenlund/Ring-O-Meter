@@ -14,8 +14,7 @@
 // so this fanout faithfully reproduces the rendering load that real
 // 4-mic capture would create on iPad while keeping DSP cost low.
 //
-// Cleanup: rm this file along with fanoutConstants.ts and
-// fanoutVoiceChannel.ts when the fanout test mode is retired.
+// Permanent dev-mode infrastructure; gated by devModesEnabled in /config.json.
 
 import {detectPitch} from '../dsp/pitchDetector';
 import {computeRmsDb} from '../dsp/rmsDb';

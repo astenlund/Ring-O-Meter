@@ -6,6 +6,5 @@
 // (where fanoutVoiceChannel.ts passes it to new AudioWorkletNode). No
 // transitive imports, no top-level side effects.
 //
-// Cleanup: rm this file along with fanoutWorklet.ts and
-// fanoutVoiceChannel.ts when the fanout test mode is retired.
+// Permanent dev-mode infrastructure; gated by devModesEnabled in /config.json.
 export const PITCH_FANOUT_PROCESSOR_NAME = 'pitch-fanout-processor';
