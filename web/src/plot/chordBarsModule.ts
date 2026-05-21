@@ -11,6 +11,7 @@
 // pattern.
 
 import {GREEN_THRESHOLD_CENTS} from '../audio/ringThresholds';
+import {SCALE_HALF_CENTS} from './chordBarsScale';
 import {applyCanvasBacking, type CanvasBacking, type CanvasSize} from './paint';
 import {MAX_VOICES} from './vowelModule';
 
@@ -26,9 +27,6 @@ const LABEL_MARGIN_CSS = 36;
 // heuristic: chord-bars-readout-margin-css - right-side column for
 // signed cents readout, in CSS pixels.
 const READOUT_MARGIN_CSS = 44;
-
-// heuristic: chord-bars-scale-cents - full half-range of the ±N¢ axis.
-const SCALE_HALF_CENTS = 50;
 
 // heuristic: chord-bars-dot-radius-css - indicator dot radius in CSS
 // pixels.

@@ -9,10 +9,8 @@
 
 import {hexToRgba} from './color';
 import {GREEN_THRESHOLD_CENTS, YELLOW_BAND_OUTER_CENTS} from '../audio/ringThresholds';
+import {SCALE_HALF_CENTS} from './chordBarsScale';
 import {MAX_VOICES} from './vowelModule';
-
-// heuristic: chord-bars-range-cents
-const RANGE_CENTS = 50;
 
 // Vertex layout: position (f32x2) at offset 0, color (f32x4) at offset 8.
 // Stride = 24 bytes.
@@ -378,10 +376,10 @@ function buildGeometry(
         return 0;
     }
 
-    // Horizontal mapping: center of canvas = 0 cents, ±RANGE_CENTS
+    // Horizontal mapping: center of canvas = 0 cents, ±SCALE_HALF_CENTS
     // maps to ±halfW.
     const halfW = wPx / 2;
-    const pxPerCent = halfW / RANGE_CENTS;
+    const pxPerCent = halfW / SCALE_HALF_CENTS;
 
     // Green zone half-width in px.
     const greenHalf = GREEN_THRESHOLD_CENTS * pxPerCent;
@@ -423,7 +421,7 @@ function buildGeometry(
         // 4. Dot + off-scale wedge (only when chord locked and residual valid).
         const residual = residuals[s];
         if (chordLocked && Number.isFinite(residual)) {
-            const clamped = Math.max(-RANGE_CENTS, Math.min(RANGE_CENTS, residual));
+            const clamped = Math.max(-SCALE_HALF_CENTS, Math.min(SCALE_HALF_CENTS, residual));
             const dotCx = halfW + clamped * pxPerCent;
             const dotHalf = DOT_PX / 2;
             const dotX0 = dotCx - dotHalf;
@@ -434,12 +432,12 @@ function buildGeometry(
             const col = slotColors[s];
             vi = writeQuad(staging, vi, dotX0, dotY0, dotX1, dotY1, col);
 
-            // Off-scale left wedge (residual strictly < -RANGE_CENTS).
-            if (residual < -RANGE_CENTS) {
+            // Off-scale left wedge (residual strictly < -SCALE_HALF_CENTS).
+            if (residual < -SCALE_HALF_CENTS) {
                 vi = writeLeftWedge(staging, vi, WEDGE_PX, midY, WEDGE_COLOR);
             }
-            // Off-scale right wedge (residual strictly > +RANGE_CENTS).
-            if (residual > RANGE_CENTS) {
+            // Off-scale right wedge (residual strictly > +SCALE_HALF_CENTS).
+            if (residual > SCALE_HALF_CENTS) {
                 vi = writeRightWedge(staging, vi, wPx - WEDGE_PX, midY, WEDGE_COLOR);
             }
         }
