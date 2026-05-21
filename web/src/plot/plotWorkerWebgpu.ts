@@ -3,6 +3,7 @@
 import {FrameRingReader} from '../audio/frameRing';
 import {
     PlotMessageType,
+    type InitChordBarsCanvasMessage,
     type InitVowelCanvasMessage,
     type PlotMessage,
     type VoiceEntry,
@@ -10,6 +11,7 @@ import {
 import {ReadyGate} from './readyGate';
 import {TraceModule} from './traceModule';
 import {VowelModuleWebgpu} from './vowelModuleWebgpu';
+import {ChordBarsModuleWebgpu} from './chordBarsModuleWebgpu';
 
 // Top-level: kick off device acquisition as soon as the worker module
 // loads. Both Init (trace canvas) and InitVowelCanvas await this; the
@@ -52,6 +54,14 @@ let vowelCanvasContext: GPUCanvasContext | null = null;
 // (Safari/iPadOS WebKit doesn't auto-reconfigure on canvas resize).
 let resolvedVowelDevice: GPUDevice | null = null;
 let resolvedVowelFormat: GPUTextureFormat | null = null;
+
+// Chord-bars module state. channelIdToSlot is populated by AttachChannel
+// (insert at next sequential index) and DetachChannel (remove entry).
+// Passed to chordBarsModule.update() on every SetChordClassification.
+let chordBarsModule: ChordBarsModuleWebgpu | null = null;
+const chordBarsGate = new ReadyGate<PlotMessage>();
+let _nextChordSlotIndex = 0;
+const channelIdToSlot: Map<string, number> = new Map();
 
 // Most-recent roster, updated by both Init and SetRoster handlers.
 // initVowelCanvas seeds vowelModule.setRoster(lastVoices) on creation
@@ -128,8 +138,9 @@ function frame(nowMs: number): void {
     const traceContext = renderer.gpuContext;
     const traceReady = device && traceContext && renderer.canRender();
     const vowelReady = device && vowelCanvasContext && vowelModule;
+    const chordBarsReady = device && chordBarsModule;
 
-    if (!traceReady && !vowelReady) {
+    if (!traceReady && !vowelReady && !chordBarsReady) {
         rafId = requestAnimationFrame(frame);
 
         return;
@@ -166,6 +177,11 @@ function frame(nowMs: number): void {
         });
         vowelModule!.draw(vowelPass);
         vowelPass.end();
+    }
+
+    // Chord-bars pass on the chord-bars canvas.
+    if (chordBarsReady) {
+        chordBarsModule!.draw(encoder);
     }
 
     device!.queue.submit([encoder.finish()]);
@@ -211,6 +227,21 @@ async function initVowelCanvas(msg: InitVowelCanvasMessage): Promise<void> {
     }
 }
 
+async function initChordBarsCanvas(msg: InitChordBarsCanvasMessage): Promise<void> {
+    try {
+        const {device} = await devicePromise;
+        const module = new ChordBarsModuleWebgpu();
+        module.init(msg.canvas, device);
+        chordBarsModule = module;
+        chordBarsGate.markReady(applyMessage);
+    } catch (err) {
+        self.postMessage({
+            type: 'chordBarsInitError',
+            message: err instanceof Error ? err.message : String(err),
+        });
+    }
+}
+
 function applyMessage(msg: PlotMessage): void {
     switch (msg.type) {
         case PlotMessageType.Init: {
@@ -237,11 +268,15 @@ function applyMessage(msg: PlotMessage): void {
         }
         case PlotMessageType.AttachChannel: {
             renderer.attachChannel(msg.channelId, msg.source);
+            if (!channelIdToSlot.has(msg.channelId)) {
+                channelIdToSlot.set(msg.channelId, _nextChordSlotIndex++);
+            }
 
             return;
         }
         case PlotMessageType.DetachChannel: {
             renderer.detachChannel(msg.channelId);
+            channelIdToSlot.delete(msg.channelId);
 
             return;
         }
@@ -306,12 +341,36 @@ function applyMessage(msg: PlotMessage): void {
 
             return;
         }
-        case PlotMessageType.InitChordBarsCanvas:
-        case PlotMessageType.SetChordBarsBacking:
-        case PlotMessageType.SetChordClassification:
-            // Task 18 wires the real handlers; stubs here keep the exhaustiveness
-            // check happy across intermediate commits.
+        case PlotMessageType.InitChordBarsCanvas: {
+            void initChordBarsCanvas(msg);
+
             return;
+        }
+        case PlotMessageType.SetChordBarsBacking: {
+            if (!chordBarsGate.isReady()) {
+                chordBarsGate.defer(msg);
+
+                return;
+            }
+            chordBarsModule!.setBacking(msg.cssWidth, msg.cssHeight, msg.dpr);
+
+            return;
+        }
+        case PlotMessageType.SetChordClassification: {
+            if (!chordBarsGate.isReady()) {
+                chordBarsGate.defer(msg);
+
+                return;
+            }
+            chordBarsModule!.update({
+                lockedChordType: msg.lockedChordType,
+                residualsBySlot: msg.residualsBySlot,
+                rootChannelId: msg.rootChannelId,
+                channelIdToSlot,
+            });
+
+            return;
+        }
         default: {
             const _exhaustive: never = msg;
             void _exhaustive;

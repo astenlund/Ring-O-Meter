@@ -127,6 +127,12 @@ export interface ChordBarsInput {
     channelIdToSlot: ReadonlyMap<string, number>;
 }
 
+export function setBacking(cssWidth: number, cssHeight: number, dpr: number): void {
+    _cssWidth = cssWidth;
+    _cssHeight = cssHeight;
+    _dpr = dpr;
+}
+
 export function update(input: ChordBarsInput): void {
     const {residualsBySlot, channelIdToSlot} = input;
 
