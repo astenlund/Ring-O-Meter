@@ -46,7 +46,12 @@ export function NoteReadout({deviceLabel, fundamentalHz, confidence}: NoteReadou
             padding: 12,
             border: '1px solid #444',
             borderRadius: 6,
-            minWidth: 160,
+            // Explicit width keeps the 4-readouts row width predictable so
+            // the feature-row widgets below (sized 2*readout + gap = 416)
+            // align right-edges with the last readout. Content-driven
+            // sizing under monospace would drift with note length.
+            width: 200,
+            boxSizing: 'border-box',
         }}>
             <div style={{fontSize: 12, opacity: 0.7}}>{deviceLabel}</div>
             <div style={{
