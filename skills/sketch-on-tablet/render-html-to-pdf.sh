@@ -63,7 +63,14 @@ if [ -z "$NODE_HOST" ]; then
 fi
 
 export SKETCH_ON_TABLET_NODE_HOST="$NODE_HOST"
-export SKETCH_ON_TABLET_REPO_ROOT="$REPO_ROOT"
+
+# Per-invocation temp dir for render.mjs's input HTML. EXIT trap cleans
+# up so we don't accumulate temp artifacts across invocations. The
+# renderer reads SKETCH_ON_TABLET_TEMP_HTML_PATH and writes once;
+# the file is small and short-lived.
+SKETCH_ON_TABLET_TEMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$SKETCH_ON_TABLET_TEMP_DIR"' EXIT
+export SKETCH_ON_TABLET_TEMP_HTML_PATH="$SKETCH_ON_TABLET_TEMP_DIR/render-input.html"
 
 # Parse flags. We can no longer pass "$@" through verbatim because
 # --prerender-out is a wrapper-side flag (not consumed by render.mjs)
