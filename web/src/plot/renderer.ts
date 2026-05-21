@@ -15,4 +15,5 @@
 // without rewriting every consumer's type guard.
 export type Renderer =
     | {readonly kind: 'webgpu'; readonly workerUrl: string}
-    | {readonly kind: '2d'};
+    | {readonly kind: '2d'}
+    | {readonly kind: 'trace'; readonly workerUrl: string};
