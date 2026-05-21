@@ -32,11 +32,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_lib.sh
 source "$SCRIPT_DIR/_lib.sh"
 
-REPO_ROOT="$(find_repo_root "$SCRIPT_DIR")" || {
-  echo "render-html-to-pdf.sh: could not locate Ring-O-Meter.slnx walking up from $SCRIPT_DIR" >&2
-  echo "  (host repo detection assumes the Ring-O-Meter shape; portable packaging is a followup)" >&2
-  exit 1
-}
+REPO_ROOT="$(find_repo_root_soft "$SCRIPT_DIR")"
+# REPO_ROOT may be empty (standalone install on a non-Ring-O-Meter parent).
+# In that case we skip the host repo's web/ Playwright fallback and the
+# project-CSS auto-detect; the per-skill node_modules and explicit
+# --project-mockup-css are the standalone paths.
 
 # Required by ensure_skill_venv: VENV_DIR + REQUIREMENTS scope vars must be
 # set in caller; ensure_skill_venv reads them by name and exports VENV_PYTHON
@@ -50,15 +50,24 @@ REQUIREMENTS="$SCRIPT_DIR/requirements.txt"
 # node_modules from whatever path SKETCH_ON_TABLET_NODE_HOST points
 # at.
 NODE_HOST=""
-for candidate in "$SCRIPT_DIR" "$REPO_ROOT/web"; do
+CANDIDATES=( "$SCRIPT_DIR" )
+if [ -n "$REPO_ROOT" ]; then
+  CANDIDATES+=( "$REPO_ROOT/web" )
+fi
+for candidate in "${CANDIDATES[@]}"; do
   if [ -d "$candidate/node_modules/playwright" ]; then
     NODE_HOST="$candidate"
     break
   fi
 done
 if [ -z "$NODE_HOST" ]; then
-  echo "render-html-to-pdf.sh: playwright not found in $SCRIPT_DIR/node_modules or $REPO_ROOT/web/node_modules" >&2
-  echo "  Run \`npm install\` in $SCRIPT_DIR (skill-local) or \`pnpm --dir $REPO_ROOT/web install\` (host repo)." >&2
+  if [ -n "$REPO_ROOT" ]; then
+    echo "render-html-to-pdf.sh: playwright not found in $SCRIPT_DIR/node_modules or $REPO_ROOT/web/node_modules" >&2
+    echo "  Run \`npm install\` in $SCRIPT_DIR (skill-local) or \`pnpm --dir $REPO_ROOT/web install\` (host repo)." >&2
+  else
+    echo "render-html-to-pdf.sh: playwright not found in $SCRIPT_DIR/node_modules" >&2
+    echo "  Run \`npm install\` in $SCRIPT_DIR (skill-local install)." >&2
+  fi
   exit 1
 fi
 
@@ -120,7 +129,9 @@ done
 # Auto-detect <repo-root>/.claude/sketch-on-tablet-mockup.css if the
 # caller did not pass --project-mockup-css explicitly. The file is
 # authored by the design-language briefing at bootstrap.
-if [[ -z "$PROJECT_MOCKUP_CSS" ]] && [[ -f "$REPO_ROOT/.claude/sketch-on-tablet-mockup.css" ]]; then
+# Skip auto-detect on standalone installs (REPO_ROOT empty); caller can
+# still pass --project-mockup-css explicitly.
+if [[ -z "$PROJECT_MOCKUP_CSS" ]] && [[ -n "$REPO_ROOT" ]] && [[ -f "$REPO_ROOT/.claude/sketch-on-tablet-mockup.css" ]]; then
   PROJECT_MOCKUP_CSS="$REPO_ROOT/.claude/sketch-on-tablet-mockup.css"
 fi
 

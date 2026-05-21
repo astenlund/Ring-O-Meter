@@ -53,6 +53,32 @@ find_repo_root() {
   return 1
 }
 
+# find_repo_root_soft <start-dir>
+#
+# Same as find_repo_root, but returns 0 with an empty stdout when the
+# marker is not found, instead of returning 1. Use this from callers
+# that want to support standalone (non-Ring-O-Meter) operation -- they
+# branch on the result and skip repo-coupled features when empty.
+#
+# Caller pattern:
+#   REPO_ROOT="$(find_repo_root_soft "$SCRIPT_DIR")"
+#   if [ -n "$REPO_ROOT" ]; then
+#     # in-repo branch: use $REPO_ROOT
+#   else
+#     # standalone branch: skip $REPO_ROOT-dependent features
+#   fi
+find_repo_root_soft() {
+  local dir="$1"
+  if [[ -z "$dir" ]]; then
+    echo "find_repo_root_soft: <start-dir> argument required" >&2
+    return 1
+  fi
+  local result
+  result="$(find_repo_root "$dir" 2>/dev/null)" || true
+  echo "$result"
+  return 0
+}
+
 # require_python <wrapper-name>
 #
 # Verifies python 3.10+ is on PATH. On failure, prints a script-prefixed
