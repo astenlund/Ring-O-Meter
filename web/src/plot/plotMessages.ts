@@ -30,6 +30,9 @@ export const PlotMessageType = {
     DetachVowelChannel: 'detachVowelChannel',
     RebaseVowelChannel: 'rebaseVowelChannel',
     SetVowelBacking: 'setVowelBacking',
+    InitChordBarsCanvas: 'initChordBarsCanvas',
+    SetChordBarsBacking: 'setChordBarsBacking',
+    SetChordClassification: 'setChordClassification',
 } as const;
 
 export interface InitMessage {
@@ -112,6 +115,26 @@ export interface SetVowelBackingMessage {
     dpr: number;
 }
 
+export interface InitChordBarsCanvasMessage {
+    type: typeof PlotMessageType.InitChordBarsCanvas;
+    canvas: OffscreenCanvas;
+}
+
+export interface SetChordBarsBackingMessage {
+    type: typeof PlotMessageType.SetChordBarsBacking;
+    cssWidth: number;
+    cssHeight: number;
+    dpr: number;
+}
+
+export interface SetChordClassificationMessage {
+    type: typeof PlotMessageType.SetChordClassification;
+    lockedChordType: number | null;     // ChordType enum int or null
+    rootChannelId: string | null;
+    rootHz: number;                     // 0 when no chord locked
+    residualsBySlot: Float32Array;      // NaN sentinel for absent voices
+}
+
 export type PlotMessage =
     | InitMessage
     | SetRosterMessage
@@ -123,4 +146,7 @@ export type PlotMessage =
     | AttachVowelChannelMessage
     | DetachVowelChannelMessage
     | RebaseVowelChannelMessage
-    | SetVowelBackingMessage;
+    | SetVowelBackingMessage
+    | InitChordBarsCanvasMessage
+    | SetChordBarsBackingMessage
+    | SetChordClassificationMessage;
