@@ -137,9 +137,10 @@ test('production config suppresses ?fanout and ?renderer=trace with one-shot war
     await startButton.click();
 
     // Production path: exactly one [data-voice-id] row (single mic slot).
-    // ChordAwareDisplay must be mounted; data-voice-id rows are the voice
-    // roster which has exactly 1 entry when fanout is off.
-    await expect(page.locator('[data-chord-type]')).toBeVisible({timeout: 15_000});
+    // ChordAwareDisplay must be mounted; we assert via the stable
+    // data-component mount marker because data-chord-type only sets when
+    // a chord is locked (and a single voice never locks).
+    await expect(page.locator('[data-component="chord-aware-display"]')).toBeAttached({timeout: 15_000});
     // Allow slots to populate.
     await page.waitForTimeout(SETTLE_MS);
     await expect(page.locator('[data-voice-id]')).toHaveCount(1, {timeout: CHORD_LOCK_TIMEOUT_MS});
@@ -164,9 +165,9 @@ test('production config suppresses ?fanout and ?renderer=trace with one-shot war
     // When the trace flag is suppressed (devModesEnabled: false) renderer.kind
     // falls back to 'webgpu', so ChordAwareDisplay IS rendered. If the trace
     // flag were honoured (devModesEnabled: true) ChordAwareDisplay would be
-    // hidden. Presence of [data-chord-type] therefore asserts trace was NOT
-    // activated.
-    await expect(page.locator('[data-chord-type]')).toBeVisible({timeout: 15_000});
+    // hidden. Presence of the data-component mount marker therefore
+    // asserts trace was NOT activated.
+    await expect(page.locator('[data-component="chord-aware-display"]')).toBeAttached({timeout: 15_000});
 
     // One-shot renderer warn fires exactly once per page load. page.goto
     // ('/?renderer=trace') is a hard navigation that reloads the JS bundle,

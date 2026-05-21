@@ -61,7 +61,11 @@ export function ChordAwareDisplay({
     }, []);
 
     return (
-        <div data-chord-type={chord?.type ?? null}>
+        // data-component is a stable mount marker (always present);
+        // data-chord-type is only set when a chord is locked (React
+        // removes the attribute on null). E2E tests use data-component
+        // to assert the component is mounted regardless of lock state.
+        <div data-component="chord-aware-display" data-chord-type={chord?.type ?? undefined}>
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                 <ChordLabel chord={chord} />
                 <RingIndicatorDot state={ringState} />
