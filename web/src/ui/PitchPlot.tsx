@@ -106,7 +106,12 @@ export function PitchPlot({
                 controllerRef.current = controller;
                 ownsControllerRef.current = false;
             } else {
-                const workerUrl = renderer.kind === 'webgpu' ? renderer.workerUrl : undefined;
+                // Both 'webgpu' and 'trace' kinds carry workerUrl; only
+                // '2d' has none. Pattern-match exhaustively on the
+                // discriminant — previously this branch hard-coded
+                // `=== 'webgpu'`, silently dropping the trace workerUrl
+                // and falling back to the 2D default.
+                const workerUrl = renderer.kind !== '2d' ? renderer.workerUrl : undefined;
                 const fresh = new PlotController(workerUrl);
                 controllerRef.current = fresh;
                 ownsControllerRef.current = true;

@@ -252,7 +252,19 @@ export class ChordBarsModuleWebgpu {
 
         // Snapshot residuals (Float32Array is caller-owned and reused).
         this.lockedChordType = input.lockedChordType;
-        this.slotCount = Math.min(input.channelIdToSlot.size, MAX_VOICES);
+        // slotCount = maxSlot + 1 (matching chordBarsModule.ts), NOT
+        // map.size. After detach+reattach, the map has size N but its
+        // values are a sparse set like {1, 2, 4}. Using map.size would
+        // render N tracks indexed 0..N-1 while the actual voice data
+        // lives at sparse residual indices, producing wrong-track-count
+        // + wrong-residual rendering.
+        let maxSlot = -1;
+        for (const slotIdx of input.channelIdToSlot.values()) {
+            if (slotIdx > maxSlot) {
+                maxSlot = slotIdx;
+            }
+        }
+        this.slotCount = Math.min(maxSlot + 1, MAX_VOICES);
         this.residualsSnapshot.set(input.residualsBySlot);
 
         // Rebuild vertex geometry into this.staging.

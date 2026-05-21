@@ -95,6 +95,33 @@ describe('ChordHysteresis', () => {
         expect(afterSecond.lockedChord?.type).toBe(ChordType.Major);
     });
 
+    it('voice-count increase N=3→N=4 also resets candidate counter', () => {
+        const h = new ChordHysteresis();
+
+        // Lock a triad at N=3.
+        const triadVoices = voices({bass: C4, bari: C4 * (5 / 4), lead: C4 * (3 / 2)});
+        h.step(classifyChord(triadVoices), 3);
+        h.step(classifyChord(triadVoices), 3); // major locked
+
+        // Build dom7 candidate at N=3 (single frame; counter=1 — but
+        // dom7 isn't even in the hypothesis set at N=3 so this stays
+        // at major. Instead use a Different triad as a candidate.)
+        const minorVoices = voices({bass: C4, bari: C4 * (6 / 5), lead: C4 * (3 / 2)});
+        h.step(classifyChord(minorVoices), 3); // Rule C: candidate=minor, counter=1
+
+        // Voice count crosses 3→4: candidate counter resets to 0. Now
+        // the dom7 hypothesis is open; a single matching frame would
+        // otherwise have promoted (counter=2) if no reset.
+        const dom7Frame = classifyChord(dom7Voices);
+        const afterIncrease = h.step(dom7Frame, 4); // counter resets, then Rule C: counter=1
+
+        // major lock preserved; dom7 not yet promoted (only 1 frame since reset).
+        expect(afterIncrease.lockedChord?.type).toBe(ChordType.Major);
+        // One more matching frame promotes.
+        const afterSecond = h.step(classifyChord(dom7Voices), 4);
+        expect(afterSecond.lockedChord?.type).toBe(ChordType.DominantSeventh);
+    });
+
     it('validity guard fires on N=4→N=3: locked dom7 clears immediately', () => {
         const h = new ChordHysteresis();
 
