@@ -51,6 +51,12 @@ export interface InitMessage {
     // without this reconciliation every sample's tsMs > nowMs and
     // traces draw off the right edge of the canvas.
     mainNowAtInitMs: number;
+    // When true, the worker renders only the pitch trace and ignores any
+    // InitVowelCanvas / InitChordBarsCanvas messages. Used by the
+    // ?renderer=trace dev-opt-in arm to reuse plotWorkerWebgpu.ts without
+    // allocating the vowel or chord-bars canvases. Absent or false leaves
+    // behavior unchanged (all modules active).
+    traceOnly?: boolean;
 }
 
 export interface SetRosterMessage {

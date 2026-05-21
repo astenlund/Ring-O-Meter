@@ -191,7 +191,11 @@ export function App() {
         const fc = parseFanoutFlag(window.location.search, config.devModesEnabled);
         const rs = parseRendererFlag(window.location.search, config.devModesEnabled);
         const r = rendererFromSelection(rs);
-        const ctrl = new PlotController(r.kind !== '2d' ? r.workerUrl : undefined);
+        const isTrace = r.kind === 'trace';
+        const ctrl = new PlotController(
+            r.kind !== '2d' ? r.workerUrl : undefined,
+            isTrace,
+        );
         setFanoutConfig(fc);
         setRenderer(r);
         setController(ctrl);
@@ -480,19 +484,23 @@ export function App() {
                             </button>
                         )}
                     </div>
-                    <VowelPlot
-                        controller={controller}
-                        renderer={renderer}
-                        style={{width: 360, flexShrink: 0}}
-                    />
-                    <ChordAwareDisplay
-                        chord={lockedChord}
-                        voices={chordDisplayVoices}
-                        residualsPerVoice={residualsPerVoice}
-                        ringState={ringState}
-                        onCanvasRef={handleChordBarsCanvasRef}
-                        onBackingChange={handleChordBarsBackingChange}
-                    />
+                    {renderer.kind !== 'trace' && (
+                        <VowelPlot
+                            controller={controller}
+                            renderer={renderer}
+                            style={{width: 360, flexShrink: 0}}
+                        />
+                    )}
+                    {renderer.kind !== 'trace' && (
+                        <ChordAwareDisplay
+                            chord={lockedChord}
+                            voices={chordDisplayVoices}
+                            residualsPerVoice={residualsPerVoice}
+                            ringState={ringState}
+                            onCanvasRef={handleChordBarsCanvasRef}
+                            onBackingChange={handleChordBarsBackingChange}
+                        />
+                    )}
                 </div>
             ) : (
                 // While config is loading, the plot surfaces are not yet

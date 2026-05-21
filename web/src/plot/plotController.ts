@@ -51,6 +51,11 @@ export class PlotController {
     private worker: Worker | null = null;
     private attached = false;
     private readonly workerUrl: string | URL;
+    // When true, forwarded in the Init message so the worker suppresses
+    // vowel and chord-bars rendering. The trace-only arm's controller
+    // must not call attachVowelCanvas or attachChordBarsCanvas; those
+    // canvases are never allocated in that path.
+    private readonly traceOnly: boolean;
 
     private underlayCtx: CanvasRenderingContext2D | null = null;
     private underlayOpts: PlotUnderlayOptions | null = null;
@@ -72,8 +77,9 @@ export class PlotController {
         residualsBySlot: new Float32Array(MAX_VOICES),
     };
 
-    public constructor(workerUrl: string | URL = defaultWorkerUrl) {
+    public constructor(workerUrl: string | URL = defaultWorkerUrl, traceOnly = false) {
         this.workerUrl = workerUrl;
+        this.traceOnly = traceOnly;
     }
 
     private ensureWorker(): Worker {
@@ -116,11 +122,18 @@ export class PlotController {
             minHz: opts.minHz,
             maxHz: opts.maxHz,
             mainNowAtInitMs: performance.now(),
+            ...(this.traceOnly ? {traceOnly: true} : {}),
         };
         worker.postMessage(init, [offscreen]);
     }
 
     public attachVowelCanvas(canvas: HTMLCanvasElement): void {
+        // No-op in trace-only mode: the worker suppresses InitVowelCanvas
+        // when traceOnly is set, and App.tsx does not mount VowelPlot in
+        // that path, so this guard is a safety net against accidental calls.
+        if (this.traceOnly) {
+            return;
+        }
         const worker = this.ensureWorker();
         const offscreen = canvas.transferControlToOffscreen();
         const msg: PlotMessage = {
@@ -261,6 +274,12 @@ export class PlotController {
     }
 
     public attachChordBarsCanvas(canvas: OffscreenCanvas): void {
+        // No-op in trace-only mode: the worker suppresses InitChordBarsCanvas
+        // when traceOnly is set, and App.tsx does not mount ChordAwareDisplay
+        // in that path.
+        if (this.traceOnly) {
+            return;
+        }
         const worker = this.ensureWorker();
         const msg: PlotMessage = {
             type: PlotMessageType.InitChordBarsCanvas,
