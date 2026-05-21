@@ -138,8 +138,10 @@ async function stopTrace(
 // heuristic: smoothness-budget
 export const OBSERVATION_MS = 60_000;
 // heuristic: smoothness-budget
+// TODO: re-baseline against new chord-bars + vowel mix after 3 green CI runs
 export const P99_FRAME_GAP_BUDGET_MS = 20;
 // heuristic: smoothness-budget
+// TODO: re-baseline against new chord-bars + vowel mix after 3 green CI runs
 export const MAX_FRAME_GAP_BUDGET_MS = 50;
 // heuristic: smoothness-budget
 export const LONGTASK_BUDGET = 0;
@@ -155,6 +157,7 @@ export const LONGTASK_BUDGET = 0;
 // `measured_clean_run * 1.5` after three green CI runs. Ratchet
 // down only when a churn-reduction change has landed AND three CI
 // runs confirm the new baseline.
+// TODO: re-baseline against new chord-bars + vowel mix after 3 green CI runs
 export const HEAP_DELTA_BUDGET_BYTES = 600 * 1024;
 // heuristic: smoothness-budget
 // Threshold for "missed at least one vsync" at 60 Hz (16.667 ms +
@@ -178,6 +181,7 @@ export const GAP_OVER_VSYNC_THRESHOLD_MS = 17;
 // from the staccato GPU-outlier investigation: a future regression
 // that rolls back the text-cache discipline (or breaks discipline 1
 // in a new component) would push the worst arm past 100.
+// TODO: re-baseline against new chord-bars + vowel mix after 3 green CI runs
 export const GAP_OVER_VSYNC_BUDGET = 100;
 
 // Renderer arms for the parameterised smoothness test. As of
@@ -193,6 +197,18 @@ export const RENDERER_ARMS = [
 ] as const;
 
 export type RendererArm = typeof RENDERER_ARMS[number];
+
+// Structural supertype accepted by setupSmoothnessPage and
+// run60sSmoothnessProbe. RendererArm is a narrow const-typed
+// subtype; SmoothnessArm is the shape the probe functions actually
+// need, allowing callers (e.g. trace-smoothness.spec.ts) to pass
+// custom arms without being constrained to the RendererArm literal
+// union.
+export interface SmoothnessArm {
+    readonly label: string;
+    readonly querystring: string;
+    readonly requiresAdapter: boolean;
+}
 
 // 4-voice "barbershop seven" chord, expressed as typed constants
 // rather than a single opaque query string. The CHORD_OFFSETS
@@ -228,6 +244,32 @@ export function withChordFanout(armQuerystring: string): string {
         : `${armQuerystring}&${CHORD_FANOUT_QUERY}`;
 }
 
+// Appends &renderer=trace (or starts with ?renderer=trace when the
+// input is empty). Used by the dev-opt-in trace arm in
+// trace-smoothness.spec.ts. The trace renderer requires
+// devModesEnabled: true in /config.json; the spec file injects this
+// via page.route('/config.json') before navigating.
+export function withTraceRenderer(querystring: string): string {
+    return querystring === ''
+        ? '?renderer=trace'
+        : `${querystring}&renderer=trace`;
+}
+
+// Budget constants for the dev-opt-in trace arm. These preserve the
+// trace renderer's original calibration from before chord-aware-display
+// shipped; the trace path no longer runs in production, so these
+// numbers are not subject to the chord-bars + vowel mix re-baseline.
+// heuristic: smoothness-budget
+export const TRACE_P99_FRAME_GAP_BUDGET_MS = 20;
+// heuristic: smoothness-budget
+export const TRACE_MAX_FRAME_GAP_BUDGET_MS = 50;
+// heuristic: smoothness-budget
+export const TRACE_LONGTASK_BUDGET = 0;
+// heuristic: smoothness-budget
+export const TRACE_HEAP_DELTA_BUDGET_BYTES = 600 * 1024;
+// heuristic: smoothness-budget
+export const TRACE_GAP_OVER_VSYNC_BUDGET = 100;
+
 // Page-level setup shared between the 60-second smoothness probe
 // and the opt-in 30-minute long-window arm: refuses on battery
 // (assertOnAcPower), navigates to the renderer-arm-specific URL,
@@ -242,7 +284,7 @@ export function withChordFanout(armQuerystring: string): string {
 // arms. The two arms differ only in the measurement loop body.
 export async function setupSmoothnessPage(
     page: Page,
-    arm: RendererArm,
+    arm: SmoothnessArm,
     querystring: string,
 ): Promise<void> {
     // Placed before page.goto so battery-throttled hosts are rejected before any browser work begins.
@@ -293,6 +335,27 @@ export async function setupSmoothnessPage(
     await page.waitForTimeout(5000);
 }
 
+// Options for overriding probe behaviour. All fields are optional;
+// defaults preserve the standard-suite behaviour so existing callers
+// need no changes. Used by the dev-opt-in trace arm
+// (trace-smoothness.spec.ts) which runs with its own budget constants
+// and skips the vowel-canvas content check (trace-only renderer
+// suppresses vowel output).
+export interface SmoothnessProbeOptions {
+    /** Override p99 frame-gap budget (ms). Defaults to P99_FRAME_GAP_BUDGET_MS. */
+    p99FrameGapBudgetMs?: number;
+    /** Override max frame-gap budget (ms). Defaults to MAX_FRAME_GAP_BUDGET_MS. */
+    maxFrameGapBudgetMs?: number;
+    /** Override gapsOverVsync budget. Defaults to GAP_OVER_VSYNC_BUDGET. */
+    gapOverVsyncBudget?: number;
+    /** Override longtask budget. Defaults to LONGTASK_BUDGET. */
+    longtaskBudget?: number;
+    /** Override heap-delta budget (bytes). Defaults to HEAP_DELTA_BUDGET_BYTES. */
+    heapDeltaBudgetBytes?: number;
+    /** When true, skips the vowel-canvas content assertion. Defaults to false. */
+    skipVowelContentCheck?: boolean;
+}
+
 // 60-second smoothness probe shared between the sustained and
 // staccato fixture spec files. Same precondition (WebGPU adapter
 // check on the WebGPU arm), same measurement, same budgets; only
@@ -301,8 +364,9 @@ export async function setupSmoothnessPage(
 export async function run60sSmoothnessProbe(
     page: Page,
     fixtureLabel: string,
-    arm: RendererArm,
+    arm: SmoothnessArm,
     querystring: string,
+    options: SmoothnessProbeOptions = {},
 ): Promise<void> {
     await setupSmoothnessPage(page, arm, querystring);
 
@@ -411,12 +475,18 @@ export async function run60sSmoothnessProbe(
         '60 s observation window produced zero rAF callbacks - the page never rendered',
     ).toBeGreaterThan(0);
 
-    expect(result.p99).toBeLessThan(P99_FRAME_GAP_BUDGET_MS);
-    expect(result.max).toBeLessThan(MAX_FRAME_GAP_BUDGET_MS);
-    expect(result.gapsOverVsync).toBeLessThan(GAP_OVER_VSYNC_BUDGET);
-    expect(result.longtaskCount).toBe(LONGTASK_BUDGET);
+    const p99Budget = options.p99FrameGapBudgetMs ?? P99_FRAME_GAP_BUDGET_MS;
+    const maxBudget = options.maxFrameGapBudgetMs ?? MAX_FRAME_GAP_BUDGET_MS;
+    const vsyncBudget = options.gapOverVsyncBudget ?? GAP_OVER_VSYNC_BUDGET;
+    const longtaskBudget = options.longtaskBudget ?? LONGTASK_BUDGET;
+    const heapBudget = options.heapDeltaBudgetBytes ?? HEAP_DELTA_BUDGET_BYTES;
+
+    expect(result.p99).toBeLessThan(p99Budget);
+    expect(result.max).toBeLessThan(maxBudget);
+    expect(result.gapsOverVsync).toBeLessThan(vsyncBudget);
+    expect(result.longtaskCount).toBe(longtaskBudget);
     if (result.heapMeasured) {
-        expect(result.heapDelta).toBeLessThan(HEAP_DELTA_BUDGET_BYTES);
+        expect(result.heapDelta).toBeLessThan(heapBudget);
     }
 
     // Content assertion: the timing budgets above can pass while the
@@ -461,7 +531,9 @@ export async function run60sSmoothnessProbe(
     // was designed to exercise gate-flip rendering load at ~3 Hz, not
     // to produce vowel content. The trace check still runs — YIN
     // detects 220 Hz cleanly inside the plot's [80, 600] Hz window.
-    const checkVowel = fixtureLabel !== 'dom7-staccato';
+    // skipVowelContentCheck is used by the dev-opt-in trace arm, whose
+    // trace-only renderer suppresses vowel output by design.
+    const checkVowel = !options.skipVowelContentCheck && fixtureLabel !== 'dom7-staccato';
     await assertCanvasesHaveContent(page, checkVowel);
 }
 
