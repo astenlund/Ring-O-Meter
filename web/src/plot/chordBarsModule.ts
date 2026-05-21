@@ -14,13 +14,10 @@ import {GREEN_THRESHOLD_CENTS} from '../audio/ringThresholds';
 import {applyCanvasBacking, type CanvasBacking, type CanvasSize} from './paint';
 import {MAX_VOICES} from './vowelModule';
 
-// heuristic: chord-bars-track-height-css - track height in CSS pixels.
-// ~28px reads comfortably at phone-screen DPRs; narrower loses the
-// readable cents-text; wider wastes space on small screens.
-const TRACK_HEIGHT_CSS = 28;
-
-// heuristic: chord-bars-track-gap-css - gap between tracks in CSS pixels.
-const TRACK_GAP_CSS = 8;
+// Padding above the first track, between tracks, and below the last
+// track. Mirrors the WebGPU module's TRACK_PAD_PX so the two renderers
+// produce visually identical layouts at the same canvas size.
+const TRACK_PAD_CSS = 4;
 
 // heuristic: chord-bars-label-margin-css - left-side column for voice
 // label text, in CSS pixels.
@@ -212,24 +209,34 @@ export function draw(): void {
     // X mapping: cents → canvas x. 0¢ = centerX; ±SCALE_HALF_CENTS = edges.
     // Inline to avoid per-frame closure allocation.
 
+    // Per-track height scales to fill the canvas, matching the WebGPU
+    // module. Total padding = TRACK_PAD_CSS * (slotCount + 1) (top +
+    // between every pair + bottom). One-voice case: trackH = h - 2*pad;
+    // tracks always fill the available vertical extent.
+    const totalPad = TRACK_PAD_CSS * (_voiceCount + 1);
+    const trackH = (h - totalPad) / _voiceCount;
+    if (trackH <= 0) {
+        return;
+    }
+
     for (let s = 0; s < _voiceCount; s++) {
         const slot = slots[s];
 
-        // Track top in CSS pixels. Tracks stack from top; non-active
-        // tracks still draw their structural chrome (label + track bg +
-        // center line + target zone) but omit the dot and readout per spec.
-        const trackTop = s * (TRACK_HEIGHT_CSS + TRACK_GAP_CSS);
-        const trackMid = trackTop + TRACK_HEIGHT_CSS / 2;
-        const trackBot = trackTop + TRACK_HEIGHT_CSS;
+        // Non-active tracks still draw their structural chrome (label +
+        // track bg + center line + target zone) but omit the dot and
+        // readout per spec.
+        const trackTop = TRACK_PAD_CSS + s * (trackH + TRACK_PAD_CSS);
+        const trackMid = trackTop + trackH / 2;
+        const trackBot = trackTop + trackH;
 
         // Track background.
         ctx.fillStyle = TRACK_BG_COLOR;
-        ctx.fillRect(scaleLeft, trackTop, scaleWidth, TRACK_HEIGHT_CSS);
+        ctx.fillRect(scaleLeft, trackTop, scaleWidth, trackH);
 
         // Green target zone (±GREEN_THRESHOLD_CENTS around center).
         const tzHalfW = (GREEN_THRESHOLD_CENTS / SCALE_HALF_CENTS) * (scaleWidth / 2);
         ctx.fillStyle = TARGET_ZONE_COLOR;
-        ctx.fillRect(centerX - tzHalfW, trackTop, tzHalfW * 2, TRACK_HEIGHT_CSS);
+        ctx.fillRect(centerX - tzHalfW, trackTop, tzHalfW * 2, trackH);
 
         // Center line (0¢ reference).
         ctx.strokeStyle = CENTER_LINE_COLOR;
