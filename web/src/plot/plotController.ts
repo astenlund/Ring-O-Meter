@@ -18,10 +18,7 @@ import {
     type SetChordClassificationMessage,
     type VoiceEntry,
 } from './plotMessages';
-import {F1_MAX, F1_MIN, F2_MAX, F2_MIN} from './vowelModule';
-
-// heuristic: max-voices-chord-classification
-const MAX_VOICES = 8;
+import {F1_MAX, F1_MIN, F2_MAX, F2_MIN, MAX_VOICES} from './vowelModule';
 
 export interface PlotControllerOptions {
     voices: ReadonlyArray<VoiceEntry>;

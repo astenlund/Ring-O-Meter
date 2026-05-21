@@ -11,6 +11,7 @@
 // pattern.
 
 import {GREEN_THRESHOLD_CENTS} from '../audio/ringThresholds';
+import {MAX_VOICES} from './vowelModule';
 
 // heuristic: chord-bars-track-height-css - track height in CSS pixels.
 // ~28px reads comfortably at phone-screen DPRs; narrower loses the
@@ -52,11 +53,6 @@ const LABEL_COLOR = '#aaa';
 const READOUT_COLOR = '#ccc';
 const READOUT_OFFSCALE_COLOR = '#e06040';
 
-// Maximum voices: sized to the same upper bound as vowelModule's
-// MAX_VOICES (8) so the scratch arrays accommodate cross-quartet
-// collaboration in the future without reallocation.
-const MAX_BARS_VOICES = 8;
-
 // Per-slot scratch data. Mutated in update(); read in draw().
 // All fields are primitives to stay zero-alloc per-frame.
 interface BarSlot {
@@ -74,7 +70,7 @@ interface BarSlot {
 // label) happen in update(); V8 interns short literal strings, so these
 // are alloc-free in practice.
 const slots: BarSlot[] = [];
-for (let i = 0; i < MAX_BARS_VOICES; i++) {
+for (let i = 0; i < MAX_VOICES; i++) {
     slots.push({
         active: false,
         cents: 0,
@@ -146,7 +142,7 @@ export function update(input: ChordBarsInput): void {
     _voiceCount = maxSlot + 1;
 
     // Reset all slots.
-    for (let i = 0; i < MAX_BARS_VOICES; i++) {
+    for (let i = 0; i < MAX_VOICES; i++) {
         slots[i].active = false;
     }
 
@@ -155,7 +151,7 @@ export function update(input: ChordBarsInput): void {
     // map is not yet threaded through; the worker integration (Task 18)
     // will provide per-slot colors. For now the label is "V<slot>".
     for (const [, slotIdx] of channelIdToSlot) {
-        if (slotIdx >= MAX_BARS_VOICES) {
+        if (slotIdx >= MAX_VOICES) {
             continue;
         }
         const residual = slotIdx < residualsBySlot.length
