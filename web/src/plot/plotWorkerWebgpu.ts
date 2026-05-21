@@ -12,6 +12,8 @@ import {ReadyGate} from './readyGate';
 import {TraceModule} from './traceModule';
 import {VowelModuleWebgpu} from './vowelModuleWebgpu';
 import {ChordBarsModuleWebgpu} from './chordBarsModuleWebgpu';
+import {allocateLowestFreeSlot} from './chordSlotAllocator';
+import {MAX_VOICES} from './vowelModule';
 
 // Top-level: kick off device acquisition as soon as the worker module
 // loads. Both Init (trace canvas) and InitVowelCanvas await this; the
@@ -59,11 +61,11 @@ let resolvedVowelDevice: GPUDevice | null = null;
 let resolvedVowelFormat: GPUTextureFormat | null = null;
 
 // Chord-bars module state. channelIdToSlot is populated by AttachChannel
-// (insert at next sequential index) and DetachChannel (remove entry).
-// Passed to chordBarsModule.update() on every SetChordClassification.
+// (lowest free slot via allocateLowestFreeSlot) and DetachChannel (remove
+// entry; slot returns to the free pool). Passed to chordBarsModule.update()
+// on every SetChordClassification.
 let chordBarsModule: ChordBarsModuleWebgpu | null = null;
 const chordBarsGate = new ReadyGate<PlotMessage>();
-let _nextChordSlotIndex = 0;
 const channelIdToSlot: Map<string, number> = new Map();
 
 // Most-recent roster, updated by both Init and SetRoster handlers.
@@ -272,7 +274,10 @@ function applyMessage(msg: PlotMessage): void {
         case PlotMessageType.AttachChannel: {
             renderer.attachChannel(msg.channelId, msg.source);
             if (!channelIdToSlot.has(msg.channelId)) {
-                channelIdToSlot.set(msg.channelId, _nextChordSlotIndex++);
+                const slot = allocateLowestFreeSlot(channelIdToSlot.values(), MAX_VOICES);
+                if (slot >= 0) {
+                    channelIdToSlot.set(msg.channelId, slot);
+                }
             }
 
             return;
