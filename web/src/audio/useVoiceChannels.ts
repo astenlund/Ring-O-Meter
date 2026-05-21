@@ -4,23 +4,20 @@ import {openInputStream} from './deviceManager';
 import type {FrameSourceRegistry} from './frameSourceRegistry';
 import {VoiceChannel, type VoiceChannelEvents} from './voiceChannel';
 import {useLatestRef} from '../ui/useLatestRef';
-// Cleanup: remove this import + FanoutGroup interface + fanoutGroup field on
-// VoiceChannelSlot + the realSlots filter + the FanoutVoiceChannel ternary
-// branch when the fanout test mode is retired (also remove parseFanoutFlag
-// import + fanoutConfig state + fanout branch in the slot-build effect +
-// SLOT_COLORS trim in App.tsx; also rm __testing/fanoutFlag.ts,
-// fanoutVoiceChannel.ts, fanoutWorklet.ts, fanoutConstants.ts).
+// Permanent dev-mode infrastructure; the fanout test mode is gated by
+// devModesEnabled in /config.json (see chord-aware-display.md "Dev mode
+// and gating"). FanoutGroup + fanoutGroup field stay; they are
+// load-bearing for the developer-singer iteration workflow.
 import {FanoutVoiceChannel} from '../__testing/fanoutVoiceChannel';
 
-// Test-only: when ?fanout=N is enabled, App.tsx tags the FIRST of N
+// Dev-mode (?fanout=N + devModesEnabled): App.tsx tags the FIRST of N
 // render slots with `primary: true` and the rest as ghosts. The primary
 // slot's deviceId is used to open ONE getUserMedia stream; a single
 // FanoutVoiceChannel emits N onFrameSourceReady events with the
 // derivedChannelIds, matching each render slot's channelId. Ghost slots
 // are filtered out before mic acquisition so iOS Safari (one
 // concurrent stream per origin) is not asked to open the same mic
-// multiple times. Cleanup: remove this interface and the fanoutGroup
-// field below when the fanout test mode is retired.
+// multiple times.
 export interface FanoutGroup {
     primary: boolean;
     derivedChannelIds: readonly string[];

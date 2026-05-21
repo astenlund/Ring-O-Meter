@@ -16,6 +16,7 @@ import {parseFanoutFlag, type FanoutFlag} from './__testing/fanoutFlag';
 import {parseRendererFlag, type RendererSelection} from './plot/rendererFlag';
 import type {Renderer} from './plot/renderer';
 import type {RingIndicatorState} from './ui/RingIndicatorDot';
+import type {ChordIdentity} from './wire/chord';
 import {loadConfig, type AppConfig} from './config/loadConfig';
 // As of 2026-04-30 WebGPU is the production default renderer; the 2D
 // canvas worker remains available via ?renderer=2d. The static
@@ -73,7 +74,7 @@ const YELLOW_BAND_OUTER_CENTS = 15;
 
 function computeRingState(
     residualsPerVoice: ReadonlyMap<string, number>,
-    lockedChord: object | null,
+    lockedChord: ChordIdentity | null,
 ): RingIndicatorState {
     if (lockedChord === null || residualsPerVoice.size === 0) {
         return null;
@@ -117,9 +118,11 @@ export function App() {
     const {latest, registerReader, unregisterReader} = useFrameState();
     const plotHandleRef = useRef<PitchPlotHandle | null>(null);
     // One registry instance per App lifetime, fed by useVoiceChannels and
-    // multicasting to three subscribers (frame state + plot worker + vowel
-    // module). Slice 1's SignalR publish sink subscribes through the same
-    // surface.
+    // multicasting to subscribers — frame state (useFrameState hook),
+    // plot worker (trace), vowel polygon module, and the chord classifier
+    // (via useChordClassification reading the coalesced frame-state
+    // output). The SignalR publish sink will subscribe through the same
+    // surface when that feature lands.
     const [registry] = useState(() => new FrameSourceRegistry());
 
     const {devices, error: devicesError} = useInputDevices();
