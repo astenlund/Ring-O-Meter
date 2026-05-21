@@ -72,13 +72,13 @@ if [[ $status -ne 0 ]]; then
 fi
 
 # Repo root: env override for tests; otherwise walk up from $PWD
-# looking for the canonical Ring-O-Meter.slnx marker. Hard-fails
+# looking for the canonical repo marker ($_REPO_MARKER). Hard-fails
 # rather than silently writing under whatever happens to be $PWD,
 # matching render-html-to-pdf.sh's behaviour.
 REPO_ROOT="${SKETCH_ON_TABLET_REPO_ROOT:-}"
 if [[ -z "$REPO_ROOT" ]]; then
   REPO_ROOT="$(find_repo_root "$PWD")" || {
-    echo "bootstrap-session.sh: could not locate Ring-O-Meter.slnx walking up from $PWD" >&2
+    echo "bootstrap-session.sh: could not locate $_REPO_MARKER walking up from $PWD" >&2
     echo "  Set SKETCH_ON_TABLET_REPO_ROOT or invoke from inside the repo." >&2
     exit 1
   }

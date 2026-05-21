@@ -15,10 +15,15 @@
 # pull wrapper) and find_repo_root (render-html-to-pdf wrapper +
 # bootstrap-session wrapper). Single-consumer helpers stay inlined.
 
+# Repo marker filename. Centralized here so the next rename only touches
+# one site. Exported so callers that interpolate this constant into
+# error messages work without explicit sourcing dance.
+export _REPO_MARKER="Ring-O-Meter.slnx"
+
 # find_repo_root <start-dir>
 #
-# Walks upward from <start-dir> looking for the Ring-O-Meter.slnx
-# marker file. Prints the matching directory on stdout and returns 0
+# Walks upward from <start-dir> looking for the repo marker file
+# ($_REPO_MARKER). Prints the matching directory on stdout and returns 0
 # on hit; returns 1 on miss (callers supply their own diagnostic) or
 # prints a diagnostic on stderr and returns 1 on missing argument.
 # <start-dir> is required: the implicit-default variant fails silently
@@ -40,7 +45,7 @@ find_repo_root() {
     return 1
   fi
   while [ "$dir" != "/" ] && [ "$dir" != "" ]; do
-    if [ -f "$dir/Ring-O-Meter.slnx" ]; then
+    if [ -f "$dir/$_REPO_MARKER" ]; then
       echo "$dir"
       return 0
     fi

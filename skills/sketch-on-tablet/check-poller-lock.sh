@@ -14,7 +14,7 @@ source "$SCRIPT_DIR/_lib.sh"
 REPO_ROOT="${SKETCH_ON_TABLET_REPO_ROOT:-}"
 if [[ -z "$REPO_ROOT" ]]; then
   REPO_ROOT="$(find_repo_root "$PWD")" || {
-    echo "check-poller-lock.sh: could not locate Ring-O-Meter.slnx walking up from $PWD" >&2
+    echo "check-poller-lock.sh: could not locate $_REPO_MARKER walking up from $PWD" >&2
     exit 1
   }
 fi
