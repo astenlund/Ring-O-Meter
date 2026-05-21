@@ -28,7 +28,6 @@ const DEFAULT_MODE = 'color';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PATH = join(SCRIPT_DIR, 'page-template.html');
-const TEMP_HTML_PATH = '.tmp/sketch-on-tablet/test/render-input.html';
 
 export function formatIterationLabel(iteration, subtopic) {
   // LOCKSTEP with ITER_NN_RE in render/_chrome_boxes.py. Two-digit
@@ -109,14 +108,19 @@ function resolveOutPath(rawOut) {
 }
 
 function resolveTempHtmlPath() {
-  // Anchor on the repo root rather than process.cwd() so the temp HTML
-  // always lands at <repo-root>/.tmp/sketch-on-tablet/test/
-  // regardless of which directory the wrapper was invoked from. The
-  // bash wrapper sets SKETCH_ON_TABLET_REPO_ROOT after walking up to
-  // find Ring-O-Meter.slnx; falls back to cwd if missing.
-  const repoRoot = process.env.SKETCH_ON_TABLET_REPO_ROOT || process.cwd();
-
-  return resolve(repoRoot, TEMP_HTML_PATH);
+  // The bash wrapper (render-html-to-pdf.sh) computes a per-invocation
+  // temp path and exports it as SKETCH_ON_TABLET_TEMP_HTML_PATH. The
+  // renderer never computes the path itself — this keeps render.mjs
+  // free of repo-rooted assumptions and lets the wrapper own cleanup.
+  const tempPath = process.env.SKETCH_ON_TABLET_TEMP_HTML_PATH;
+  if (!tempPath) {
+    fail(
+      'SKETCH_ON_TABLET_TEMP_HTML_PATH is not set. The bash wrapper '
+      + 'render-html-to-pdf.sh sets this to a per-invocation temp file path. '
+      + 'Either run via the wrapper or export the env var manually.'
+    );
+  }
+  return tempPath;
 }
 
 async function main() {
