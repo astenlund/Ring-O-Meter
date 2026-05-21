@@ -86,7 +86,12 @@ describe('useFrameState structural invariants', () => {
         expect(latest1).not.toBe(latest0);
         expect(latest2).not.toBe(latest1);
 
-        control.unregisterReader('a');
+        // unregisterReader synchronously calls setLatest (see
+        // useFrameState.ts); without act() the dev-mode "update was
+        // not wrapped in act(...)" warning fires on cleanup.
+        await act(async () => {
+            control.unregisterReader('a');
+        });
         await act(async () => {
             root.unmount();
         });
@@ -149,7 +154,9 @@ describe('useFrameState structural invariants', () => {
         // The dropped key must actually be gone.
         expect(probeRef.control!.latest.a).toBeUndefined();
 
-        control.unregisterReader('b');
+        await act(async () => {
+            control.unregisterReader('b');
+        });
         await act(async () => {
             root.unmount();
         });
