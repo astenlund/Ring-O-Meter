@@ -22,7 +22,18 @@ const crossOriginHeaders = {
 };
 
 export default defineConfig({
-    plugins: [react()],
+    plugins: [
+        react(),
+        {
+            name: 'dev-config-json',
+            configureServer(server) {
+                server.middlewares.use('/config.json', (_req, res) => {
+                    res.setHeader('content-type', 'application/json');
+                    res.end(JSON.stringify({hubUrl: '', devModesEnabled: true}));
+                });
+            },
+        },
+    ],
     server: {
         port: 5173,
         headers: crossOriginHeaders,
