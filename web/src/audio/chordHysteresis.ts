@@ -26,10 +26,15 @@ export class ChordHysteresis {
             }
         }
 
-        // 2. Candidate-counter reset on voice-count decrease.
-        //    A decrease changes the hypothesis set being evaluated, so
+        // 2. Candidate-counter reset on voice-count crossing N=3/N=4
+        //    in either direction. Per the spec's algorithm step 4:
+        //    "the candidate counter resets to 0 whenever the active-
+        //    voice count crosses the N=3 / N=4 threshold (either
+        //    direction)." A voice-count change in either direction is
+        //    a structural change to the hypothesis set being evaluated
+        //    (decrease shrinks it; increase opens dom7/m7 at N=4), so
         //    prior debounce progress is no longer relevant.
-        if (voiceCountDecreased(this.prevActiveCount, activeCount)) {
+        if (voiceCountCrossedHypothesisBoundary(this.prevActiveCount, activeCount)) {
             this.candidate = null;
             this.counter = 0;
         }
@@ -74,8 +79,22 @@ export class ChordHysteresis {
 
 // Returns true for any decrease in active-voice count. The caller uses
 // this to invalidate prior debounce progress when the voice set shrinks.
-function voiceCountDecreased(prev: number, curr: number): boolean {
-    return curr < prev;
+// The hypothesis set in step 2 changes shape at the N=3/N=4 boundary
+// (dom7 + m7 only participate at N≥4; triads only at N≥3). Crossing
+// that boundary in either direction invalidates any in-flight
+// candidate counter, since the new candidate is being evaluated
+// against a different hypothesis set than the previous frames were.
+// N≤2 has no hypotheses (short-circuits to no-chord-locked), so we
+// treat N<3 and N=3 as the same regime for counter-reset purposes.
+function voiceCountCrossedHypothesisBoundary(prev: number, curr: number): boolean {
+    if (prev <= 3 && curr === 4) {
+        return true;
+    }
+    if (prev === 4 && curr <= 3) {
+        return true;
+    }
+
+    return false;
 }
 
 function sameLockedChord(a: ClassifierResult, b: ClassifierResult): boolean {

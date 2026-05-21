@@ -136,8 +136,13 @@ export function classifyChord(voices: ReadonlyArray<VoiceObservation>): Classifi
         _residualsMap.set(active[i].channelId, cents - closestTarget);
     }
 
+    // Snapshot copy: _residualsMap is module-scoped scratch that the
+    // next classifyChord call will .clear() and re-fill. Returning it
+    // by reference would silently invalidate any held ClassifierResult
+    // (ChordHysteresis.locked/.candidate, React state). Per the plan's
+    // note, this allocation is acceptable; the alloc test measures it.
     return {
         lockedChord: {type: bestType, rootChannelId: root.channelId, rootHz: root.f0Hz},
-        residualsPerVoice: _residualsMap,
+        residualsPerVoice: new Map(_residualsMap),
     };
 }
