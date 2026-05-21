@@ -499,11 +499,11 @@ export function App() {
                       * renderer dev arm whose contract is "trace only".
                       */}
                     {renderer.kind !== 'trace' && (
-                        <div style={{display: 'flex', gap: 16, alignItems: 'stretch', height: 240, marginBottom: 16}}>
+                        <div style={{display: 'flex', gap: 16, alignItems: 'stretch', height: 320, marginBottom: 16}}>
                             <VowelPlot
                                 controller={controller}
                                 renderer={renderer}
-                                style={{width: 360, flexShrink: 0}}
+                                style={{width: 320, flexShrink: 0}}
                             />
                             <ChordAwareDisplay
                                 chord={lockedChord}
@@ -512,7 +512,7 @@ export function App() {
                                 ringState={ringState}
                                 onCanvasRef={handleChordBarsCanvasRef}
                                 onBackingChange={handleChordBarsBackingChange}
-                                style={{width: 480, flexShrink: 0}}
+                                style={{width: 320, flexShrink: 0}}
                             />
                         </div>
                     )}
@@ -541,7 +541,7 @@ export function App() {
                 // mounted (renderer + controller are created after config
                 // resolves). This placeholder anchors the row height so
                 // layout does not shift when the surfaces appear.
-                <div style={{height: 240}} />
+                <div style={{height: 320}} />
             )}
         </main>
     );
