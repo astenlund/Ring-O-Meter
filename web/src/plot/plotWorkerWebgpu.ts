@@ -42,6 +42,9 @@ const renderer = new TraceModule();
 const traceGate = new ReadyGate<PlotMessage>();
 const vowelGate = new ReadyGate<PlotMessage>();
 let rafId = 0;
+// Set once from the Init message. When true, InitVowelCanvas and
+// InitChordBarsCanvas messages are ignored so only the trace renders.
+let traceOnly = false;
 
 // Vowel-side state.
 let vowelModule: VowelModuleWebgpu | null = null;
@@ -286,7 +289,9 @@ function applyMessage(msg: PlotMessage): void {
             return;
         }
         case PlotMessageType.InitVowelCanvas: {
-            void initVowelCanvas(msg);
+            if (!traceOnly) {
+                void initVowelCanvas(msg);
+            }
 
             return;
         }
@@ -342,7 +347,9 @@ function applyMessage(msg: PlotMessage): void {
             return;
         }
         case PlotMessageType.InitChordBarsCanvas: {
-            void initChordBarsCanvas(msg);
+            if (!traceOnly) {
+                void initChordBarsCanvas(msg);
+            }
 
             return;
         }
@@ -389,6 +396,7 @@ self.onmessage = async (event: MessageEvent<PlotMessage>) => {
     }
     if (!traceGate.isReady() && msg.type === PlotMessageType.Init) {
         try {
+            traceOnly = msg.traceOnly === true;
             const {device, format} = await devicePromise;
             const mainEpochOffsetMs = msg.mainNowAtInitMs - performance.now();
             renderer.setEpochOffset(mainEpochOffsetMs);
