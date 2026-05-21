@@ -2,6 +2,16 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 import {parseFanoutFlag} from './fanoutFlag';
 
+// Mirrors DEFAULT_DOM7_OFFSETS_CENTS in fanoutFlag.ts. Computed via the
+// same `1200 * Math.log2(ratio)` expression so toEqual passes by
+// IEEE 754 determinism rather than fp-tolerance approximation.
+const EXPECTED_DOM7_OFFSETS = [
+    0,
+    1200 * Math.log2(5 / 4),
+    1200 * Math.log2(3 / 2),
+    1200 * Math.log2(7 / 4),
+];
+
 describe('parseFanoutFlag', () => {
     beforeEach(() => {
         // Suppress the parser's console.warn in tests that exercise
@@ -26,7 +36,7 @@ describe('parseFanoutFlag', () => {
         const result = parseFanoutFlag('?fanout', true);
 
         // Assert
-        expect(result).toEqual({count: 4, offsetsCents: [0, 386, 702, 969]});
+        expect(result).toEqual({count: 4, offsetsCents: EXPECTED_DOM7_OFFSETS});
     });
 
     it('treats ?fanout= (empty value) as the canonical dom7 quartet', () => {
@@ -34,7 +44,7 @@ describe('parseFanoutFlag', () => {
         const result = parseFanoutFlag('?fanout=', true);
 
         // Assert
-        expect(result).toEqual({count: 4, offsetsCents: [0, 386, 702, 969]});
+        expect(result).toEqual({count: 4, offsetsCents: EXPECTED_DOM7_OFFSETS});
     });
 
     it('defaults ?fanout=4 to JI dom7 offsets', () => {
@@ -42,7 +52,7 @@ describe('parseFanoutFlag', () => {
         const result = parseFanoutFlag('?fanout=4', true);
 
         // Assert
-        expect(result).toEqual({count: 4, offsetsCents: [0, 386, 702, 969]});
+        expect(result).toEqual({count: 4, offsetsCents: EXPECTED_DOM7_OFFSETS});
     });
 
     it('defaults ?fanout=N (N != 4) to the 8-cent step pattern', () => {
@@ -183,6 +193,6 @@ describe('parseFanoutFlag - fanout ignored with devModesEnabled:false', () => {
         const result = parseFreshFlag('?fanout=4', true);
 
         // Assert
-        expect(result).toEqual({count: 4, offsetsCents: [0, 386, 702, 969]});
+        expect(result).toEqual({count: 4, offsetsCents: EXPECTED_DOM7_OFFSETS});
     });
 });

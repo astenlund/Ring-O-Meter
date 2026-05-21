@@ -216,21 +216,29 @@ export interface SmoothnessArm {
 // CHORD_FANOUT_QUERY is composed from the typed shapes below so
 // `fanout=N` and the offsets list cannot drift independently.
 //
-// JI cent offsets from the root (A3, 220 Hz):
-//   Root       (1/1):   0 cents -> 220 Hz (A3)
-//   Maj 3rd    (5/4): 386 cents -> 275 Hz (C#4)
-//   Perfect 5  (3/2): 702 cents -> 330 Hz (E4)
-//   Harmonic 7 (7/4): 969 cents -> 385 Hz (G4)
+// JI cent offsets computed from the exact ratios so the chord-aware
+// classifier sees zero per-voice residual (integer-cent
+// approximations like 386 / 702 / 969 leave -0.31 / +0.04 / +0.17
+// residuals because the classifier targets ratio-precise cents):
+//   Root       (1/1):                       0 cents -> 220 Hz (A3)
+//   Maj 3rd    (5/4): 1200 * log2(5/4) ≈ 386.31 cents -> 275 Hz (C#4)
+//   Perfect 5  (3/2): 1200 * log2(3/2) ≈ 701.96 cents -> 330 Hz (E4)
+//   Harmonic 7 (7/4): 1200 * log2(7/4) ≈ 968.83 cents -> 385 Hz (G4)
 //
-// Harmonic 7 (969 cents) rather than equal-tempered minor 7
-// (1000 cents) because that is the barbershop tuning convention
-// and what makes the chord lock. All four pitches fit inside the
-// plot's [80, 600] Hz window. Uses the existing fanout test mode
-// (web/src/__testing/fanoutFlag.ts): one physical mic feeds N
-// VoiceChannels, each with a per-channel pitch multiplier applied
-// at the worklet's publish step. YIN runs once on the shared
-// input; the multipliers transform only the published Hz value.
-const CHORD_OFFSETS = [0, 386, 702, 969] as const;
+// Harmonic 7 rather than equal-tempered minor 7 (1000 cents) because
+// that is the barbershop tuning convention and what makes the chord
+// lock. All four pitches fit inside the plot's [80, 600] Hz window.
+// Uses the existing fanout test mode (web/src/__testing/fanoutFlag.ts):
+// one physical mic feeds N VoiceChannels, each with a per-channel
+// pitch multiplier applied at the worklet's publish step. YIN runs
+// once on the shared input; the multipliers transform only the
+// published Hz value.
+const CHORD_OFFSETS = [
+    0,
+    1200 * Math.log2(5 / 4),
+    1200 * Math.log2(3 / 2),
+    1200 * Math.log2(7 / 4),
+] as const;
 const CHORD_FANOUT_COUNT = CHORD_OFFSETS.length;
 const CHORD_FANOUT_QUERY = `fanout=${CHORD_FANOUT_COUNT}&offsets=${CHORD_OFFSETS.join(',')}`;
 
