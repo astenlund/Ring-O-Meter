@@ -8,7 +8,10 @@ import {ChordType} from '../wire/chord';
 const observeSpy = vi.fn();
 const disconnectSpy = vi.fn();
 class FakeResizeObserver {
-    constructor(private readonly cb: ResizeObserverCallback) {}
+    private readonly cb: ResizeObserverCallback;
+    constructor(cb: ResizeObserverCallback) {
+        this.cb = cb;
+    }
     observe(target: Element) {
         observeSpy(target);
         // Fire immediately with a synthetic entry so callers can verify the callback path.
@@ -113,7 +116,7 @@ describe('ChordAwareDisplay', () => {
 
     it('invokes onCanvasRef with the canvas element on mount', () => {
         // Arrange
-        const onCanvasRef = vi.fn<[HTMLCanvasElement | null], void>();
+        const onCanvasRef = vi.fn<(canvas: HTMLCanvasElement | null) => void>();
 
         // Act
         renderDisplay({
@@ -131,7 +134,7 @@ describe('ChordAwareDisplay', () => {
 
     it('invokes onBackingChange via ResizeObserver on mount', () => {
         // Arrange
-        const onBackingChange = vi.fn<[number, number, number], void>();
+        const onBackingChange = vi.fn<(cssWidth: number, cssHeight: number, dpr: number) => void>();
 
         // Act
         renderDisplay({

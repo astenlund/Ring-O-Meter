@@ -51,7 +51,7 @@ const dom7Slots: SlotDescriptor[] = [
 // ---- Helpers ----------------------------------------------------------------
 
 async function mountHarness(
-    container: HTMLElement,
+    _container: HTMLElement,
     root: Root,
     latest: Record<string, FormantFrame>,
     slots: ReadonlyArray<SlotDescriptor>,
