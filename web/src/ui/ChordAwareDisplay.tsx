@@ -64,9 +64,25 @@ export function ChordAwareDisplay({
         <div
             data-component="chord-aware-display"
             data-chord-type={chord?.type ?? undefined}
-            style={{display: 'flex', flexDirection: 'column', ...style}}
+            style={{
+                display: 'flex',
+                flexDirection: 'column',
+                border: '1px solid #444',
+                borderRadius: 6,
+                padding: 8,
+                boxSizing: 'border-box',
+                ...style,
+            }}
         >
-            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+            {/*
+              * Header is height-locked (minHeight) so the canvas below
+              * does NOT shift vertically when the chord transitions
+              * null <-> locked. ChordLabel and RingIndicatorDot both
+              * return null when their input is null; without minHeight
+              * the header collapses to zero, the flex column gives the
+              * extra height to the canvas, and tracks visibly jump.
+              */}
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 24, marginBottom: 4}}>
                 <ChordLabel chord={chord} />
                 <RingIndicatorDot state={ringState} />
             </div>
