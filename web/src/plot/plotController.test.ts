@@ -14,7 +14,12 @@ class MockWorker {
 
 // Minimal OffscreenCanvas stub for jsdom (which has no real OffscreenCanvas).
 class MockOffscreenCanvas {
-    constructor(public width: number, public height: number) {}
+    public width: number;
+    public height: number;
+    constructor(width: number, height: number) {
+        this.width = width;
+        this.height = height;
+    }
 }
 
 describe('PlotController.setChordClassification', () => {
