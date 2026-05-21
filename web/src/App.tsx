@@ -18,6 +18,7 @@ import type {Renderer} from './plot/renderer';
 import type {RingIndicatorState} from './ui/RingIndicatorDot';
 import type {ChordIdentity} from './wire/chord';
 import {loadConfig, type AppConfig} from './config/loadConfig';
+import {GREEN_THRESHOLD_CENTS, YELLOW_BAND_OUTER_CENTS} from './audio/ringThresholds';
 // As of 2026-04-30 WebGPU is the production default renderer; the 2D
 // canvas worker remains available via ?renderer=2d. The static
 // `?worker&url` imports bundle both worker chunks at build time so
@@ -65,12 +66,6 @@ interface Slot extends VoiceChannelSlot {
     deviceLabel: string;
     color: string;
 }
-
-// Ring indicator thresholds per spec "Ring indicator" section.
-// heuristic: ring-indicator-green-cents
-const GREEN_THRESHOLD_CENTS = 5;
-// heuristic: ring-indicator-yellow-outer-cents
-const YELLOW_BAND_OUTER_CENTS = 15;
 
 function computeRingState(
     residualsPerVoice: ReadonlyMap<string, number>,

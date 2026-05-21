@@ -8,15 +8,10 @@
 // (per chord-aware-display.md Forward-fit notes).
 
 import {hexToRgba} from './color';
+import {GREEN_THRESHOLD_CENTS, YELLOW_BAND_OUTER_CENTS} from '../audio/ringThresholds';
 
 // heuristic: chord-bars-range-cents
 const RANGE_CENTS = 50;
-
-// heuristic: chord-bars-green-threshold-cents
-const GREEN_THRESHOLD_CENTS = 5;
-
-// heuristic: chord-bars-yellow-band-outer-cents
-const YELLOW_BAND_OUTER_CENTS = 15;
 
 // heuristic: max-voices-chord-classification
 const MAX_VOICES = 8;

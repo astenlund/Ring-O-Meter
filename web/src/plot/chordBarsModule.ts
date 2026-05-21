@@ -10,6 +10,8 @@
 // update + draw are zero-alloc. Per the hot-path-allocation-discipline
 // pattern.
 
+import {GREEN_THRESHOLD_CENTS} from '../audio/ringThresholds';
+
 // heuristic: chord-bars-track-height-css - track height in CSS pixels.
 // ~28px reads comfortably at phone-screen DPRs; narrower loses the
 // readable cents-text; wider wastes space on small screens.
@@ -25,11 +27,6 @@ const LABEL_MARGIN_CSS = 36;
 // heuristic: chord-bars-readout-margin-css - right-side column for
 // signed cents readout, in CSS pixels.
 const READOUT_MARGIN_CSS = 44;
-
-// heuristic: chord-bars-target-zone-cents - half-width of the green
-// target zone, in cents. Shared constant with GREEN_THRESHOLD_CENTS in
-// the chord classifier; both must move together if retuned.
-const TARGET_ZONE_CENTS = 5;
 
 // heuristic: chord-bars-scale-cents - full half-range of the ±N¢ axis.
 const SCALE_HALF_CENTS = 50;
@@ -230,8 +227,8 @@ export function draw(): void {
         ctx.fillStyle = TRACK_BG_COLOR;
         ctx.fillRect(scaleLeft, trackTop, scaleWidth, TRACK_HEIGHT_CSS);
 
-        // Green target zone (±TARGET_ZONE_CENTS around center).
-        const tzHalfW = (TARGET_ZONE_CENTS / SCALE_HALF_CENTS) * (scaleWidth / 2);
+        // Green target zone (±GREEN_THRESHOLD_CENTS around center).
+        const tzHalfW = (GREEN_THRESHOLD_CENTS / SCALE_HALF_CENTS) * (scaleWidth / 2);
         ctx.fillStyle = TARGET_ZONE_COLOR;
         ctx.fillRect(centerX - tzHalfW, trackTop, tzHalfW * 2, TRACK_HEIGHT_CSS);
 
