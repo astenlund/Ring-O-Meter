@@ -32,6 +32,21 @@ class FakeResizeObserver {
 }
 vi.stubGlobal('ResizeObserver', FakeResizeObserver);
 
+// Stub window.matchMedia (not provided in jsdom). useCanvasBacking
+// registers a (resolution: Ndppx) listener for DPR rearm; the hook's
+// behavior under DPR change is covered in useCanvasBacking.browser.tsx,
+// so this jsdom stub only needs to satisfy the API surface.
+vi.stubGlobal('matchMedia', (query: string) => ({
+    media: query,
+    matches: false,
+    onchange: null,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => false,
+}));
+
 const C4_HZ = 440 * Math.pow(2, (60 - 69) / 12);
 
 const VOICES: ChordAwareDisplayProps['voices'] = [

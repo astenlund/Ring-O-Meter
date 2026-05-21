@@ -2,6 +2,7 @@ import {useEffect, useRef} from 'react';
 import {type ChordIdentity} from '../wire/chord';
 import {ChordLabel} from './ChordLabel';
 import {RingIndicatorDot, type RingIndicatorState} from './RingIndicatorDot';
+import {useCanvasBacking} from './useCanvasBacking';
 
 export interface ChordAwareVoice {
     readonly channelId: string;
@@ -33,32 +34,21 @@ export function ChordAwareDisplay({
     const onCanvasRefRef = useRef(onCanvasRef);
     onCanvasRefRef.current = onCanvasRef;
 
-    // Wire up the canvas ref callback and ResizeObserver.
     const setCanvasRef = (canvas: HTMLCanvasElement | null) => {
         canvasRef.current = canvas;
         onCanvasRefRef.current(canvas);
     };
 
+    // Backing-state tracking lives in useCanvasBacking: it handles
+    // ResizeObserver size changes AND matchMedia DPR rearm (external
+    // monitor connect, browser zoom). Forwarding effect mirrors the
+    // PitchPlot shape — read onBackingChange via a ref so the effect's
+    // dep array stays at [backing] and doesn't re-fire on parent
+    // re-renders that hand us a fresh closure.
+    const backing = useCanvasBacking(canvasRef);
     useEffect(() => {
-        const canvas = canvasRef.current;
-        if (canvas === null) {
-            return;
-        }
-
-        const observer = new ResizeObserver((entries) => {
-            for (const entry of entries) {
-                const {inlineSize: cssWidth, blockSize: cssHeight} =
-                    entry.contentBoxSize[0] ?? {inlineSize: 0, blockSize: 0};
-                const dpr = window.devicePixelRatio || 1;
-                onBackingChangeRef.current(cssWidth, cssHeight, dpr);
-            }
-        });
-        observer.observe(canvas);
-
-        return () => {
-            observer.disconnect();
-        };
-    }, []);
+        onBackingChangeRef.current(backing.cssWidth, backing.cssHeight, backing.dpr);
+    }, [backing]);
 
     return (
         // data-component is a stable mount marker (always present);
