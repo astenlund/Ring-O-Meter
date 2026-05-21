@@ -3,16 +3,20 @@ import {DeviceSetup} from './ui/DeviceSetup';
 import {NoteReadout} from './ui/NoteReadout';
 import {PitchPlot, type PitchPlotHandle} from './ui/PitchPlot';
 import {VowelPlot} from './ui/VowelPlot';
+import {ChordAwareDisplay} from './ui/ChordAwareDisplay';
 import {slotsToVoices} from './ui/rosterToVoices';
 import {useFrameState} from './audio/useFrameState';
 import {useInputDevices} from './audio/useInputDevices';
 import {useVoiceChannels, type VoiceChannelSlot} from './audio/useVoiceChannels';
+import {useChordClassification} from './audio/useChordClassification';
 import {FrameSourceRegistry} from './audio/frameSourceRegistry';
 import {PlotController} from './plot/plotController';
 import {useLatestRef} from './ui/useLatestRef';
-import {parseFanoutFlag} from './__testing/fanoutFlag';
-import {parseRendererFlag} from './plot/rendererFlag';
+import {parseFanoutFlag, type FanoutFlag} from './__testing/fanoutFlag';
+import {parseRendererFlag, type RendererSelection} from './plot/rendererFlag';
 import type {Renderer} from './plot/renderer';
+import type {RingIndicatorState} from './ui/RingIndicatorDot';
+import {loadConfig, type AppConfig} from './config/loadConfig';
 // As of 2026-04-30 WebGPU is the production default renderer; the 2D
 // canvas worker remains available via ?renderer=2d. The static
 // `?worker&url` imports bundle both worker chunks at build time so
@@ -61,6 +65,54 @@ interface Slot extends VoiceChannelSlot {
     color: string;
 }
 
+// Ring indicator thresholds per spec "Ring indicator" section.
+// heuristic: ring-indicator-green-cents
+const GREEN_THRESHOLD_CENTS = 5;
+// heuristic: ring-indicator-yellow-outer-cents
+const YELLOW_BAND_OUTER_CENTS = 15;
+
+function computeRingState(
+    residualsPerVoice: ReadonlyMap<string, number>,
+    lockedChord: object | null,
+): RingIndicatorState {
+    if (lockedChord === null || residualsPerVoice.size === 0) {
+        return null;
+    }
+    let yellowCount = 0;
+    for (const cents of residualsPerVoice.values()) {
+        const abs = Math.abs(cents);
+        if (abs > YELLOW_BAND_OUTER_CENTS) {
+            return 'red';
+        }
+        if (abs > GREEN_THRESHOLD_CENTS) {
+            yellowCount++;
+        }
+    }
+    if (yellowCount === 0) {
+        return 'green';
+    }
+    if (yellowCount === 1) {
+        return 'yellow';
+    }
+
+    return 'red';
+}
+
+// Build the Renderer discriminated union from the parsed flag.
+function rendererFromSelection(sel: RendererSelection | null): Renderer {
+    if (sel === '2d') {
+        return {kind: '2d'};
+    }
+    if (sel === 'trace') {
+        // Per the plan's precommitted decision: trace reuses the WebGPU worker
+        // with a traceOnly flag; both share the same workerUrl. Task 22 wires
+        // the flag; for now the workerUrl is identical.
+        return {kind: 'trace', workerUrl: webgpuWorkerUrl};
+    }
+
+    return {kind: 'webgpu', workerUrl: webgpuWorkerUrl};
+}
+
 export function App() {
     const {latest, registerReader, unregisterReader} = useFrameState();
     const plotHandleRef = useRef<PitchPlotHandle | null>(null);
@@ -105,25 +157,45 @@ export function App() {
         [devices, selectedDeviceId],
     );
 
-    // Test-only: parsed once at mount so a query-string change requires a
-    // reload to take effect (no live re-evaluation of the flag while a
-    // session is in flight). Returns null in production. Cleanup: remove
-    // this state + the parseFanoutFlag import + the fanout branch in the
-    // slot-build effect + the SLOT_COLORS extension.
-    const [fanoutConfig] = useState(() => parseFanoutFlag(window.location.search));
-    const [rendererFlag] = useState(() => parseRendererFlag(window.location.search));
-    // WebGPU is the production default; ?renderer=2d is the only
-    // opt-out. `null` (no flag) and explicit `'webgpu'` both go
-    // through the WebGPU path. The discriminated union keeps the
-    // worker URL and the underlay-canvas requirement statically
-    // linked: PitchPlot/VowelPlot pattern-match on `kind` so the
-    // two cannot drift the way the earlier two-boolean shape allowed.
-    const [renderer] = useState<Renderer>(() => rendererFlag === '2d'
-        ? {kind: '2d'}
-        : {kind: 'webgpu', workerUrl: webgpuWorkerUrl});
+    // Fetched once at mount. VoiceChannel construction (and ChordAwareDisplay
+    // mounting) is gated on config !== null so parseFanoutFlag /
+    // parseRendererFlag are always called with the real devModesEnabled value.
+    // The gate is structural, not temporal: moving VoiceChannel construction
+    // earlier would re-open the race.
+    const [config, setConfig] = useState<AppConfig | null>(null);
+    useEffect(() => {
+        loadConfig().then(setConfig);
+    }, []);
 
-    const [controller] = useState(() =>
-        new PlotController(renderer.kind === 'webgpu' ? renderer.workerUrl : undefined));
+    // Permanent dev-mode infrastructure; gated by devModesEnabled in /config.json.
+    // Parsed exactly once when config first resolves. All derived state (fanoutConfig,
+    // renderer, controller) is set atomically in the same effect so a single React
+    // render flush delivers all of them together. The flagsSetRef latch prevents
+    // re-parsing on subsequent renders (module-scoped warn latches in the parsers
+    // must fire at most once per page load).
+    const flagsSetRef = useRef(false);
+    const [fanoutConfig, setFanoutConfig] = useState<FanoutFlag | null>(null);
+
+    // Renderer + controller are created once, after config resolves and the URL
+    // flags are parsed with the real devModesEnabled. React state guarantees stable
+    // identity across re-renders. PlotController is one-shot per lifetime
+    // (transferControlToOffscreen is irrevocable).
+    const [renderer, setRenderer] = useState<Renderer | null>(null);
+    const [controller, setController] = useState<PlotController | null>(null);
+
+    useEffect(() => {
+        if (config === null || flagsSetRef.current) {
+            return;
+        }
+        flagsSetRef.current = true;
+        const fc = parseFanoutFlag(window.location.search, config.devModesEnabled);
+        const rs = parseRendererFlag(window.location.search, config.devModesEnabled);
+        const r = rendererFromSelection(rs);
+        const ctrl = new PlotController(r.kind !== '2d' ? r.workerUrl : undefined);
+        setFanoutConfig(fc);
+        setRenderer(r);
+        setController(ctrl);
+    }, [config]);
 
     // Started gates audio construction on an explicit user gesture: the
     // Start button overlay on the pitch plot. Browser autoplay policy
@@ -155,7 +227,10 @@ export function App() {
     // memo is recomputed before the effect runs each commit).
     const [slots, setSlots] = useState<Slot[] | null>(null);
     useEffect(() => {
-        if (!started || !selectedDevice) {
+        // Gate on config so VoiceChannel construction never races the
+        // config fetch: parseFanoutFlag was called with devModesEnabled
+        // from the resolved config, not the fail-closed default.
+        if (!started || !selectedDevice || config === null) {
             setSlots(null);
 
             return;
@@ -196,7 +271,7 @@ export function App() {
         // selectedDeviceId-only dep + selectedDevice read via memo:
         // see comment block above.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [started, selectedDeviceId, fanoutConfig]);
+    }, [started, selectedDeviceId, fanoutConfig, config]);
 
     useVoiceChannels(slots, registry);
 
@@ -230,6 +305,10 @@ export function App() {
     // would miss the attach for the freshly-built slot).
     const slotsRef = useLatestRef(slots);
     useEffect(() => {
+        if (!controller) {
+            return;
+        }
+
         return registry.subscribe({
             onReady: (channelId, source, _reader) => {
                 const slot = slotsRef.current?.find((s) => s.channelId === channelId);
@@ -244,6 +323,78 @@ export function App() {
     }, [registry, controller, slotsRef]);
 
     const voices = useMemo(() => slotsToVoices(slots ?? []), [slots]);
+
+    // Chord classification: runs at the ~15 Hz coalesce rate. The hook
+    // produces a stable locked-chord identity + per-voice residuals for
+    // React rendering; the classification result is also forwarded to the
+    // plot worker per coalesce frame via setChordClassification.
+    const slotDescriptors = useMemo(
+        () => (slots ?? []).map((s, i) => ({channelId: s.channelId, slotIndex: i})),
+        [slots],
+    );
+    const {lockedChord, residualsPerVoice} = useChordClassification(latest, slotDescriptors);
+
+    const ringState = computeRingState(residualsPerVoice, lockedChord);
+
+    // Wire classifier output to the plot worker once per coalesce frame.
+    // residualsPerVoice is a Map keyed by channelId; the worker uses
+    // slot index (matching AttachChannel order). Map slot index by
+    // iterating slotDescriptors which has the same ordering.
+    // The scratch Float32Array is reused across calls per hot-path-allocation-discipline.
+    const residualsScratch = useRef(new Float32Array(8));
+    useEffect(() => {
+        if (!controller) {
+            return;
+        }
+        const buf = residualsScratch.current;
+        buf.fill(Number.NaN);
+        if (lockedChord !== null) {
+            for (let i = 0; i < slotDescriptors.length; i++) {
+                const {channelId} = slotDescriptors[i];
+                const r = residualsPerVoice.get(channelId);
+                buf[i] = r !== undefined ? r : Number.NaN;
+            }
+        }
+        controller.setChordClassification(
+            lockedChord?.type ?? null,
+            lockedChord?.rootChannelId ?? null,
+            lockedChord?.rootHz ?? 0,
+            buf,
+        );
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [controller, lockedChord, residualsPerVoice]);
+
+    // Chord-bars canvas: allocated on main thread, transferred to the
+    // plot worker via attachChordBarsCanvas. transferControlToOffscreen is
+    // one-shot per canvas element; the latch prevents a second transfer on
+    // strict-mode re-mount.
+    const chordBarsTransferredRef = useRef(false);
+    const handleChordBarsCanvasRef = useCallback((canvas: HTMLCanvasElement | null) => {
+        if (!controller || !canvas || chordBarsTransferredRef.current) {
+            return;
+        }
+        chordBarsTransferredRef.current = true;
+        const offscreen = canvas.transferControlToOffscreen();
+        controller.attachChordBarsCanvas(offscreen);
+    }, [controller]);
+
+    const handleChordBarsBackingChange = useCallback(
+        (cssWidth: number, cssHeight: number, dpr: number) => {
+            controller?.setChordBarsBacking(cssWidth, cssHeight, dpr);
+        },
+        [controller],
+    );
+
+    // ChordAwareDisplay voices: same shape as the slot roster, filtered to
+    // what ChordAwareDisplay needs (channelId, deviceLabel, color).
+    const chordDisplayVoices = useMemo(
+        () => (slots ?? []).map((s) => ({
+            channelId: s.channelId,
+            deviceLabel: s.deviceLabel,
+            color: s.color,
+        })),
+        [slots],
+    );
 
     return (
         <main style={mainStyle}>
@@ -296,44 +447,60 @@ export function App() {
                     />
                 )}
             </div>
-            <div style={{display: 'flex', gap: 16, alignItems: 'stretch', height: 360}}>
-                <div style={{position: 'relative', flex: 1}}>
-                    <PitchPlot
-                        voices={voices}
-                        windowMs={PLOT_WINDOW_MS}
-                        handleRef={plotHandleRef}
-                        renderer={renderer}
+            {renderer !== null && controller !== null ? (
+                <div style={{display: 'flex', gap: 16, alignItems: 'stretch', height: 360}}>
+                    <div style={{position: 'relative', flex: 1}}>
+                        <PitchPlot
+                            voices={voices}
+                            windowMs={PLOT_WINDOW_MS}
+                            handleRef={plotHandleRef}
+                            renderer={renderer}
+                            controller={controller}
+                        />
+                        {!started && (
+                            <button
+                                type="button"
+                                onClick={() => setStarted(true)}
+                                style={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    margin: 'auto',
+                                    width: 200,
+                                    height: 80,
+                                    fontSize: '1.5em',
+                                    fontWeight: 'bold',
+                                    color: '#eee',
+                                    background: '#2a5a2a',
+                                    border: '2px solid #4a8a4a',
+                                    borderRadius: 8,
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                Start
+                            </button>
+                        )}
+                    </div>
+                    <VowelPlot
                         controller={controller}
+                        renderer={renderer}
+                        style={{width: 360, flexShrink: 0}}
                     />
-                    {!started && (
-                        <button
-                            type="button"
-                            onClick={() => setStarted(true)}
-                            style={{
-                                position: 'absolute',
-                                inset: 0,
-                                margin: 'auto',
-                                width: 200,
-                                height: 80,
-                                fontSize: '1.5em',
-                                fontWeight: 'bold',
-                                color: '#eee',
-                                background: '#2a5a2a',
-                                border: '2px solid #4a8a4a',
-                                borderRadius: 8,
-                                cursor: 'pointer',
-                            }}
-                        >
-                            Start
-                        </button>
-                    )}
+                    <ChordAwareDisplay
+                        chord={lockedChord}
+                        voices={chordDisplayVoices}
+                        residualsPerVoice={residualsPerVoice}
+                        ringState={ringState}
+                        onCanvasRef={handleChordBarsCanvasRef}
+                        onBackingChange={handleChordBarsBackingChange}
+                    />
                 </div>
-                <VowelPlot
-                    controller={controller}
-                    renderer={renderer}
-                    style={{width: 360, flexShrink: 0}}
-                />
-            </div>
+            ) : (
+                // While config is loading, the plot surfaces are not yet
+                // mounted (renderer + controller are created after config
+                // resolves). This placeholder anchors the row height so
+                // layout does not shift when the surfaces appear.
+                <div style={{height: 360}} />
+            )}
         </main>
     );
 }
