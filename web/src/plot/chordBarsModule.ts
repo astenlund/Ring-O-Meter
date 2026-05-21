@@ -307,23 +307,22 @@ export function dispose(): void {
 
 // --- Helpers ---
 
-// Format a cents value as a signed string with one decimal place.
-// Pre-allocated scratch string pool cannot be used for floating-point
-// formatting (values are continuous), so this allocates. It runs only
-// in the draw() loop for active voices; at 8 voices × 60 fps the
-// allocation rate is modest and within the alloc-test budget.
-// A future optimization could use a fixed-point lookup table if this
-// ever shows up in a profile, but today it does not.
+// Format a cents value as a signed string with whole-cent precision.
+// Allocates (values are continuous, no scratch pool); runs once per
+// active voice per frame, within the alloc-test budget. Whole cents
+// is the readability ceiling for chord coaching: sub-cent variation
+// is below the ear's bandwidth and below YIN's jitter floor, so the
+// extra decimal was just visual noise.
 //
-// Sign suppression at zero: a value that rounds to ±0.0 displays as
-// "0.0¢" with no leading sign. Without this, sub-cent residuals
-// produce "+0.0¢" / "-0.0¢" which read as noise rather than the
+// Sign suppression at zero: a value that rounds to 0 displays as
+// "0¢" with no leading sign. Without this, sub-half-cent residuals
+// produce "+0¢" / "-0¢" which read as noise rather than the
 // "exactly in tune" signal they actually represent.
 function formatCents(cents: number): string {
-    const rounded = Math.round(cents * 10) / 10;
+    const rounded = Math.round(cents);
     if (rounded === 0) {
-        return '0.0¢';
+        return '0¢';
     }
 
-    return `${rounded > 0 ? '+' : ''}${rounded.toFixed(1)}¢`;
+    return `${rounded > 0 ? '+' : ''}${rounded}¢`;
 }
