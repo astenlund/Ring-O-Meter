@@ -104,3 +104,76 @@ test('chord-aware-display identifies dom7 and reports near-zero residuals', asyn
         expect(Math.abs(cents!)).toBeLessThanOrEqual(CENTS_TOLERANCE);
     }
 });
+
+// ---------------------------------------------------------------------------
+// Task 24: production-bundle guard
+// ---------------------------------------------------------------------------
+
+test('production config suppresses ?fanout and ?renderer=trace with one-shot warnings', async ({page}) => {
+    const warnMessages: string[] = [];
+    page.on('console', (msg) => {
+        if (msg.type() === 'warning') {
+            warnMessages.push(msg.text());
+        }
+    });
+
+    // Intercept /config.json to return the production fail-closed config.
+    // Both parseFanoutFlag and parseRendererFlag check devModesEnabled
+    // before honouring their flags; false → ignored, one-shot warn.
+    await page.route('**/config.json', (route) => {
+        void route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({hubUrl: '', devModesEnabled: false}),
+        });
+    });
+
+    // Visit ?fanout=4 with devModesEnabled: false. parseFanoutFlag emits a
+    // one-shot console.warn and returns null → production single-voice path.
+    await page.goto(withChordFanout(''));
+
+    const startButton = page.getByRole('button', {name: /^start$/i});
+    await expect(startButton).toBeVisible({timeout: 15_000});
+    await startButton.click();
+
+    // Production path: exactly one [data-voice-id] row (single mic slot).
+    // ChordAwareDisplay must be mounted; data-voice-id rows are the voice
+    // roster which has exactly 1 entry when fanout is off.
+    await expect(page.locator('[data-chord-type]')).toBeVisible({timeout: 15_000});
+    // Allow slots to populate.
+    await page.waitForTimeout(SETTLE_MS);
+    await expect(page.locator('[data-voice-id]')).toHaveCount(1, {timeout: CHORD_LOCK_TIMEOUT_MS});
+
+    // Exactly one fanout-ignored warning so far (one-shot latch in
+    // parseFanoutFlag fires on the first call only).
+    const fanoutWarns = warnMessages.filter((m) => m.includes('?fanout flag ignored'));
+    expect(fanoutWarns).toHaveLength(1);
+
+    // Now navigate to ?renderer=trace with the same production config to
+    // verify parseRendererFlag also suppresses the flag and warns once.
+    // page.route intercepts persist for the page lifetime, so the same
+    // config intercept is still active.
+    await page.goto('/?renderer=trace');
+
+    // Wait for the app to re-render and parsers to run.
+    const startButton2 = page.getByRole('button', {name: /^start$/i});
+    await expect(startButton2).toBeVisible({timeout: 15_000});
+    await startButton2.click();
+
+    // ChordAwareDisplay renders when renderer.kind !== 'trace' (App.tsx).
+    // When the trace flag is suppressed (devModesEnabled: false) renderer.kind
+    // falls back to 'webgpu', so ChordAwareDisplay IS rendered. If the trace
+    // flag were honoured (devModesEnabled: true) ChordAwareDisplay would be
+    // hidden. Presence of [data-chord-type] therefore asserts trace was NOT
+    // activated.
+    await expect(page.locator('[data-chord-type]')).toBeVisible({timeout: 15_000});
+
+    // One-shot renderer warn fires exactly once per page load. page.goto
+    // ('/?renderer=trace') is a hard navigation that reloads the JS bundle,
+    // resetting the module-level `_warnedAboutIgnoredRenderer` latch, so
+    // the warn fires exactly once for this navigation.
+    const rendererWarns = warnMessages.filter((m) =>
+        m.includes('?renderer=trace ignored'),
+    );
+    expect(rendererWarns).toHaveLength(1);
+});
