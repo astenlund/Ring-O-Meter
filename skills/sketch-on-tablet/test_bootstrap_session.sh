@@ -2,6 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
 
 # Register all temp dirs in a single EXIT trap. RETURN traps only fire
 # from functions or sourced scripts, NOT from top-level execution; if we
@@ -136,15 +138,14 @@ if NEG_OUTPUT="$(cd "$TMP4" && unset SKETCH_ON_TABLET_REPO_ROOT && \
   exit 1
 fi
 # Diagnostic string must match bootstrap-session.sh / find_repo_root in _lib.sh;
-# update all three together when the marker filename changes.
-case "$NEG_OUTPUT" in
-  *"could not locate Ring-O-Meter.slnx"*) ;;
-  *)
-    echo "fail: missing 'could not locate Ring-O-Meter.slnx' diagnostic; got:" >&2
-    echo "$NEG_OUTPUT" >&2
-    exit 1
-    ;;
-esac
+# update together when the marker filename changes (tracked via $_REPO_MARKER).
+if [[ "$NEG_OUTPUT" == *"could not locate $_REPO_MARKER"* ]]; then
+  :
+else
+  echo "fail: missing 'could not locate $_REPO_MARKER' diagnostic; got:" >&2
+  echo "$NEG_OUTPUT" >&2
+  exit 1
+fi
 
 # Gate test: bootstrap-session.sh must invoke check-rmapi-setup.sh and
 # exit non-zero when the verifier reports an install gap. Achieved by

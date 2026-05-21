@@ -11,7 +11,7 @@
 # render/_session_index_dispatch.py.
 #
 # Uses SKETCH_ON_TABLET_REPO_ROOT (test override) or walks up to find
-# Ring-O-Meter.slnx, then anchors current-session.json at
+# the repo marker file ($_REPO_MARKER), then anchors current-session.json at
 # <repo-root>/.tmp/sketch-on-tablet/current-session.json.
 
 set -euo pipefail
@@ -57,7 +57,7 @@ done
 REPO_ROOT="${SKETCH_ON_TABLET_REPO_ROOT:-}"
 if [[ -z "$REPO_ROOT" ]]; then
   REPO_ROOT="$(find_repo_root "$PWD")" || {
-    echo "$CALLER_NAME: could not locate Ring-O-Meter.slnx walking up from $PWD" >&2
+    echo "$CALLER_NAME: could not locate $_REPO_MARKER walking up from $PWD" >&2
     exit 1
   }
 fi
