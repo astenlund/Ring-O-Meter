@@ -55,8 +55,9 @@ test('chord-aware-display identifies dom7 and reports near-zero residuals', asyn
         });
     });
 
-    // withChordFanout('') produces ?fanout=4&offsets=0,386,702,969 which
-    // exercises the canonical JI dom7 barbershop chord (A3/C#4/E4/G4).
+    // withChordFanout('') produces a ?fanout=4 query with ratio-precise
+    // JI dom7 offsets (0 / 1200*log2(5/4) / 1200*log2(3/2) / 1200*log2(7/4))
+    // exercising the canonical barbershop chord (A3/C#4/E4/G4).
     await page.goto(withChordFanout(''));
 
     const startButton = page.getByRole('button', {name: /^start$/i});
@@ -74,10 +75,9 @@ test('chord-aware-display identifies dom7 and reports near-zero residuals', asyn
     await page.waitForTimeout(SETTLE_MS);
 
     // ChordType.DominantSeventh = 1 (wire contract from wire/chord.ts).
-    // The fanout fixture applies [0, 386, 702, 969] cent offsets which are
-    // the exact JI ratios for root / maj-3 / P5 / harmonic-7 of the dom7
-    // chord — zero residuals by construction, so the classifier must lock
-    // on DominantSeventh.
+    // The fanout fixture applies ratio-precise JI cent offsets for
+    // root / maj-3 / P5 / harmonic-7 of the dom7 chord — zero residuals
+    // by construction, so the classifier must lock on DominantSeventh.
     await expect(page.locator('[data-chord-type]')).toHaveAttribute(
         'data-chord-type',
         '1',

@@ -8,12 +8,19 @@ export interface FanoutFlag {
 }
 
 const MAX_FANOUT_COUNT = 16;
-// JI dom7 chord (root / maj-3 / P5 / harmonic-7). This is the canonical
-// fanout test pattern used by the smoothness e2e arms and documented in
-// CLAUDE.md; barbershop "ring" requires JI ratios (5/4 = 386 cents,
-// 3/2 = 702 cents, 7/4 = 969 cents), not 12-TET approximations. Default
+// JI dom7 chord (root / maj-3 / P5 / harmonic-7) computed from the
+// exact ratios so the chord-aware-display sees zero per-voice residual
+// under fanout. The classifier targets ratio-precise cents
+// (1200 * log2(ratio)); integer-rounded approximations like
+// [0, 386, 702, 969] leave residuals of -0.31¢ / +0.04¢ / +0.17¢
+// because 386 != 386.31..., 702 != 701.96..., 969 != 968.83.... Default
 // when ?fanout is bare or count === 4 and no explicit offsets given.
-const DEFAULT_DOM7_OFFSETS_CENTS = [0, 386, 702, 969] as const;
+const DEFAULT_DOM7_OFFSETS_CENTS = [
+    0,
+    1200 * Math.log2(5 / 4),   // ≈ 386.31
+    1200 * Math.log2(3 / 2),   // ≈ 701.96
+    1200 * Math.log2(7 / 4),   // ≈ 968.83
+] as const;
 // Step pattern used as the default for non-dom7 counts (count !== 4).
 // 8 cents is barely audible, intentional for renderer-stress scenarios
 // where stacked-near-unison traces test occlusion / anti-aliasing
@@ -44,8 +51,8 @@ function defaultOffsetsFor(count: number): number[] {
  * validate input columns; readers and the canvas would render garbage).
  *
  * Examples:
- *   ?fanout                         -> {count:4, offsetsCents:[0,386,702,969]}  (bare flag)
- *   ?fanout=4                       -> {count:4, offsetsCents:[0,386,702,969]}  (dom7)
+ *   ?fanout                         -> {count:4, offsetsCents:JI-dom7 ratios}  (bare flag)
+ *   ?fanout=4                       -> {count:4, offsetsCents:JI-dom7 ratios}  (dom7)
  *   ?fanout=4&offsets=0,15,30,45    -> {count:4, offsetsCents:[0,15,30,45]}
  *   ?fanout=4&offsets=0,5           -> {count:4, offsetsCents:[0,5,16,24]} (pad)
  *   ?fanout=4&offsets=0,5,10,15,20  -> {count:4, offsetsCents:[0,5,10,15]} (truncate)
