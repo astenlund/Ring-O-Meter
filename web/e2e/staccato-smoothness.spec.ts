@@ -21,9 +21,9 @@ import {
 // articulated workloads (a future change that made the worker
 // block main thread, or one that scaled per-channel work
 // superlinearly with channel count, would surface here). The
-// visual-pipeline finding remains validated by manual `?renderer=2d`
-// comparison plus in-worker diagnostic logs, not by automated
-// assertion.
+// visual-pipeline finding remains validated by manual
+// `?renderer=webgpu` comparison plus in-worker diagnostic logs, not
+// by automated assertion.
 //
 // Single-voice staccato arms were dropped 2026-04-30 in favour of
 // the 4-voice chord variant: the prototype's eventual production
