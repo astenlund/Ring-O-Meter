@@ -314,8 +314,16 @@ export function dispose(): void {
 // allocation rate is modest and within the alloc-test budget.
 // A future optimization could use a fixed-point lookup table if this
 // ever shows up in a profile, but today it does not.
+//
+// Sign suppression at zero: a value that rounds to ±0.0 displays as
+// "0.0¢" with no leading sign. Without this, sub-cent residuals
+// produce "+0.0¢" / "-0.0¢" which read as noise rather than the
+// "exactly in tune" signal they actually represent.
 function formatCents(cents: number): string {
-    const sign = cents >= 0 ? '+' : '';
+    const rounded = Math.round(cents * 10) / 10;
+    if (rounded === 0) {
+        return '0.0¢';
+    }
 
-    return `${sign}${cents.toFixed(1)}¢`;
+    return `${rounded > 0 ? '+' : ''}${rounded.toFixed(1)}¢`;
 }
