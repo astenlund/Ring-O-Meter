@@ -1,0 +1,440 @@
+/*
+ * page-chrome.css
+ *
+ * Two-page rendered layout for sketch-on-tablet. Both pages share a
+ * header strip (topic + iteration label) and a chrome footer carrying
+ * the Finish-turn checkbox, the End-session checkbox, and the
+ * mode-switch trio (Color / B&W / Wireframe). Page 1 is the mockup
+ * page; page 2 is the legend page.
+ *
+ * The Finish-turn checkbox is pinned at the same coordinates on both
+ * rendered pages: (x=1540, y=2100) 40x40 px on the 1620x2160 viewport.
+ * Bottom-aligned in the footer with a 60 px slot above for the
+ * End-session checkbox sibling (rendered above; see
+ * .end-session-checkbox). The polling slice's stroke-region detector
+ * inverse-transforms this rectangle into .rm coordinates and computes
+ * each stroke's capsule area inside it (clipped centerline length * W
+ * + half-disc caps); a stroke qualifies when its area meets the
+ * registered threshold (~100 .rm^2). Either page firing means the
+ * user finished the turn.
+ */
+/* checkbox-coords */
+
+@page {
+  size: 1620px 2160px;
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 1620px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #222;
+  background: #ffffff;
+}
+
+.page {
+  position: relative;
+  width: 1620px;
+  height: 2160px;
+  page-break-after: always;
+  break-after: page;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.page:last-child {
+  page-break-after: auto;
+  break-after: auto;
+}
+
+/* Header strip: top of page, full width, identical on both pages.
+   Title (topic + inline #NN iter label) is horizontally centered.
+   Symmetric padding keeps the title visually anchored. */
+.header-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1620px;
+  height: 100px;
+  padding: 24px 160px;
+  background: #ebebeb;
+  border-bottom: 2px solid #d8d8d2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+
+.header-topic {
+  font-size: 36px;
+  font-weight: 600;
+}
+
+/* Iteration label sits inline immediately after the topic as '#NN' (no
+   subtopic) or ': subtopic #NN' (with subtopic). CSS owns the gap between
+   the topic text and this label via margin-left. */
+.header-iter {
+  margin-left: 0.3em;
+  font-weight: 700;
+  /* Lighter than .legend-color-align because the bold weight makes
+     the same grey look much darker on e-ink under dithered greyscale.
+     The two shades intentionally diverge once the header went bold. */
+  color: #909090;
+}
+
+/* Legend page title: same overall placement as the topic + iter
+   header on page 1, but no inline iter label and no spacing
+   reservation for one. */
+.header-legend {
+  /* Inherits font and centering from .header-topic. The legend
+     page never carries an iter label, so no .header-iter span
+     follows; nothing more needed here today. */
+}
+
+/* Chrome footer: bottom of page, identical on both pages. Hosts the
+   Finish-turn checkbox, the End-session checkbox, and the mode-switch
+   trio. The Finish-turn / End-session column is right-aligned so the
+   user's pen always lands at the same screen position regardless of
+   which rendered page they are on; the mode-switch trio sits in the
+   left half of the footer. */
+.chrome-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 1620px;
+  height: 160px;
+  background: #ebebeb;
+  border-top: 2px solid #d8d8d2;
+}
+
+/* "Finish turn" label sits immediately left of the checkbox, vertically
+   centered with it, so the box's purpose is discoverable on first
+   glance. Subdued grey (matching the alignment-hint shade) keeps it
+   from competing with the user's pen marks. */
+.finish-turn-label {
+  position: absolute;
+  /* Bottom-aligned with the checkbox (which sits at bottom:20, height:40
+     in the footer, i.e. y=2100..2140 on the page). Empirically,
+     line-height:40 still leaves the all-caps text glyph center about
+     1.5 px below the checkbox center because the font's line box
+     reserves descender space the all-caps run does not use. Nudging
+     bottom up by 2 px (22 instead of 20) brings the visual centers
+     within 0.5 px of each other. End-session sibling slot is the 60 px
+     above this row.
+     font-metric: this 2 px nudge is calibrated for Segoe UI (the
+     current system-stack resolution on Windows). Re-measure when we
+     bundle a specific webfont; different faces have different
+     line-box geometry. */
+  bottom: 22px;
+  /* Right edge at x=1520 (20 px gap before the checkbox at x=1540). */
+  right: 100px;
+  height: 40px;
+  /* line-height equal to height vertically centers the text glyphs on
+     the same y axis as the checkbox box-center, so the pair reads as
+     center-aligned. Flex centering left a font-metric offset because
+     the line box was smaller than the container. */
+  line-height: 40px;
+  font-size: 32px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #707070;
+}
+
+/* Finish-turn checkbox: nested in the chrome-footer and anchored
+   bottom:20 / right:40 so it lands at (x=1540, y=2100) 40x40 px on the
+   1620x2160 viewport (footer is bottom:0, height:160, width:1620, so
+   bottom:20 -> page-y 2100 and right:40 -> page-x 1540). Leaves a
+   60 px band above for the End-session checkbox sibling (rendered
+   above; see `.end-session-checkbox` rule). The
+   *rendered* pixel coordinates are load-bearing: the stroke-region
+   detector inverse-transforms this rectangle into .rm coordinates
+   (rm_x = (pdf_x - 810) / scale, rm_y = pdf_y / scale) and hit-tests
+   stroke points against it. Do not change the footer geometry or this
+   offset pair without updating FINISH_TURN_BOX_PDF in
+   render/_chrome_boxes.py in lockstep. */
+.finish-turn-checkbox {
+  position: absolute;
+  bottom: 20px;
+  right: 40px;
+  width: 40px;
+  height: 40px;
+  background: #ffffff;
+  border: 3px solid #222;
+  border-radius: 4px;
+}
+
+/* End-session checkbox: nested in the chrome-footer at PDF (1540, 2040)
+   40x40 px. Sits 20 px above the Finish-turn box (which is at 2100..2140);
+   bottom:80 + height:40 -> page-y 2040..2080. Right-aligned with
+   Finish-turn so the user's pen lands at the same column regardless
+   of which box they're marking. Do not change the footer geometry or
+   this offset pair without updating END_SESSION_BOX_PDF in
+   render/_chrome_boxes.py in lockstep. */
+/* checkbox-coords */
+.end-session-checkbox {
+  position: absolute;
+  bottom: 80px;
+  right: 40px;
+  width: 40px;
+  height: 40px;
+  background: #ffffff;
+  border: 3px solid #222;
+  border-radius: 4px;
+}
+
+.end-session-label {
+  position: absolute;
+  bottom: 82px;
+  right: 100px;
+  height: 40px;
+  line-height: 40px;
+  font-size: 32px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #707070;
+}
+
+/* checkbox-coords */
+/* Mode-switch trio: three checkboxes in the left half of the chrome
+   footer, at PDF (80, 2100), (240, 2100), (400, 2100) 40x40 each.
+   Labels sit immediately above each box. Do not change the geometry
+   without updating MODE_*_BOX_PDF in render/_chrome_boxes.py in
+   lockstep; that single Python module backs both the stroke-based
+   detector (detect_marks.py) and the cold-path pixel-read helper
+   (read_prefill.py). */
+.mode-switch-row {
+  position: absolute;
+  bottom: 20px;
+  left: 80px;
+  width: 400px;
+  height: 90px;
+  display: flex;
+  gap: 120px;
+}
+
+.mode-switch-cell {
+  position: relative;
+  width: 40px;
+  height: 90px;
+}
+
+.mode-switch-label {
+  position: absolute;
+  bottom: 50px;
+  left: -40px;
+  width: 120px;
+  height: 28px;
+  font-size: 22px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #707070;
+  text-align: center;
+}
+
+.mode-switch-checkbox {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 40px;
+  height: 40px;
+  background: #ffffff;
+  border: 3px solid #222;
+  border-radius: 4px;
+}
+
+/* Pre-fill paint: the active mode's checkbox is filled with a solid
+   contrast color (no glyph; matches the user's chosen visual style).
+   The render.mjs supplies the active mode via [data-current-mode] on
+   .mode-switch-row, and the descendant selector targets that mode's
+   checkbox. The fill is render-mode-independent (B&W filter scope
+   leaves the chrome footer unfiltered), so cold-path pixel detection
+   reads the same dominant color regardless of which render mode is
+   active.
+
+   Color choice: dark gold (#a08020). Visible against white-paper
+   background, distinct from pen ink colors (black/grey/red/blue), and
+   robust against the device's dithered greyscale rendering. LOCKSTEP
+   with FILL_LUMINANCE_THRESHOLD in render/read_prefill.py; a theme
+   change to this fill color requires recalibrating that threshold. */
+.mode-switch-row[data-current-mode="color"]     .mode-switch-checkbox[data-mode="color"],
+.mode-switch-row[data-current-mode="bw"]        .mode-switch-checkbox[data-mode="bw"],
+.mode-switch-row[data-current-mode="wireframe"] .mode-switch-checkbox[data-mode="wireframe"] {
+  background: #a08020;
+}
+
+/* --- Page 1: mockup page --- */
+
+/* Mockup region: large area between header and small notes region.
+   Fills the full page width below the header. Left padding clears
+   the device's tool-panel overlay, pairing with the right-side
+   close-button clearance on .header-iter. The PDF page is sized so
+   that 1 CSS px equals 1 device pixel on-screen after the device's
+   fit-to-page scaling, so this padding's CSS px count equals its
+   device-pixel clearance. 130 px is observed-tight: 80 was inside
+   the panel, 160 cleared with margin to spare, 130 sits a few mm
+   right of the panel edge. */
+.mockup-region {
+  position: absolute;
+  top: 100px;
+  left: 0;
+  width: 1620px;
+  height: 1500px;
+  padding: 40px 40px 40px 130px;
+  overflow: hidden;
+}
+
+/* Default centering for the substituted mockup_html slot. A mockup
+   whose outer wrapper uses flex centering without an explicit height
+   collapses to its natural content height and floats up against the
+   header; this wrapper fills the region's content box so that
+   centered mockups land centered. Column direction means multi-sibling
+   mockup HTML stacks vertically as a centered group instead of laying
+   out row-wise. A mockup that wants top-anchored content can override
+   on its own root (align-self: flex-start, or override justify-content
+   on this wrapper). */
+.mockup-region-center {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* --- Notes regions (shared) --- */
+
+.notes-region {
+  position: absolute;
+  left: 0;
+  width: 1620px;
+  /* Left padding clears the device's tool-panel overlay; see
+     .mockup-region for the full constraint. */
+  padding: 30px 40px 30px 130px;
+  /* Pure white instead of an off-white tint: anything that isn't a
+     palette level on the e-ink display dithers into a sparse pixel
+     pattern that reads as dirty grey. The border-top still separates
+     this region from the mockup above it. */
+  background: #ffffff;
+  border-top: 2px solid #888888;
+}
+
+/* Page-1 small notes area: between mockup region and footer.
+   ~300 px tall (top:1600 to bottom:2000 minus footer-border). */
+.notes-region-small {
+  top: 1600px;
+  height: 400px;
+}
+
+/* Page-2 larger notes area: below the legend region. */
+.notes-region-large {
+  top: 1400px;
+  height: 600px;
+}
+
+.notes-heading {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #555;
+  margin-bottom: 16px;
+}
+
+.notes-area {
+  width: 100%;
+  height: calc(100% - 50px);
+  /* Lined-paper background. Inline-SVG tile (60 px tall, 1620 px wide,
+     a single line at y=59) repeated vertically. Earlier draft used
+     `repeating-linear-gradient` which Chrome's PDF renderer silently
+     drops; SVG backgrounds survive the PDF round-trip. Stroke width
+     and color are tuned for the e-ink path: thin/faint lines smear
+     into apparent gradient under the device's dithered greyscale, so
+     the line is now thicker and darker than print-style ruled paper
+     would suggest. */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1620' height='60'><line x1='0' y1='59' x2='1620' y2='59' stroke='%23808080' stroke-width='2'/></svg>");
+  background-repeat: repeat-y;
+}
+
+/* --- Page 2: legend region --- */
+
+.legend-region {
+  position: absolute;
+  top: 100px;
+  left: 0;
+  width: 1620px;
+  /* Grew from 1000 -> 1300 px tall per first-eyeball feedback (the
+     gesture rows were too cramped). Notes region's top shifts
+     correspondingly to 1400. */
+  height: 1300px;
+  /* Left padding clears the device's tool-panel overlay; see
+     .mockup-region for the full constraint. */
+  padding: 50px 60px 50px 130px;
+  background: #ffffff;
+}
+
+.legend-title {
+  font-size: 32px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #555;
+  margin-bottom: 36px;
+}
+
+.legend-list {
+  list-style: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  /* Layout column-by-column so the gesture rows cluster in column 1
+     and the text-convention rows in column 2. With the default
+     row-by-row flow, the two groups would interleave visually. Row
+     count tracks the gesture-entry count, since gestures are the
+     longer column today. */
+  grid-template-rows: repeat(7, auto);
+  grid-auto-flow: column;
+  gap: 32px 80px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  font-size: 34px;
+  line-height: 1.4;
+}
+
+.legend-sample {
+  flex: 0 0 140px;
+  width: 140px;
+  height: 44px;
+}
+
+.legend-label {
+  flex: 1;
+}
+
+.legend-text .legend-label {
+  font-style: italic;
+  color: #444;
+}
+
+.legend-color-note {
+  margin-top: 36px;
+  font-size: 26px;
+  line-height: 1.4;
+  color: #444;
+}
+
+.legend-color-emph {
+  font-weight: 600;
+}
+
+.legend-color-remove { color: #d22; }
+.legend-color-add    { color: #1b8; }
+.legend-color-align  { color: #808080; }
