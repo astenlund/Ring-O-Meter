@@ -210,6 +210,13 @@ export function App() {
     // AudioContext starts in 'running' immediately.
     const [started, setStarted] = useState(false);
 
+    // Pitch trace is a development / diagnostics surface, not the
+    // coaching view. Default hidden; toggle in the control row brings
+    // it on. Forced visible whenever the trace renderer is active (the
+    // ?renderer=trace dev arm whose entire purpose is rendering the
+    // trace), so the toggle is suppressed in that case.
+    const [showTrace, setShowTrace] = useState(false);
+
     // Slots are built in an effect (not a useMemo) so crypto.randomUUID()
     // fires exactly once per device change. useMemo's "best-effort cache"
     // contract allows React to invalidate even when deps haven't changed,
@@ -415,6 +422,41 @@ export function App() {
                     selectedDeviceId={selectedDeviceId}
                     onSelect={setSelectedDeviceId}
                 />
+                {!started && renderer !== null && controller !== null && (
+                    <button
+                        type="button"
+                        onClick={() => setStarted(true)}
+                        style={{
+                            padding: '10px 24px',
+                            fontSize: '1.05em',
+                            fontWeight: 'bold',
+                            color: '#eee',
+                            background: '#2a5a2a',
+                            border: '2px solid #4a8a4a',
+                            borderRadius: 8,
+                            cursor: 'pointer',
+                        }}
+                    >
+                        Start
+                    </button>
+                )}
+                {renderer !== null && renderer.kind !== 'trace' && (
+                    <button
+                        type="button"
+                        onClick={() => setShowTrace((v) => !v)}
+                        style={{
+                            padding: '8px 16px',
+                            fontSize: '0.95em',
+                            color: '#eee',
+                            background: showTrace ? '#3a5a8a' : '#2a2a2a',
+                            border: `2px solid ${showTrace ? '#5a8aba' : '#555'}`,
+                            borderRadius: 8,
+                            cursor: 'pointer',
+                        }}
+                    >
+                        Pitch trace: {showTrace ? 'on' : 'off'}
+                    </button>
+                )}
                 {devicesError && (
                     <p style={{color: 'crimson', margin: 0}}>
                         Could not enumerate audio inputs: {devicesError.message}
@@ -450,8 +492,41 @@ export function App() {
                 )}
             </div>
             {renderer !== null && controller !== null ? (
-                <div style={{display: 'flex', gap: 16, alignItems: 'stretch', height: 360}}>
-                    <div style={{position: 'relative', flex: 1}}>
+                <>
+                    {/*
+                      * Feature row: compact VowelPlot + ChordAwareDisplay
+                      * side by side. Suppressed entirely under the trace
+                      * renderer dev arm whose contract is "trace only".
+                      */}
+                    {renderer.kind !== 'trace' && (
+                        <div style={{display: 'flex', gap: 16, alignItems: 'stretch', height: 240, marginBottom: 16}}>
+                            <VowelPlot
+                                controller={controller}
+                                renderer={renderer}
+                                style={{width: 360, flexShrink: 0}}
+                            />
+                            <ChordAwareDisplay
+                                chord={lockedChord}
+                                voices={chordDisplayVoices}
+                                residualsPerVoice={residualsPerVoice}
+                                ringState={ringState}
+                                onCanvasRef={handleChordBarsCanvasRef}
+                                onBackingChange={handleChordBarsBackingChange}
+                                style={{width: 480, flexShrink: 0}}
+                            />
+                        </div>
+                    )}
+                    {/*
+                      * Pitch trace row: hidden by default. CSS hide via
+                      * display:none rather than conditional mount because
+                      * transferControlToOffscreen() is one-shot per canvas
+                      * element; an unmount-then-remount cycle would try to
+                      * re-attach a fresh canvas to the same shared
+                      * PlotController. The wasted paint while hidden is
+                      * acceptable for an off-by-default viewing mode.
+                      * Forced visible under the trace renderer dev arm.
+                      */}
+                    <div style={{display: showTrace || renderer.kind === 'trace' ? 'block' : 'none', height: 360, marginBottom: 16}}>
                         <PitchPlot
                             voices={voices}
                             windowMs={PLOT_WINDOW_MS}
@@ -459,53 +534,14 @@ export function App() {
                             renderer={renderer}
                             controller={controller}
                         />
-                        {!started && (
-                            <button
-                                type="button"
-                                onClick={() => setStarted(true)}
-                                style={{
-                                    position: 'absolute',
-                                    inset: 0,
-                                    margin: 'auto',
-                                    width: 200,
-                                    height: 80,
-                                    fontSize: '1.5em',
-                                    fontWeight: 'bold',
-                                    color: '#eee',
-                                    background: '#2a5a2a',
-                                    border: '2px solid #4a8a4a',
-                                    borderRadius: 8,
-                                    cursor: 'pointer',
-                                }}
-                            >
-                                Start
-                            </button>
-                        )}
                     </div>
-                    {renderer.kind !== 'trace' && (
-                        <VowelPlot
-                            controller={controller}
-                            renderer={renderer}
-                            style={{width: 360, flexShrink: 0}}
-                        />
-                    )}
-                    {renderer.kind !== 'trace' && (
-                        <ChordAwareDisplay
-                            chord={lockedChord}
-                            voices={chordDisplayVoices}
-                            residualsPerVoice={residualsPerVoice}
-                            ringState={ringState}
-                            onCanvasRef={handleChordBarsCanvasRef}
-                            onBackingChange={handleChordBarsBackingChange}
-                        />
-                    )}
-                </div>
+                </>
             ) : (
                 // While config is loading, the plot surfaces are not yet
                 // mounted (renderer + controller are created after config
                 // resolves). This placeholder anchors the row height so
                 // layout does not shift when the surfaces appear.
-                <div style={{height: 360}} />
+                <div style={{height: 240}} />
             )}
         </main>
     );
