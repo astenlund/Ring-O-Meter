@@ -306,6 +306,12 @@ function applyMessage(msg: PlotMessage): void {
 
             return;
         }
+        case PlotMessageType.InitChordBarsCanvas:
+        case PlotMessageType.SetChordBarsBacking:
+        case PlotMessageType.SetChordClassification:
+            // Task 18 wires the real handlers; stubs here keep the exhaustiveness
+            // check happy across intermediate commits.
+            return;
         default: {
             const _exhaustive: never = msg;
             void _exhaustive;
