@@ -37,7 +37,11 @@ app.MapGet("/health", () => Results.Ok(healthBody));
 // (slice 1b will populate this); per-request read keeps the endpoint
 // honest and the alloc cost is irrelevant at SPA-startup cadence.
 app.MapGet("/config.json", (IConfiguration config) =>
-    Results.Ok(new { hubUrl = config["Server:HubUrl"] ?? string.Empty }));
+    Results.Ok(new
+    {
+        hubUrl = config["Server:HubUrl"] ?? string.Empty,
+        devModesEnabled = config.GetValue("Server:DevModesEnabled", false),
+    }));
 
 app.Run();
 
