@@ -1,12 +1,6 @@
-// Test-only: URL query-string feature flag for the ?fanout=N rendering
-// load test. Parsed once at App mount; returns null in production.
-//
-// Separated from fanoutVoiceChannel.ts so the parser (a pure utility
-// with no browser-API or worklet imports) can be tested or read
-// without pulling in fanoutWorklet.ts?worker&url.
-//
-// Cleanup: rm this file along with fanoutWorklet.ts, fanoutVoiceChannel.ts,
-// and fanoutConstants.ts when the fanout test mode is retired.
+// Permanent dev-mode infrastructure; gated by devModesEnabled in /config.json.
+
+let _warnedAboutIgnoredFanout = false;
 
 export interface FanoutFlag {
     count: number;
@@ -60,10 +54,18 @@ function defaultOffsetsFor(count: number): number[] {
  *   ?offsets=0,abc,30,45            -> null + console.warn
  *   no fanout param                 -> null (production path)
  */
-export function parseFanoutFlag(search: string): FanoutFlag | null {
+export function parseFanoutFlag(search: string, devModesEnabled = false): FanoutFlag | null {
     const params = new URLSearchParams(search);
     const fanoutParam = params.get('fanout');
     if (fanoutParam === null) {
+        return null;
+    }
+    if (!devModesEnabled) {
+        if (!_warnedAboutIgnoredFanout) {
+            console.warn('[ring-o-meter] ?fanout flag ignored in this environment (devModesEnabled: false)');
+            _warnedAboutIgnoredFanout = true;
+        }
+
         return null;
     }
     // URLSearchParams returns '' for `?fanout` (no value) and `?fanout=`
