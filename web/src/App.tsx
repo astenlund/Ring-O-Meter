@@ -19,13 +19,11 @@ import type {RingIndicatorState} from './ui/RingIndicatorDot';
 import type {ChordIdentity} from './wire/chord';
 import {loadConfig, type AppConfig} from './config/loadConfig';
 import {GREEN_THRESHOLD_CENTS, YELLOW_BAND_OUTER_CENTS} from './audio/ringThresholds';
-// As of 2026-04-30 WebGPU is the production default renderer; the 2D
-// canvas worker remains available via ?renderer=2d. The static
-// `?worker&url` imports bundle both worker chunks at build time so
-// switching between them is a same-origin URL pick, not a dynamic
-// import. The 2D chunk is small (~4 KB gzipped) and pays for itself
-// the first time someone hits an iPad / device / driver where WebGPU
-// is unavailable or undesirable.
+// As of 2026-05-21 the 2D canvas worker is the production default while
+// WebGPU completes optimization work; opt back into WebGPU via
+// ?renderer=webgpu. The static `?worker&url` import below still bundles
+// the WebGPU worker chunk at build time so switching is a same-origin
+// URL pick, not a dynamic import.
 import webgpuWorkerUrl from './plot/plotWorkerWebgpu.ts?worker&url';
 
 // 5 s of pitch history fits in window. The previous 10 s was chosen
@@ -94,19 +92,21 @@ function computeRingState(
     return 'red';
 }
 
-// Build the Renderer discriminated union from the parsed flag.
+// Build the Renderer discriminated union from the parsed flag. The 2D
+// canvas worker is the production default; WebGPU is opt-in via
+// ?renderer=webgpu while it completes optimization work. Both paths
+// stay first-class and tested.
 function rendererFromSelection(sel: RendererSelection | null): Renderer {
-    if (sel === '2d') {
-        return {kind: '2d'};
+    if (sel === 'webgpu') {
+        return {kind: 'webgpu', workerUrl: webgpuWorkerUrl};
     }
     if (sel === 'trace') {
-        // Per the plan's precommitted decision: trace reuses the WebGPU worker
-        // with a traceOnly flag; both share the same workerUrl. Task 22 wires
-        // the flag; for now the workerUrl is identical.
+        // Trace reuses the WebGPU worker with a traceOnly flag; both
+        // share the same workerUrl.
         return {kind: 'trace', workerUrl: webgpuWorkerUrl};
     }
-
-    return {kind: 'webgpu', workerUrl: webgpuWorkerUrl};
+    // sel === '2d' or sel === null (no flag set) both land here.
+    return {kind: '2d'};
 }
 
 export function App() {

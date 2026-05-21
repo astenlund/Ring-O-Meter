@@ -185,15 +185,15 @@ export const GAP_OVER_VSYNC_THRESHOLD_MS = 17;
 export const GAP_OVER_VSYNC_BUDGET = 100;
 
 // Renderer arms for the parameterised smoothness test. As of
-// 2026-04-30 WebGPU is the production default; the 2D arm is the
-// opt-out fallback selected via ?renderer=2d. Both arms are real
-// production paths now and the smoothness budgets apply to both.
-// `requiresAdapter` gates the navigator.gpu.requestAdapter()
-// precondition in setupSmoothnessPage so the WebGPU arm fails
-// fast on hosts that lack a usable adapter.
+// 2026-05-21 the 2D canvas is the production default while WebGPU
+// completes optimization work; the WebGPU arm is opt-in via
+// ?renderer=webgpu. Both arms are real production paths and the
+// smoothness budgets apply to both. `requiresAdapter` gates the
+// navigator.gpu.requestAdapter() precondition in setupSmoothnessPage
+// so the WebGPU arm fails fast on hosts that lack a usable adapter.
 export const RENDERER_ARMS = [
-    {label: 'WebGPU (default)', querystring: '', requiresAdapter: true},
-    {label: '2D canvas (opt-out)', querystring: '?renderer=2d', requiresAdapter: false},
+    {label: '2D canvas (default)', querystring: '', requiresAdapter: false},
+    {label: 'WebGPU (opt-in)', querystring: '?renderer=webgpu', requiresAdapter: true},
 ] as const;
 
 export type RendererArm = typeof RENDERER_ARMS[number];
@@ -235,8 +235,8 @@ const CHORD_FANOUT_COUNT = CHORD_OFFSETS.length;
 const CHORD_FANOUT_QUERY = `fanout=${CHORD_FANOUT_COUNT}&offsets=${CHORD_OFFSETS.join(',')}`;
 
 // Compose the fanout query with a renderer arm's querystring.
-// arm.querystring is either '' (WebGPU default) or '?renderer=2d'
-// (2D opt-out); the returned string starts with '?' and combines
+// arm.querystring is either '' (2D default) or '?renderer=webgpu'
+// (WebGPU opt-in); the returned string starts with '?' and combines
 // both via '&'.
 export function withChordFanout(armQuerystring: string): string {
     return armQuerystring === ''

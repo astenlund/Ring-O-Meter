@@ -24,10 +24,12 @@ export default defineConfig({
                 '--use-fake-ui-for-media-stream',
                 '--use-fake-device-for-media-stream',
                 `--use-file-for-fake-audio-capture=${audioFile}`,
-                // WebGPU is the production default renderer
-                // (web/src/plot/plotWorkerWebgpu.ts). System Chrome
-                // ships WebGPU enabled by default; this flag is kept
-                // as belt-and-braces against a hypothetical regression
+                // WebGPU is opt-in (?renderer=webgpu) while it
+                // completes optimization work; the 2D canvas worker
+                // is the production default. System Chrome ships
+                // WebGPU enabled by default and the WebGPU arm of the
+                // smoothness test depends on it; this flag stays as
+                // belt-and-braces against a hypothetical regression
                 // where Chrome demotes WebGPU to opt-in. Do NOT add
                 // --enable-features=Vulkan, which would shift the
                 // backend off Dawn -> D3D12 (the architecture the

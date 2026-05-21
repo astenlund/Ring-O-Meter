@@ -1,10 +1,11 @@
-// URL query-string flag selecting the rendering path. As of 2026-04-30
-// the production default is WebGPU
-// (web/src/plot/plotWorkerWebgpu.ts); ?renderer=2d opts back into the
-// 2D canvas worker (web/src/plot/plotWorker2dCanvas.ts). ?renderer=webgpu
-// stays accepted as an explicit no-op selector for symmetry. ?renderer=trace
-// is a dev-only arm gated by devModesEnabled from /config.json. Returns
-// null when the flag is absent (caller picks the default).
+// URL query-string flag selecting the rendering path. As of 2026-05-21
+// the production default is the 2D canvas worker
+// (web/src/plot/plotWorker2dCanvas.ts) while WebGPU completes
+// optimization work; ?renderer=webgpu opts into the WebGPU worker
+// (web/src/plot/plotWorkerWebgpu.ts). ?renderer=2d stays accepted as
+// an explicit no-op selector for symmetry. ?renderer=trace is a dev-only
+// arm gated by devModesEnabled from /config.json. Returns null when the
+// flag is absent (caller picks the default).
 //
 // Parsed once at App.tsx mount; mid-session toggling is not
 // supported. Mirror of fanoutFlag.ts shape so App.tsx's call site
