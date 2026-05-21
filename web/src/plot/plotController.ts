@@ -12,8 +12,16 @@ import {
     type HzRange,
     type PaintFrame,
 } from './paint';
-import {PlotMessageType, type PlotMessage, type VoiceEntry} from './plotMessages';
+import {
+    PlotMessageType,
+    type PlotMessage,
+    type SetChordClassificationMessage,
+    type VoiceEntry,
+} from './plotMessages';
 import {F1_MAX, F1_MIN, F2_MAX, F2_MIN} from './vowelModule';
+
+// heuristic: max-voices-chord-classification
+const MAX_VOICES = 8;
 
 export interface PlotControllerOptions {
     voices: ReadonlyArray<VoiceEntry>;
@@ -52,6 +60,17 @@ export class PlotController {
     private vowelUnderlayCtx: CanvasRenderingContext2D | null = null;
     private vowelUnderlayBacking: CanvasBacking = {cssWidth: 0, cssHeight: 0, dpr: 1};
     private vowelUnderlaySize: CanvasSize = {width: 0, height: 0};
+
+    // Reused message object for setChordClassification. Both the object
+    // and the residualsBySlot buffer survive across calls to keep
+    // hot-path allocations at zero.
+    private readonly _chordClassificationMsg: SetChordClassificationMessage = {
+        type: PlotMessageType.SetChordClassification,
+        lockedChordType: null,
+        rootChannelId: null,
+        rootHz: 0,
+        residualsBySlot: new Float32Array(MAX_VOICES),
+    };
 
     public constructor(workerUrl: string | URL = defaultWorkerUrl) {
         this.workerUrl = workerUrl;
@@ -239,6 +258,32 @@ export class PlotController {
 
     public rebaseChannel(channelId: string, epochOffsetMs: number): void {
         this.post({type: PlotMessageType.RebaseChannel, channelId, epochOffsetMs});
+    }
+
+    public attachChordBarsCanvas(canvas: OffscreenCanvas): void {
+        const worker = this.ensureWorker();
+        const msg: PlotMessage = {
+            type: PlotMessageType.InitChordBarsCanvas,
+            canvas,
+        };
+        worker.postMessage(msg, [canvas]);
+    }
+
+    public setChordBarsBacking(cssWidth: number, cssHeight: number, dpr: number): void {
+        this.post({type: PlotMessageType.SetChordBarsBacking, cssWidth, cssHeight, dpr});
+    }
+
+    public setChordClassification(
+        lockedChordType: number | null,
+        rootChannelId: string | null,
+        rootHz: number,
+        residualsBySlot: Float32Array,
+    ): void {
+        this._chordClassificationMsg.lockedChordType = lockedChordType;
+        this._chordClassificationMsg.rootChannelId = rootChannelId;
+        this._chordClassificationMsg.rootHz = rootHz;
+        this._chordClassificationMsg.residualsBySlot.set(residualsBySlot);
+        this.post(this._chordClassificationMsg);
     }
 
     public dispose(): void {
