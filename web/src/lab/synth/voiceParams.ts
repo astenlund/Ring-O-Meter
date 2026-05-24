@@ -6,6 +6,13 @@
 
 export const PARTIAL_COUNT = 7; // partials 2..8 inclusive
 
+// Amplitudes of partials 2..8 of the oscillator SOURCE spectrum (the
+// PeriodicWave), each relative to the fundamental (index 1), which is fixed at
+// 1.0. These set the source's richness BEFORE the formant bandpass filters
+// further shape the audible spectrum; they are not post-filter output levels.
+// Fixed-length tuple so a wrong-length array is a compile error.
+export type PartialAmplitudes = [number, number, number, number, number, number, number];
+
 export interface VoiceEnvelope {
     attackMs: number;
     sustainMs: number;
@@ -14,7 +21,7 @@ export interface VoiceEnvelope {
 
 export interface VoiceParams {
     fundamentalHz: number;
-    partialAmplitudes: number[]; // length PARTIAL_COUNT; partial 2..8 amplitude relative to fundamental (=1.0)
+    partialAmplitudes: PartialAmplitudes;
     f1Hz: number;
     f2Hz: number;
     driftCents: number; // peak slow-drift excursion

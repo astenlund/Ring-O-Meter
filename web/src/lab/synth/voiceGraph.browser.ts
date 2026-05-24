@@ -1,34 +1,9 @@
 import {describe, expect, it} from 'vitest';
 import {buildVoice} from './voiceGraph';
 import {neutralVoiceParams} from './voiceParams';
+import {goertzelMagnitude, rms} from './synthTestUtils';
 
 const SAMPLE_RATE = 48000;
-
-// Goertzel single-bin magnitude at targetHz over the given samples.
-function goertzelMagnitude(samples: Float32Array, targetHz: number, sampleRate: number): number {
-    const k = Math.round((samples.length * targetHz) / sampleRate);
-    const w = (2 * Math.PI * k) / samples.length;
-    const cosW = Math.cos(w);
-    const coeff = 2 * cosW;
-    let s1 = 0;
-    let s2 = 0;
-    for (let i = 0; i < samples.length; i++) {
-        const s0 = samples[i] + coeff * s1 - s2;
-        s2 = s1;
-        s1 = s0;
-    }
-    const real = s1 - s2 * cosW;
-    const imag = s2 * Math.sin(w);
-    return Math.sqrt(real * real + imag * imag) / samples.length;
-}
-
-function rms(samples: Float32Array): number {
-    let sum = 0;
-    for (let i = 0; i < samples.length; i++) {
-        sum += samples[i] * samples[i];
-    }
-    return Math.sqrt(sum / samples.length);
-}
 
 describe('buildVoice', () => {
     it('renders a non-silent tone with energy at the fundamental', async () => {
@@ -116,5 +91,21 @@ describe('buildVoice', () => {
         const drySide = goertzelMagnitude(dry, 226, SAMPLE_RATE);
         const wetSide = goertzelMagnitude(wet, 226, SAMPLE_RATE);
         expect(wetSide).toBeGreaterThan(drySide * 3);
+    });
+
+    it('renders silence when the onset exceeds the render window', async () => {
+        // Arrange
+        const durationS = 1;
+        const ctx = new OfflineAudioContext(1, SAMPLE_RATE * durationS, SAMPLE_RATE);
+        const params = {...neutralVoiceParams(220), onsetOffsetMs: 2000}; // > durationS * 1000
+
+        // Act: audibleS <= 0 takes the early return, so no oscillators start
+        const voice = buildVoice(ctx, params, 1, durationS);
+        voice.output.connect(ctx.destination);
+        voice.start(0);
+        const data = (await ctx.startRendering()).getChannelData(0);
+
+        // Assert: no throw, fully silent buffer
+        expect(rms(data)).toBeLessThan(1e-9);
     });
 });

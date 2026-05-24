@@ -6,7 +6,7 @@
 import {mulberry32} from './seededRng';
 
 export const CURVE_RATE_HZ = 100; // 10 ms detune grid
-export const DRIFT_CONTROL_HZ = 2; // slow-drift control points; interpolated between
+const DRIFT_CONTROL_HZ = 2; // slow-drift control points; interpolated between
 
 export function buildDetuneCents(durationS: number, driftCents: number, jitterCents: number, seed: number): Float32Array {
     const rng = mulberry32(seed);

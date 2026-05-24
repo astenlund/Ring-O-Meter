@@ -3,7 +3,9 @@
 // so per-voice variance is independent yet reproducible. Master gain divides by
 // voice count for headroom against summed peaks. N-flexible (1..8); an empty
 // voices array renders silence rather than erroring, and input validation is
-// deferred to the trial-generation / UI phases.
+// deferred to the trial-generation / UI phases. Loudness normalization across
+// chords with differing voice counts (for fair A/B listening comparison) is a
+// playback-phase concern, not applied here.
 
 import type {ChordParams} from './voiceParams';
 import {buildVoice} from './voiceGraph';
