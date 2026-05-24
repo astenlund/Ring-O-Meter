@@ -68,8 +68,9 @@ export function buildVoice(ctx: BaseAudioContext, params: VoiceParams, seed: num
     return {
         output: env,
         start: (whenS: number): void => {
-            const t0 = whenS + params.onsetOffsetMs / 1000;
-            const audibleS = durationS - params.onsetOffsetMs / 1000;
+            const onsetS = params.onsetOffsetMs / 1000;
+            const t0 = whenS + onsetS;
+            const audibleS = durationS - onsetS;
             if (audibleS <= 0) {
                 return; // onset beyond the render window: voice never sounds
             }

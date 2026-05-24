@@ -1,16 +1,9 @@
 import {describe, expect, it} from 'vitest';
 import {renderChord} from './chordSynth';
 import {neutralVoiceParams, type ChordParams} from './voiceParams';
+import {rms} from './synthTestUtils';
 
 const SAMPLE_RATE = 48000;
-
-function rms(samples: Float32Array): number {
-    let sum = 0;
-    for (let i = 0; i < samples.length; i++) {
-        sum += samples[i] * samples[i];
-    }
-    return Math.sqrt(sum / samples.length);
-}
 
 // dom7 in just intonation over a 220 Hz root: 4:5:6:7.
 function dom7Chord(): ChordParams {
