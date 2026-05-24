@@ -14,9 +14,10 @@ test-fixtures/
 *.local
 
 # Flotsam left by failing vitest browser-mode test runs. Regenerated
-# on every failing run; never intended to be committed.
+# on every failing run; never intended to be committed. The glob covers
+# any browser-test directory (src/__tests__, src/lab/synth, future ones).
 .vitest-attachments/
-src/__tests__/__screenshots__/
+**/__screenshots__/
 
 # Editor directories and files
 .vscode/*
