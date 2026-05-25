@@ -15,10 +15,11 @@ let container: HTMLDivElement;
 let root: Root;
 
 function render(over: Partial<Parameters<typeof TrialPlayerBand>[0]> = {}) {
-    const props = {phase: {kind: 'trial' as const, pending: PENDING}, submitting: false, onChoose: vi.fn<(p: Pick) => void>(), ...over};
+    const onChoose = vi.fn<(p: Pick) => void>();
+    const props = {phase: {kind: 'trial' as const, pending: PENDING}, submitting: false, onChoose, ...over};
     flushSync(() => root.render(<TrialPlayerBand {...props} />));
 
-    return props;
+    return {...props, onChoose};
 }
 
 describe('TrialPlayerBand', () => {
