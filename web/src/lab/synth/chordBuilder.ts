@@ -17,6 +17,8 @@ const QUALITY_RATIOS: Record<ChordQuality, number[]> = {
     dom7: [1, 5 / 4, 3 / 2, 7 / 4],
 };
 
+export const CHORD_QUALITIES = Object.keys(QUALITY_RATIOS) as ChordQuality[];
+
 export function voiceCountFor(quality: ChordQuality): number {
     return QUALITY_RATIOS[quality].length;
 }
@@ -43,7 +45,9 @@ const BROADBAND_PARTIALS: PartialAmplitudes = [0.7, 0.6, 0.5, 0.45, 0.4, 0.35, 0
 // default chord), so the lab is usable out of the box; ee / ah are alternative
 // candidates that may collide for a given chord (the confound guard tells the
 // operator), which is the experimental-design caution working as intended.
-export const VOWEL_PRESETS: Record<string, VowelPreset> = {
+export type VowelPresetName = 'schwa' | 'ee' | 'ah';
+
+export const VOWEL_PRESETS: Record<VowelPresetName, VowelPreset> = {
     schwa: {f1Hz: 500, f2Hz: 1800, partialAmplitudes: BROADBAND_PARTIALS},
     ee: {f1Hz: 300, f2Hz: 2300, partialAmplitudes: NEUTRAL_PARTIALS},
     ah: {f1Hz: 700, f2Hz: 1100, partialAmplitudes: NEUTRAL_PARTIALS},

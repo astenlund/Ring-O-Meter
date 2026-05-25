@@ -25,13 +25,14 @@ const stripStyle: CSSProperties = {
     fontSize: '0.85em',
 };
 
+const lockLabel: Record<WriterLockState['state'], string> = {
+    held: 'writer: this tab',
+    blocked: 'writer: another tab',
+    unguarded: 'writer: unguarded',
+    acquiring: 'writer: acquiring...',
+};
+
 export function StatusStrip(props: StatusStripProps) {
-    const lockLabel: Record<WriterLockState['state'], string> = {
-        held: 'writer: this tab',
-        blocked: 'writer: another tab',
-        unguarded: 'writer: unguarded',
-        acquiring: 'writer: acquiring...',
-    };
 
     return (
         <div style={stripStyle} data-testid="status-strip">

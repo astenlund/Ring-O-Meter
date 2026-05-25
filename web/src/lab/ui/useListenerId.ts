@@ -36,7 +36,7 @@ function writeStored(id: string): boolean {
 }
 
 export function useListenerId(): ListenerIdControl {
-    const [state] = useState(() => {
+    const [control, setControl] = useState(() => {
         const existing = readStored();
         if (existing !== null) {
             return {listenerId: existing, ephemeral: false};
@@ -46,8 +46,6 @@ export function useListenerId(): ListenerIdControl {
 
         return {listenerId: minted, ephemeral: !persisted};
     });
-
-    const [control, setControl] = useState(state);
 
     const reset = useCallback(() => {
         const minted = crypto.randomUUID();
