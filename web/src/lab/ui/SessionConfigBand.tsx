@@ -5,7 +5,8 @@
 // CalibrationConfigError surface (spec "### Band 1"). erasableSyntaxOnly-safe.
 
 import {type CSSProperties, useMemo, useState} from 'react';
-import {buildChord, voiceCountFor, VOWEL_PRESETS, type ChordQuality} from '../synth/chordBuilder';
+import {buildChord, voiceCountFor, VOWEL_PRESETS, CHORD_QUALITIES, type ChordQuality, type VowelPresetName} from '../synth/chordBuilder';
+import {bandStyle} from './labStyles';
 import {ALL_SWEEP_AXES, type SessionConfig, type Selector, type SweepAxis} from '../protocol/protocolTypes';
 import {NOTE_OPTIONS} from './noteToHz';
 import {precheckSelector} from './configGuards';
@@ -16,15 +17,14 @@ export interface SessionConfigBandProps {
     onStart: (config: SessionConfig) => void;
 }
 
-const bandStyle: CSSProperties = {padding: 16, background: '#202020', borderRadius: 8, marginBottom: 16};
 const fieldRow: CSSProperties = {display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8};
 
-const PRESET_NAMES = Object.keys(VOWEL_PRESETS);
+const PRESET_NAMES = Object.keys(VOWEL_PRESETS) as VowelPresetName[];
 
 export function SessionConfigBand(props: SessionConfigBandProps) {
     const [rootHz, setRootHz] = useState(220);
     const [quality, setQuality] = useState<ChordQuality>('dom7');
-    const [presetName, setPresetName] = useState(PRESET_NAMES[0]);
+    const [presetName, setPresetName] = useState<VowelPresetName>(PRESET_NAMES[0]);
     const [axis, setAxis] = useState<SweepAxis>('fundamental');
     const [targetVoiceIndex, setTargetVoiceIndex] = useState(0);
     const [mode, setMode] = useState<'sweep' | 'random'>('sweep');
@@ -80,12 +80,11 @@ export function SessionConfigBand(props: SessionConfigBandProps) {
                 </label>
                 <label>quality
                     <select data-testid="quality-select" value={quality} onChange={(e) => setQuality(e.target.value as ChordQuality)}>
-                        <option value="majorTriad">majorTriad</option>
-                        <option value="dom7">dom7</option>
+                        {CHORD_QUALITIES.map((q) => <option key={q} value={q}>{q}</option>)}
                     </select>
                 </label>
                 <label>vowel
-                    <select data-testid="preset-select" value={presetName} onChange={(e) => setPresetName(e.target.value)}>
+                    <select data-testid="preset-select" value={presetName} onChange={(e) => setPresetName(e.target.value as VowelPresetName)}>
                         {PRESET_NAMES.map((n) => <option key={n} value={n}>{n}</option>)}
                     </select>
                 </label>

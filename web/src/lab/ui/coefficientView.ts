@@ -4,6 +4,7 @@
 
 import {ALL_SWEEP_AXES, type SweepAxis} from '../protocol/protocolTypes';
 import type {CoefficientResult, CoefficientStatus} from '../fit/coefficients';
+import {sigmoid} from '../fit/logisticFit';
 
 export type Bucket = 'fitted' | 'needs-attention' | 'untouched';
 
@@ -51,11 +52,7 @@ export function groupByBucket(coeffs: Map<string, CoefficientResult>): BucketGro
     return BUCKET_ORDER.map((bucket) => ({bucket, rows: rowsByBucket[bucket]}));
 }
 
-function logistic(x: number): number {
-    return 1 / (1 + Math.exp(-x));
-}
-
-// Sample the fitted logistic P(choose-B) = logistic(intercept + slope*x) across
+// Sample the fitted logistic P(choose-B) = sigmoid(intercept + slope*x) across
 // [xMin, xMax] and emit an SVG path in a width x height box (y inverted for SVG).
 export function sigmoidSparklinePath(slope: number, intercept: number, xRange: [number, number], width: number, height: number, samples = 24): string {
     const [xMin, xMax] = xRange;
@@ -64,7 +61,7 @@ export function sigmoidSparklinePath(slope: number, intercept: number, xRange: [
     for (let i = 0; i <= samples; i++) {
         const frac = i / samples;
         const x = xMin + frac * span;
-        const p = logistic(intercept + slope * x);
+        const p = sigmoid(intercept + slope * x);
         const px = frac * width;
         const py = (1 - p) * height;
         path += `${i === 0 ? 'M' : 'L'}${px.toFixed(2)},${py.toFixed(2)}`;

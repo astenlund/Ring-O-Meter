@@ -6,7 +6,8 @@
 
 import type {CSSProperties} from 'react';
 import {N_FLOOR, type CoefficientResult} from '../fit/coefficients';
-import {ciBarGeometry, groupByBucket, sigmoidSparklinePath} from './coefficientView';
+import {ciBarGeometry, groupByBucket, sigmoidSparklinePath, type Bucket} from './coefficientView';
+import {bandStyle} from './labStyles';
 
 export interface CoefficientDashboardProps {
     coefficients: Map<string, CoefficientResult>;
@@ -14,10 +15,9 @@ export interface CoefficientDashboardProps {
     onRefresh: () => void;
 }
 
-const bandStyle: CSSProperties = {padding: 16, background: '#202020', borderRadius: 8, marginBottom: 16};
 const rowStyle: CSSProperties = {display: 'flex', gap: 12, alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #333'};
 
-const BUCKET_LABEL: Record<string, string> = {fitted: 'Fitted', 'needs-attention': 'Needs attention', untouched: 'Untouched'};
+const BUCKET_LABEL: Record<Bucket, string> = {fitted: 'Fitted', 'needs-attention': 'Needs attention', untouched: 'Untouched'};
 
 const SPARK_W = 80;
 const SPARK_H = 24;

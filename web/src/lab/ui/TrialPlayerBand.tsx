@@ -6,6 +6,7 @@
 // unit-testable without Web Audio; terminal/unavailable states arrive as `phase`.
 
 import {type CSSProperties, useEffect, useState} from 'react';
+import {bandStyle} from './labStyles';
 import type {PendingTrial, Pick} from '../protocol/protocolTypes';
 import type {AbSide} from './labAudioPlayer';
 
@@ -31,7 +32,6 @@ export interface TrialPlayerBandProps {
     onAudioUnavailable?: () => void;
 }
 
-const bandStyle: CSSProperties = {padding: 16, background: '#202020', borderRadius: 8, marginBottom: 16};
 const btnRow: CSSProperties = {display: 'flex', gap: 12, marginTop: 12};
 
 export function TrialPlayerBand(props: TrialPlayerBandProps) {
