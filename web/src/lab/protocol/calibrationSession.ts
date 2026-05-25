@@ -9,7 +9,7 @@ import {makeCalibrationTrial, type NewTrialInput, type TrialChoice} from '../sto
 import type {CalibrationStore} from '../store/calibrationStore';
 import {applyAxisDelta} from './axisTransform';
 import {formantCollides} from './coincidence';
-import {ResampleExhaustedError, type PendingTrial, type Pick, type SessionConfig} from './protocolTypes';
+import {ResampleExhaustedError, type PendingTrial, type Pick, type SessionConfig, type SweepAxis} from './protocolTypes';
 import {assignLabels, axisIsTuning, choosePresentationOrder, drawSeed, MAX_RESAMPLE_ATTEMPTS, validateConfig} from './trialGen';
 
 export interface CalibrationSession {
@@ -30,7 +30,10 @@ export function openCalibrationSession(store: CalibrationStore, config: SessionC
 
     let sweepIndex = 0;
 
-    function finishTrial(variant0: ChordParams, variant1: ChordParams, delta: number, axis: string | null): PendingTrial {
+    function finishTrial(variant0: ChordParams, variant1: ChordParams, delta: number, axis: SweepAxis | null): PendingTrial {
+        // RNG draw order is a reproducibility contract (see file header): label
+        // assignment, then presentation order, then seedA, then seedB. Any
+        // value-pair draws (random mode) happen before this. Do not reorder.
         const {chordA, chordB, sweepDelta} = assignLabels(rng, variant0, variant1, delta);
         const presentationOrder = choosePresentationOrder(rng);
         const seedA = drawSeed(rng);
@@ -92,7 +95,17 @@ export function openCalibrationSession(store: CalibrationStore, config: SessionC
     }
 
     function nextTrial(): PendingTrial | null {
-        return sel.mode === 'sweep' ? nextSweep() : nextRandom();
+        switch (sel.mode) {
+            case 'sweep':
+                return nextSweep();
+            case 'random':
+                return nextRandom();
+            default: {
+                const _exhaustive: never = sel;
+
+                return _exhaustive;
+            }
+        }
     }
 
     async function recordChoice(pending: PendingTrial, pick: Pick): Promise<void> {

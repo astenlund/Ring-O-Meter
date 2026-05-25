@@ -70,7 +70,7 @@ export interface PendingTrial {
     sessionId: string;
     listenerId: string;
     selectorMode: SelectorMode;
-    sweepAxis: string | null;
+    sweepAxis: SweepAxis | null;
     sweepDelta: number | null;
     chordA: ChordParams;
     chordB: ChordParams;
