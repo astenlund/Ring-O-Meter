@@ -6,7 +6,7 @@
 // crossfade length. When the trimmed buffer loops, its end already blends into its
 // start. Pure sample math; allocates one new AudioBuffer.
 
-const FADE_PI_OVER_2 = Math.PI / 2;
+import {equalPowerGains} from './equalPower';
 
 export function makeSeamlessLoopBuffer(source: AudioBuffer, loopStartS: number, loopEndS: number, crossfadeS: number): AudioBuffer {
     const sr = source.sampleRate;
@@ -35,8 +35,7 @@ export function makeSeamlessLoopBuffer(source: AudioBuffer, loopStartS: number, 
         // region tail using equal-power weights. fadeIn^2 + fadeOut^2 = 1.
         for (let i = 0; i < xfade; i++) {
             const t = (i + 1) / (xfade + 1);
-            const fadeIn = Math.sin(t * FADE_PI_OVER_2);
-            const fadeOut = Math.cos(t * FADE_PI_OVER_2);
+            const [fadeOut, fadeIn] = equalPowerGains(t);
             const head = src[startSample + i];
             const tail = src[startSample + outLen + i];
             dst[i] = head * fadeIn + tail * fadeOut;

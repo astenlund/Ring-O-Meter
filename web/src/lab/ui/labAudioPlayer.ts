@@ -6,16 +6,11 @@
 // Play/Pause drives the AudioContext run state. erasableSyntaxOnly: fields declared,
 // assigned in the constructor body (no parameter properties).
 
+import {equalPowerGains} from './equalPower';
+
 const AB_CROSSFADE_S = 0.01; // 10 ms equal-power A/B switch
 
-const FADE_PI_OVER_2 = Math.PI / 2;
-
-// Equal-power crossfade weights for fraction t in [0,1]: [fromGain, toGain].
-export function equalPowerGains(t: number): [number, number] {
-    const clamped = Math.min(1, Math.max(0, t));
-
-    return [Math.cos(clamped * FADE_PI_OVER_2), Math.sin(clamped * FADE_PI_OVER_2)];
-}
+const STEPS = 16;
 
 export type AbSide = 'A' | 'B';
 
@@ -27,12 +22,22 @@ export class LabAudioPlayer {
     private readonly srcB: AudioBufferSourceNode;
     private readonly gainA: GainNode;
     private readonly gainB: GainNode;
+    private readonly risingCurve: Float32Array;
+    private readonly fallingCurve: Float32Array;
     private started: boolean;
 
     constructor(ctx: AudioContext, bufferA: AudioBuffer, bufferB: AudioBuffer) {
         this.ctx = ctx;
         this.active = 'A';
         this.started = false;
+
+        this.risingCurve = new Float32Array(STEPS + 1);
+        this.fallingCurve = new Float32Array(STEPS + 1);
+        for (let i = 0; i <= STEPS; i++) {
+            const [falling, rising] = equalPowerGains(i / STEPS);
+            this.fallingCurve[i] = falling;
+            this.risingCurve[i] = rising;
+        }
 
         this.srcA = ctx.createBufferSource();
         this.srcB = ctx.createBufferSource();
@@ -79,12 +84,12 @@ export class LabAudioPlayer {
         }
         this.active = side;
         const now = this.ctx.currentTime;
-        const [aTarget, bTarget] = side === 'A' ? [1, 0] : [0, 1];
-        for (const [param, target] of [[this.gainA.gain, aTarget], [this.gainB.gain, bTarget]] as const) {
-            param.cancelScheduledValues(now);
-            param.setValueAtTime(param.value, now);
-            param.linearRampToValueAtTime(target, now + AB_CROSSFADE_S);
-        }
+        const aCurve = side === 'A' ? this.risingCurve : this.fallingCurve;
+        const bCurve = side === 'A' ? this.fallingCurve : this.risingCurve;
+        this.gainA.gain.cancelScheduledValues(now);
+        this.gainA.gain.setValueCurveAtTime(aCurve, now, AB_CROSSFADE_S);
+        this.gainB.gain.cancelScheduledValues(now);
+        this.gainB.gain.setValueCurveAtTime(bCurve, now, AB_CROSSFADE_S);
     }
 
     dispose(): void {
