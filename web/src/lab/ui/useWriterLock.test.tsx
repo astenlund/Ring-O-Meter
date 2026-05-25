@@ -1,7 +1,6 @@
 // web/src/lab/ui/useWriterLock.test.tsx
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import {createRoot, type Root} from 'react-dom/client';
-import {flushSync} from 'react-dom';
 import {act} from 'react';
 import {useWriterLock, type WriterLockState} from './useWriterLock';
 
