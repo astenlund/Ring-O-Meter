@@ -1,7 +1,7 @@
 import {afterEach, describe, expect, it} from 'vitest';
 import {neutralVoiceParams, type ChordParams} from '../synth/voiceParams';
 import {makeCalibrationTrial} from './calibrationTrial';
-import {openCalibrationStore} from './calibrationStore';
+import {DB_NAME, openCalibrationStore} from './calibrationStore';
 
 function chord(): ChordParams {
     return {voices: [neutralVoiceParams(220)]};
@@ -10,7 +10,7 @@ function chord(): ChordParams {
 afterEach(async () => {
     // Real IndexedDB persists across tests; delete so each run starts clean.
     await new Promise<void>((resolve) => {
-        const request = indexedDB.deleteDatabase('ring-o-meter-lab');
+        const request = indexedDB.deleteDatabase(DB_NAME);
         request.onsuccess = () => resolve();
         request.onerror = () => resolve();
         request.onblocked = () => resolve();

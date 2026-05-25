@@ -8,6 +8,7 @@ import {
     snapshotChord,
     tryNormalizeStoredTrial,
     type NewTrialInput,
+    type ParamsSnapshot,
 } from './calibrationTrial';
 
 function chord(): ChordParams {
@@ -66,6 +67,14 @@ describe('snapshotChord / reloadChord', () => {
 
         // Act / Assert
         expect(() => reloadChord(snapshotChord(broken))).toThrow(/partialAmplitudes/);
+    });
+
+    it('rejects a snapshot containing a null voice', () => {
+        // Arrange
+        const snap = {paramsSchemaVersion: PARAMS_SCHEMA_VERSION, chord: {voices: [null]}};
+
+        // Act / Assert
+        expect(() => reloadChord(snap as unknown as ParamsSnapshot)).toThrow(/partialAmplitudes/);
     });
 });
 

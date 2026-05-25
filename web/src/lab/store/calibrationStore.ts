@@ -7,7 +7,7 @@
 import type {CalibrationTrial} from './calibrationTrial';
 import {CALIBRATION_ROW_SCHEMA_VERSION, tryNormalizeStoredTrial} from './calibrationTrial';
 
-const DB_NAME = 'ring-o-meter-lab';
+export const DB_NAME = 'ring-o-meter-lab';
 const STORE_NAME = 'calibration-trials';
 const DB_VERSION = 1;
 const EXPORT_SCHEMA_VERSION = 1;
@@ -43,10 +43,15 @@ export interface CalibrationStore {
     getAllTrials(): Promise<GetAllResult>;
     exportToJson(): Promise<string>;
     clear(): Promise<void>;
-    // Test-only-by-convention: inject an arbitrary record to exercise the
-    // malformed-row read path. Downstream consumers must not call it.
-    putRaw(record: unknown): Promise<void>;
     close(): void;
+}
+
+// Test-only widening: adds `putRaw` to inject an arbitrary record so the
+// skip-and-count read path can be exercised. Production consumers depend on
+// `CalibrationStore`, which has no `putRaw`; obtain this via
+// `openCalibrationStoreForTest`.
+export interface TestCalibrationStore extends CalibrationStore {
+    putRaw(record: unknown): Promise<void>;
 }
 
 function errorName(err: unknown): string {
@@ -67,14 +72,16 @@ export function mapOpenError(err: unknown): CalibrationStoreError {
     return new CalibrationStoreError('denied', 'Calibration store could not be opened.', {cause: err});
 }
 
-// Write-time failures: a quota-exceeded abort -> quota; any other transaction
-// failure (including a connection force-closed mid-session) -> transaction.
-export function mapWriteError(err: unknown): CalibrationStoreError {
+// Transaction-time failures (write, read, or clear): a quota-exceeded abort ->
+// quota; any other transaction failure (including a connection force-closed
+// mid-session) -> transaction. A read-only transaction cannot raise quota, so
+// it falls through to transaction.
+export function mapTransactionError(err: unknown): CalibrationStoreError {
     if (errorName(err) === 'QuotaExceededError') {
         return new CalibrationStoreError('quota', 'Calibration storage quota exceeded.', {cause: err});
     }
 
-    return new CalibrationStoreError('transaction', 'Calibration store write failed.', {cause: err});
+    return new CalibrationStoreError('transaction', 'Calibration store transaction failed.', {cause: err});
 }
 
 function writeRecord(db: IDBDatabase, record: unknown): Promise<void> {
@@ -83,15 +90,15 @@ function writeRecord(db: IDBDatabase, record: unknown): Promise<void> {
         try {
             tx = db.transaction(STORE_NAME, 'readwrite');
         } catch (err) {
-            reject(mapWriteError(err));
+            reject(mapTransactionError(err));
 
             return;
         }
 
         const request = tx.objectStore(STORE_NAME).add(record);
-        request.onerror = () => reject(mapWriteError(request.error));
+        request.onerror = () => reject(mapTransactionError(request.error));
         tx.oncomplete = () => resolve();
-        tx.onabort = () => reject(mapWriteError(tx.error));
+        tx.onabort = () => reject(mapTransactionError(tx.error));
     });
 }
 
@@ -101,14 +108,14 @@ function readAll(db: IDBDatabase): Promise<GetAllResult> {
         try {
             tx = db.transaction(STORE_NAME, 'readonly');
         } catch (err) {
-            reject(mapWriteError(err));
+            reject(mapTransactionError(err));
 
             return;
         }
 
         const request = tx.objectStore(STORE_NAME).getAll();
-        request.onerror = () => reject(mapWriteError(request.error));
-        tx.onabort = () => reject(mapWriteError(tx.error));
+        request.onerror = () => reject(mapTransactionError(request.error));
+        tx.onabort = () => reject(mapTransactionError(tx.error));
         request.onsuccess = () => {
             const rows: CalibrationTrial[] = [];
             let skippedMalformedCount = 0;
@@ -132,14 +139,15 @@ function clearStore(db: IDBDatabase): Promise<void> {
         try {
             tx = db.transaction(STORE_NAME, 'readwrite');
         } catch (err) {
-            reject(mapWriteError(err));
+            reject(mapTransactionError(err));
 
             return;
         }
 
-        tx.objectStore(STORE_NAME).clear();
+        const request = tx.objectStore(STORE_NAME).clear();
+        request.onerror = () => reject(mapTransactionError(request.error));
         tx.oncomplete = () => resolve();
-        tx.onabort = () => reject(mapWriteError(tx.error));
+        tx.onabort = () => reject(mapTransactionError(tx.error));
     });
 }
 
@@ -148,6 +156,9 @@ async function exportToJson(db: IDBDatabase): Promise<string> {
     const envelope: ExportEnvelope = {
         exportSchemaVersion: EXPORT_SCHEMA_VERSION,
         exportedAtMs: Date.now(),
+        // The exporting build's current constant, not a per-row aggregate. Each
+        // row carries its own rowSchemaVersion; consumers read that per row for
+        // mixed-version stores after a future bump (all rows are v1 today).
         rowSchemaVersion: CALIBRATION_ROW_SCHEMA_VERSION,
         rowCount: rows.length,
         skippedMalformedCount,
@@ -157,7 +168,7 @@ async function exportToJson(db: IDBDatabase): Promise<string> {
     return JSON.stringify(envelope, null, 2);
 }
 
-function createStore(db: IDBDatabase): CalibrationStore {
+function createStore(db: IDBDatabase): TestCalibrationStore {
     return {
         addTrial: (trial) => writeRecord(db, trial),
         getAllTrials: () => readAll(db),
@@ -168,8 +179,8 @@ function createStore(db: IDBDatabase): CalibrationStore {
     };
 }
 
-export function openCalibrationStore(factory: IDBFactory = globalThis.indexedDB): Promise<CalibrationStore> {
-    return new Promise<CalibrationStore>((resolve, reject) => {
+function openInternal(factory: IDBFactory): Promise<TestCalibrationStore> {
+    return new Promise<TestCalibrationStore>((resolve, reject) => {
         if (!factory) {
             reject(new CalibrationStoreError('denied', 'IndexedDB is not available in this environment.'));
 
@@ -194,4 +205,13 @@ export function openCalibrationStore(factory: IDBFactory = globalThis.indexedDB)
         request.onsuccess = () => resolve(createStore(request.result));
         request.onerror = () => reject(mapOpenError(request.error));
     });
+}
+
+export function openCalibrationStore(factory: IDBFactory = globalThis.indexedDB): Promise<CalibrationStore> {
+    return openInternal(factory);
+}
+
+// Test-only: returns the store widened with `putRaw` for malformed-row injection.
+export function openCalibrationStoreForTest(factory: IDBFactory = globalThis.indexedDB): Promise<TestCalibrationStore> {
+    return openInternal(factory);
 }

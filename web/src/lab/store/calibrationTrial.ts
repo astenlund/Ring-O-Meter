@@ -73,8 +73,9 @@ export function reloadChord(snapshot: ParamsSnapshot): ChordParams {
     }
 
     for (const voice of snapshot.chord.voices) {
-        if (voice.partialAmplitudes.length !== PARTIAL_COUNT) {
-            throw new Error(`Voice partialAmplitudes length ${voice.partialAmplitudes.length}; expected ${PARTIAL_COUNT}.`);
+        const partials = voice?.partialAmplitudes;
+        if (!Array.isArray(partials) || partials.length !== PARTIAL_COUNT) {
+            throw new Error(`Voice partialAmplitudes is not an array of length ${PARTIAL_COUNT}.`);
         }
     }
 
@@ -116,6 +117,7 @@ function isParamsSnapshot(value: unknown): value is ParamsSnapshot {
         return true;
     } catch {
         // Malformed or unsupported-version snapshot; treated as a malformed row.
+
         return false;
     }
 }

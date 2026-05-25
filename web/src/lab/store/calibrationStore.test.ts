@@ -2,7 +2,7 @@ import {IDBFactory} from 'fake-indexeddb';
 import {beforeEach, describe, expect, it} from 'vitest';
 import {neutralVoiceParams, type ChordParams} from '../synth/voiceParams';
 import {makeCalibrationTrial, type CalibrationTrial, type NewTrialInput} from './calibrationTrial';
-import {CalibrationStoreError, mapOpenError, mapWriteError, openCalibrationStore} from './calibrationStore';
+import {CalibrationStoreError, mapOpenError, mapTransactionError, openCalibrationStore, openCalibrationStoreForTest} from './calibrationStore';
 
 function chord(): ChordParams {
     return {voices: [neutralVoiceParams(220)]};
@@ -76,7 +76,7 @@ describe('open / add / getAll', () => {
 
     it('skips a malformed row and counts it', async () => {
         // Arrange: a valid row plus an injected malformed record
-        const store = await openCalibrationStore(factory);
+        const store = await openCalibrationStoreForTest(factory);
         await store.addTrial(trial('t1'));
         await store.putRaw({trialId: 'bad', sessionId: 's1'});
 
@@ -93,16 +93,16 @@ describe('open / add / getAll', () => {
 describe('error mapping', () => {
     it('maps QuotaExceededError to kind quota', () => {
         // Arrange / Act
-        const mapped = mapWriteError(new DOMException('full', 'QuotaExceededError'));
+        const mapped = mapTransactionError(new DOMException('full', 'QuotaExceededError'));
 
         // Assert
         expect(mapped).toBeInstanceOf(CalibrationStoreError);
         expect(mapped.kind).toBe('quota');
     });
 
-    it('maps a generic write error to kind transaction', () => {
+    it('maps a generic transaction error to kind transaction', () => {
         // Arrange / Act
-        const mapped = mapWriteError(new Error('boom'));
+        const mapped = mapTransactionError(new Error('boom'));
 
         // Assert
         expect(mapped.kind).toBe('transaction');
@@ -164,7 +164,7 @@ describe('exportToJson', () => {
 
     it('exports all stored trials with reloadable params and surfaces skipped count', async () => {
         // Arrange
-        const store = await openCalibrationStore(factory);
+        const store = await openCalibrationStoreForTest(factory);
         await store.addTrial(trial('t1'));
         await store.addTrial(trial('t2'));
         await store.putRaw({trialId: 'bad', sessionId: 's1'});
