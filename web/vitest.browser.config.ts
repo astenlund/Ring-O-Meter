@@ -62,7 +62,10 @@ export default defineConfig({
                     //   the prototype off the Dawn -> D3D12 backend
                     //   that matches the #skia-graphite reference
                     //   architecture.
-                    args: ['--js-flags=--expose-gc', '--enable-precise-memory-info', '--enable-unsafe-webgpu'],
+                    // --autoplay-policy=no-user-gesture-required: allows
+                    //   AudioContext.resume() in headless Chrome without a
+                    //   prior user gesture (needed by LabAudioPlayer browser tests).
+                    args: ['--js-flags=--expose-gc', '--enable-precise-memory-info', '--enable-unsafe-webgpu', '--autoplay-policy=no-user-gesture-required'],
                 },
             }),
             headless: true,
