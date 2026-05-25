@@ -87,7 +87,7 @@ export function Lab(props: LabProps) {
 
     const ctxRef = useRef<AudioContext | null>(null);
     const audioRef = useRef<AudioHandle | null>(null);
-    const configError = useRef<string | null>(null);
+    const [configError, setConfigError] = useState<string | null>(null);
 
     // Open the store once on mount; route an open failure by kind.
     useEffect(() => {
@@ -151,7 +151,7 @@ export function Lab(props: LabProps) {
         if (!store) {
             return;
         }
-        configError.current = null;
+        setConfigError(null);
         // Create/resume the AudioContext inside this user-gesture handler.
         if (!ctxRef.current) {
             ctxRef.current = createAudioContext();
@@ -166,7 +166,7 @@ export function Lab(props: LabProps) {
             await advance(sess);
         } catch (err) {
             if (err instanceof CalibrationConfigError) {
-                configError.current = err.message;
+                setConfigError(err.message);
                 setSession(null);
             } else {
                 throw err;
@@ -309,7 +309,7 @@ export function Lab(props: LabProps) {
             )}
             {!session && (
                 <>
-                    {configError.current && <p style={{color: 'crimson'}} data-testid="config-error">{configError.current}</p>}
+                    {configError && <p style={{color: 'crimson'}} data-testid="config-error">{configError}</p>}
                     <SessionConfigBand listenerId={listenerId} disabled={store === null || storageError !== null} onStart={(c) => { void handleStart(c); }} />
                 </>
             )}

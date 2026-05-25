@@ -31,8 +31,13 @@ export function makeSeamlessLoopBuffer(source: AudioBuffer, loopStartS: number, 
             dst[i] = src[startSample + i];
         }
 
-        // Crossfade the first `xfade` samples: blend head (already in dst) with the
-        // region tail using equal-power weights. fadeIn^2 + fadeOut^2 = 1.
+        // Crossfade the first `xfade` samples for a click-free loop seam. When the
+        // trimmed buffer loops, its last body sample wraps to dst[0], so dst[0] must
+        // continue the sample that FOLLOWS the body end in the source (the `tail`),
+        // and dst[xfade-1] must rejoin the body (`head`). So the tail enters at full
+        // gain (fadeOut: cos, 1->0) and the head rises in (fadeIn: sin, 0->1) -- this
+        // is intentionally tail-full-at-the-seam, not the usual head-out/tail-in fade.
+        // Equal-power weights keep fadeIn^2 + fadeOut^2 = 1.
         for (let i = 0; i < xfade; i++) {
             const t = (i + 1) / (xfade + 1);
             const [fadeOut, fadeIn] = equalPowerGains(t);
