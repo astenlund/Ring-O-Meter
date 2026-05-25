@@ -6,7 +6,8 @@ import type {CalibrationTrial} from '../store/calibrationTrial';
 import type {CalibrationStore} from '../store/calibrationStore';
 import {fitFirthLogistic, slopeCi95, type FitPoint} from './logisticFit';
 
-const N_FLOOR = 20;
+// heuristic: minimum decisive A/B rows before a per-axis fit is attempted.
+export const N_FLOOR = 20;
 
 interface BaseCoefficient {
     status: 'insufficient-data' | 'insufficient-variation' | 'did-not-converge';
