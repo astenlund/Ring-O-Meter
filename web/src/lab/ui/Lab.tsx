@@ -62,9 +62,14 @@ async function defaultCreateAudio(ctx: AudioContext, pending: PendingTrial): Pro
     };
 }
 
+// Module-level default so the `?? fallback` is a stable reference (like openStore /
+// defaultCreateAudio); an inline arrow would be a fresh value each render and churn
+// the deps of any useCallback that closes over createAudioContext.
+const defaultCreateAudioContext = (): AudioContext => new AudioContext();
+
 export function Lab(props: LabProps) {
     const openStore = props.openStore ?? openCalibrationStore;
-    const createAudioContext = props.createAudioContext ?? (() => new AudioContext());
+    const createAudioContext = props.createAudioContext ?? defaultCreateAudioContext;
     const createAudio = props.createAudio ?? defaultCreateAudio;
 
     const {listenerId, ephemeral, reset} = useListenerId();

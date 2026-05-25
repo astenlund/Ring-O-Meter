@@ -38,11 +38,13 @@ export function TrialPlayerBand(props: TrialPlayerBandProps) {
     const [playing, setPlaying] = useState(false);
     const [side, setSide] = useState<AbSide>('A');
 
-    // Reset transport state when a new trial arrives.
+    // Reset transport state when a new trial arrives. The active trial's pending
+    // object is extracted to a variable so the effect dep is statically checkable.
+    const activePending = props.phase.kind === 'trial' ? props.phase.pending : null;
     useEffect(() => {
         setPlaying(false);
         setSide('A');
-    }, [props.phase.kind === 'trial' ? props.phase.pending : null]);
+    }, [activePending]);
 
     if (props.phase.kind === 'sweep-complete') {
         return <div style={bandStyle} data-testid="sweep-complete"><h2>Trial player</h2><p>Sweep complete. Reconfigure for a new session.</p></div>;
