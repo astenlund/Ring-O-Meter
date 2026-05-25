@@ -7,7 +7,7 @@
 import type {ChordParams, PartialAmplitudes} from '../synth/voiceParams';
 import type {SweepAxis} from './protocolTypes';
 
-const HZ_FLOOR = 1; // formant/rate/fundamental floor
+const HZ_FLOOR = 1; // fundamental + formant (f1/f2) floor; rate / cents / ms fields floor at 0
 
 export function applyAxisDelta(chord: ChordParams, axis: SweepAxis, targetVoiceIndex: number, delta: number): ChordParams {
     const next = structuredClone(chord);

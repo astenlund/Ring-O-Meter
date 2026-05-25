@@ -9,6 +9,12 @@ import {ALL_SWEEP_AXES, CalibrationConfigError, type SessionConfig, type SweepAx
 
 export const MAX_RESAMPLE_ATTEMPTS = 50;
 
+// Whether a swept axis changes the chord's tuning. Only tuning sweeps run the
+// confound check: a non-test (control) formant biasing a tuning test is the
+// cross-axis confound this guards. A formant-axis sweep deliberately walking a
+// formant across a coincidence is the within-axis non-monotonic-preference
+// hazard the operator handles by range choice (spec "### Experimental-design
+// caution"), not a cross-axis confound, so the check does not fire there.
 export function axisIsTuning(axis: SweepAxis): boolean {
     return axis === 'fundamental';
 }
@@ -50,11 +56,18 @@ export function validateConfig(config: SessionConfig): void {
             throw new CalibrationConfigError(`repeats must be an integer >= 1, got ${sel.repeats}.`);
         }
 
-        // Up-front confound check: the deterministic sweep range is fully known.
+        // Up-front confound check (tuning sweeps only; see axisIsTuning): the
+        // deterministic sweep range is fully known, so a confounded step is a
+        // config error, not a per-trial event. The baseline is invariant across
+        // deltas, so check it once before the loop, then only the shifted variant.
         if (axisIsTuning(sel.axis)) {
+            if (formantCollides(sel.baseline)) {
+                throw new CalibrationConfigError('Baseline lands a control formant on a coincidence.');
+            }
+
             for (const d of sel.deltas) {
                 const variant = applyAxisDelta(sel.baseline, sel.axis, sel.targetVoiceIndex, d);
-                if (formantCollides(sel.baseline) || formantCollides(variant)) {
+                if (formantCollides(variant)) {
                     throw new CalibrationConfigError(`Sweep step delta=${d} lands a control formant on a coincidence.`);
                 }
             }
