@@ -15,6 +15,10 @@ export const MAX_RESAMPLE_ATTEMPTS = 50;
 // formant across a coincidence is the within-axis non-monotonic-preference
 // hazard the operator handles by range choice (spec "### Experimental-design
 // caution"), not a cross-axis confound, so the check does not fire there.
+// `fundamental` is the only tuning axis in the current dimension set; if a future
+// axis also shifts the chord's tuning (e.g. a transpose/detune axis), extend this
+// predicate - the confound check keys off it and there is no compile-time check
+// that this stays complete.
 export function axisIsTuning(axis: SweepAxis): boolean {
     return axis === 'fundamental';
 }

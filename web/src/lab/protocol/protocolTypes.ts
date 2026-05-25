@@ -23,23 +23,28 @@ export type SweepAxis =
     | 'onset';
 
 // Runtime registry of valid axis strings: the SweepAxis union is erased at
-// runtime (erasableSyntaxOnly), so config validation needs an explicit value
-// list. The per-axis apply-mode is the axisTransform switch's single source of
-// truth; native units are documented in the spec, not duplicated here.
-export const ALL_SWEEP_AXES: readonly SweepAxis[] = [
-    'fundamental',
-    'harmonicRichness',
-    'formant.f1',
-    'formant.f2',
-    'pitchVariance.drift',
-    'pitchVariance.jitter',
-    'vibrato.rate',
-    'vibrato.depth',
-    'envelope.attack',
-    'envelope.sustain',
-    'envelope.release',
-    'onset',
-];
+// runtime (erasableSyntaxOnly), so config validation needs a runtime value list.
+// Deriving it from a `satisfies Record<SweepAxis, true>` makes the compiler reject
+// any drift from the union - adding an axis to SweepAxis but omitting it here (or
+// vice versa) is a compile error, not a silent runtime "unknown axis" rejection.
+// The per-axis apply-mode is the axisTransform switch's single source of truth;
+// native units are documented in the spec, not duplicated here.
+const SWEEP_AXIS_SET = {
+    fundamental: true,
+    harmonicRichness: true,
+    'formant.f1': true,
+    'formant.f2': true,
+    'pitchVariance.drift': true,
+    'pitchVariance.jitter': true,
+    'vibrato.rate': true,
+    'vibrato.depth': true,
+    'envelope.attack': true,
+    'envelope.sustain': true,
+    'envelope.release': true,
+    onset: true,
+} satisfies Record<SweepAxis, true>;
+
+export const ALL_SWEEP_AXES = Object.keys(SWEEP_AXIS_SET) as SweepAxis[];
 
 export interface SweepSelector {
     mode: 'sweep';

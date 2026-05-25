@@ -7,7 +7,7 @@
 import type {ChordParams, PartialAmplitudes} from '../synth/voiceParams';
 import type {SweepAxis} from './protocolTypes';
 
-const HZ_FLOOR = 1; // fundamental + formant (f1/f2) floor; rate / cents / ms fields floor at 0
+const HZ_FLOOR = 1; // floor for fundamental + formant (f1/f2) where 0 Hz is degenerate; rate/cents/ms fields floor at 0 (a 0 Hz vibrato rate is a valid off-state)
 
 export function applyAxisDelta(chord: ChordParams, axis: SweepAxis, targetVoiceIndex: number, delta: number): ChordParams {
     const next = structuredClone(chord);
