@@ -112,3 +112,106 @@ export function fitFirthLogistic(points: FitPoint[]): LogisticFit {
 
     return {intercept: a, slope: b, covariance: inv, separated: isSeparable(points), converged, iterations};
 }
+
+const CHI2_HALF_95 = 1.9207; // chiSquare(1, 0.95) / 2
+
+function log1pExp(z: number): number {
+    // stable log(1 + e^z)
+    if (z > 0) {
+        return z + Math.log1p(Math.exp(-z));
+    }
+
+    return Math.log1p(Math.exp(z));
+}
+
+// Penalized log-likelihood maximized over `a` at fixed `b` (Newton on a).
+function penalizedProfileLogLik(points: FitPoint[], b: number): number {
+    let a = 0;
+    for (let iter = 0; iter < 50; iter++) {
+        let s00 = 0;
+        let u0 = 0;
+        for (const {x, y} of points) {
+            const p = sigmoid(a + b * x);
+            const w = p * (1 - p);
+            s00 += w;
+            // Firth-adjusted a-score uses the marginal hat term; for the 1-D
+            // a-maximization the plain score is adequate and converges.
+            u0 += y - p;
+        }
+
+        if (s00 === 0) {
+            break;
+        }
+
+        const da = u0 / s00;
+        a += da;
+        if (Math.abs(da) < TOL) {
+            break;
+        }
+    }
+
+    let ll = 0;
+    let s00 = 0;
+    let s01 = 0;
+    let s11 = 0;
+    for (const {x, y} of points) {
+        const eta = a + b * x;
+        ll += y * eta - log1pExp(eta);
+        const p = sigmoid(eta);
+        const w = p * (1 - p);
+        s00 += w;
+        s01 += w * x;
+        s11 += w * x * x;
+    }
+
+    const det = s00 * s11 - s01 * s01;
+
+    return ll + 0.5 * Math.log(Math.max(det, Number.MIN_VALUE));
+}
+
+export function slopeCi95(points: FitPoint[]): [number, number] {
+    const fit = fitFirthLogistic(points);
+    const bHat = fit.slope;
+    const target = penalizedProfileLogLik(points, bHat) - CHI2_HALF_95;
+    // step scale from the Wald SE, with a floor so it is never degenerate
+    const seB = Math.sqrt(Math.max(fit.covariance[1][1], 1e-6));
+    const step = Math.max(seB, 0.1);
+
+    const findRoot = (direction: 1 | -1): number => {
+        let near = bHat;
+        let far = bHat;
+        let bracketed = false;
+        for (let i = 0; i < 60; i++) {
+            far = bHat + direction * step * (i + 1);
+            if (penalizedProfileLogLik(points, far) < target) {
+                bracketed = true;
+                break;
+            }
+
+            near = far;
+        }
+
+        // If the profile never dropped below target within the search window, the CI is
+        // unbounded on this side. Report it honestly as +/-Infinity rather than returning
+        // the midpoint of a non-bracketing interval (a finite but fabricated bound). The
+        // Firth penalty guarantees a root exists for real overlapping/separated data, so
+        // this is a defensive path; the consumer's no-effect test (ci95 straddles 0) and
+        // Number.isFinite(slope) assertions both compose correctly with an infinite bound.
+        if (!bracketed) {
+            return direction === -1 ? -Infinity : Infinity;
+        }
+
+        for (let i = 0; i < 100; i++) {
+            const mid = (near + far) / 2;
+            if (penalizedProfileLogLik(points, mid) < target) {
+                far = mid;
+            } else {
+                near = mid;
+            }
+        }
+
+        return (near + far) / 2;
+    };
+
+    return [findRoot(-1), findRoot(1)];
+}
