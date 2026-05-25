@@ -5,12 +5,16 @@
 // the confound is acoustic-reinforcement overlap, whose width scales with
 // frequency (spec section "### Experimental-design caution").
 
-import type {ChordParams} from '../synth/voiceParams';
+import {PARTIAL_COUNT, type ChordParams} from '../synth/voiceParams';
 
 // heuristic: confound-collision tolerance
 export const COINCIDENCE_TOLERANCE_CENTS = 100;
 
-const PARTIALS = [1, 2, 3, 4, 5, 6, 7, 8];
+// Harmonic numbers scanned for cross-voice coincidences: the fundamental (n=1)
+// plus the PARTIAL_COUNT stored overtones, i.e. n = 1..PARTIAL_COUNT+1. Derived
+// from voiceParams' PARTIAL_COUNT so the scan tracks the synth's partial count
+// automatically rather than drifting from a hardcoded length.
+const PARTIALS = Array.from({length: PARTIAL_COUNT + 1}, (_, i) => i + 1);
 
 export function centsBetween(a: number, b: number): number {
     return Math.abs(1200 * Math.log2(a / b));
