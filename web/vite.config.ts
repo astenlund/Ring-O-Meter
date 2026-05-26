@@ -44,23 +44,26 @@ export default defineConfig({
             },
         },
         {
-            // Print a `?fanout` URL alongside Vite's normal startup
-            // banner. The bare URL exercises the production path (no
-            // chord-aware visualization until a real quartet sings); the
-            // `?fanout` URL is what a dev solo-iterating on the
-            // chord-aware feature actually wants to click. Wraps
-            // `server.printUrls` so the extra line appears after Vite's
-            // Local / Network lines instead of racing them.
-            name: 'dev-print-fanout-url',
+            // Print extra dev-only route URLs alongside Vite's normal
+            // startup banner, wrapping `server.printUrls` so the lines
+            // appear after Vite's Local / Network lines instead of racing
+            // them. `?fanout` is what a dev iterating on the chord-aware
+            // feature clicks (the bare URL shows no visualization until a
+            // real quartet sings); `/lab` is the dev-only synthesis-
+            // calibration UI (gated `import.meta.env.DEV`, tree-shaken from
+            // production builds).
+            name: 'dev-print-route-urls',
             configureServer(server) {
                 const original = server.printUrls.bind(server);
                 server.printUrls = () => {
                     original();
                     const localUrls = server.resolvedUrls?.local ?? [];
                     for (const url of localUrls) {
-                        const fanoutUrl = url.endsWith('/') ? `${url}?fanout` : `${url}/?fanout`;
+                        const base = url.endsWith('/') ? url : `${url}/`;
                         // eslint-disable-next-line no-console
-                        console.log(`  ${GREEN}➜${RESET_FG}  ${BOLD}Fanout:${RESET_DIM}  ${CYAN}${fanoutUrl}${RESET_FG}`);
+                        console.log(`  ${GREEN}➜${RESET_FG}  ${BOLD}Fanout:${RESET_DIM}  ${CYAN}${base}?fanout${RESET_FG}`);
+                        // eslint-disable-next-line no-console
+                        console.log(`  ${GREEN}➜${RESET_FG}  ${BOLD}Lab:${RESET_DIM}     ${CYAN}${base}lab${RESET_FG}`);
                     }
                 };
             },
