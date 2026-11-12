@@ -8,7 +8,7 @@ import {crossOriginHeaders} from './crossOriginHeaders';
 // scripts, no cross-origin embeds), so COEP require-corp does not fight
 // any subresource.
 
-// ANSI escape sequences for the dev-print-fanout-url banner. Raw
+// ANSI escape sequences for the dev route-URL banner plugin below. Raw
 // escapes avoid a picocolors import that would couple this plugin
 // to Vite's internal deps. Codes match Vite's own banner styling.
 const ESC = '';

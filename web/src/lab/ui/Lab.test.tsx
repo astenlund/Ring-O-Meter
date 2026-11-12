@@ -10,8 +10,7 @@ import type {CalibrationTrial} from '../store/calibrationTrial';
 
 type FakeStore = CalibrationStore & {added: number; attempts: CalibrationTrial[]};
 
-// A fake store that counts successful addTrial calls and records every attempted trial;
-// the first `quotaFailures` attempts reject with a quota error before anything is written.
+// A fake store that counts successful addTrial calls and records every attempted trial; the first `quotaFailures` attempts reject with a quota error before anything is written.
 function fakeStore(quotaFailures = 0): FakeStore {
     const state = {added: 0, failuresLeft: quotaFailures};
     const attempts: CalibrationTrial[] = [];
