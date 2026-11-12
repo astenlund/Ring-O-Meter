@@ -1,10 +1,10 @@
 // COOP/COEP headers are required for SharedArrayBuffer to work in the
 // browser. This file is one of the lockstep locations for the same two
 // header values. The set:
-//   web/vite.config.ts                (server + preview blocks)
-//   web/vitest.browser.config.ts      (Vitest browser-mode test host)
+//   web/crossOriginHeaders.ts         (shared by web/vite.config.ts and
+//                                      web/vitest.browser.config.ts)
 //   src/RingOMeter.Server/Program.cs  (this file, deployed server)
-// If you change the values in any one of these, change the others.
+// If you change the values in either one, change the other.
 // Diagnostic: if `self.crossOriginIsolated` is false in any environment,
 // one of these locations is out of sync.
 var builder = WebApplication.CreateBuilder(args);

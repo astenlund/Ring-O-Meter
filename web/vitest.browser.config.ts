@@ -1,6 +1,7 @@
 import {defineConfig} from 'vitest/config';
 import {playwright} from '@vitest/browser-playwright';
 import react from '@vitejs/plugin-react';
+import {crossOriginHeaders} from './crossOriginHeaders';
 
 // Browser-hosted tests: real canvas, real rAF, performance.memory.
 // Chromium launched with --expose-gc so alloc tests can force
@@ -20,22 +21,15 @@ import react from '@vitejs/plugin-react';
 // runs the alloc suite.
 //
 // The Vitest browser runner hosts the tests on its own Vite server;
-// SharedArrayBuffer requires cross-origin isolation there too, so we
-// mirror the COOP/COEP headers onto this server block. Without them,
-// any alloc test that touches frameRing.ts (which needs SAB) fails
-// with ReferenceError: SharedArrayBuffer is not defined.
-//
-// Lockstep set (change all together):
-//   web/vite.config.ts                (server + preview blocks)
-//   web/vitest.browser.config.ts      (this file)
-//   src/RingOMeter.Server/Program.cs  (slice 1a deployed server)
+// SharedArrayBuffer requires cross-origin isolation there too, so this
+// server block sends the shared COOP/COEP headers (values and lockstep
+// set in crossOriginHeaders.ts). Without them, any alloc test that
+// touches frameRing.ts (which needs SAB) fails with ReferenceError:
+// SharedArrayBuffer is not defined.
 export default defineConfig({
     plugins: [react()],
     server: {
-        headers: {
-            'Cross-Origin-Opener-Policy': 'same-origin',
-            'Cross-Origin-Embedder-Policy': 'require-corp',
-        },
+        headers: crossOriginHeaders,
     },
     test: {
         include: ['src/**/*.browser.ts', 'src/**/*.browser.tsx'],
