@@ -46,22 +46,6 @@ export function TrialPlayerBand(props: TrialPlayerBandProps) {
         setSide('A');
     }, [activePending]);
 
-    if (props.phase.kind === 'sweep-complete') {
-        return <div style={bandStyle} data-testid="sweep-complete"><h2>Trial player</h2><p>Sweep complete. Reconfigure for a new session.</p></div>;
-    }
-    if (props.phase.kind === 'resample-exhausted') {
-        return <div style={bandStyle} data-testid="resample-exhausted"><h2>Trial player</h2><p>Random range too constrained: every draw collided. Widen the range and restart.</p></div>;
-    }
-    if (props.phase.kind === 'audio-unavailable') {
-        return (
-            <div style={bandStyle} data-testid="audio-unavailable">
-                <h2>Trial player</h2>
-                <p style={{color: 'crimson'}}>Audio unavailable.</p>
-                <button type="button" data-testid="resume-audio" onClick={props.phase.onResume}>Resume audio</button>
-            </div>
-        );
-    }
-
     const togglePlay = async () => {
         if (playing) {
             await props.audio?.pause();
@@ -84,18 +68,38 @@ export function TrialPlayerBand(props: TrialPlayerBandProps) {
         props.audio?.setActive(next);
     };
 
-    return (
-        <div style={bandStyle} data-testid="player-body">
-            <h2>Trial player</h2>
-            <div style={btnRow}>
-                <button type="button" data-testid="play-pause" onClick={togglePlay}>{playing ? 'Pause' : 'Play'}</button>
-                <button type="button" data-testid="ab-toggle" onClick={toggleSide}>Now: {side}</button>
-            </div>
-            <div style={btnRow}>
-                <button type="button" data-testid="choose-a" disabled={props.submitting} onClick={() => props.onChoose('first')}>A rings more</button>
-                <button type="button" data-testid="choose-tie" disabled={props.submitting} onClick={() => props.onChoose('tie')}>Tie</button>
-                <button type="button" data-testid="choose-b" disabled={props.submitting} onClick={() => props.onChoose('second')}>B rings more</button>
-            </div>
-        </div>
-    );
+    switch (props.phase.kind) {
+        case 'sweep-complete':
+            return <div style={bandStyle} data-testid="sweep-complete"><h2>Trial player</h2><p>Sweep complete. Reconfigure for a new session.</p></div>;
+        case 'resample-exhausted':
+            return <div style={bandStyle} data-testid="resample-exhausted"><h2>Trial player</h2><p>Random range too constrained: every draw collided. Widen the range and restart.</p></div>;
+        case 'audio-unavailable':
+            return (
+                <div style={bandStyle} data-testid="audio-unavailable">
+                    <h2>Trial player</h2>
+                    <p style={{color: 'crimson'}}>Audio unavailable.</p>
+                    <button type="button" data-testid="resume-audio" onClick={props.phase.onResume}>Resume audio</button>
+                </div>
+            );
+        case 'trial':
+            return (
+                <div style={bandStyle} data-testid="player-body">
+                    <h2>Trial player</h2>
+                    <div style={btnRow}>
+                        <button type="button" data-testid="play-pause" onClick={togglePlay}>{playing ? 'Pause' : 'Play'}</button>
+                        <button type="button" data-testid="ab-toggle" onClick={toggleSide}>Now: {side}</button>
+                    </div>
+                    <div style={btnRow}>
+                        <button type="button" data-testid="choose-a" disabled={props.submitting} onClick={() => props.onChoose('first')}>A rings more</button>
+                        <button type="button" data-testid="choose-tie" disabled={props.submitting} onClick={() => props.onChoose('tie')}>Tie</button>
+                        <button type="button" data-testid="choose-b" disabled={props.submitting} onClick={() => props.onChoose('second')}>B rings more</button>
+                    </div>
+                </div>
+            );
+        default: {
+            const _exhaustive: never = props.phase;
+
+            return _exhaustive;
+        }
+    }
 }

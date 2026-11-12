@@ -65,6 +65,15 @@ describe('TrialPlayerBand', () => {
         expect(container.querySelector('[data-testid="choose-a"]')).toBeNull();
     });
 
+    it('shows the resample-exhausted state and hides choice buttons', () => {
+        // Arrange / Act
+        render({phase: {kind: 'resample-exhausted'}});
+
+        // Assert
+        expect(container.querySelector('[data-testid="resample-exhausted"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="choose-a"]')).toBeNull();
+    });
+
     it('shows the audio-unavailable state with a resume action', () => {
         // Arrange
         const onResume = vi.fn();
