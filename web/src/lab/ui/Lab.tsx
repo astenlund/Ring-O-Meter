@@ -21,6 +21,7 @@ import {TrialPlayerBand, type AudioController, type PlayerPhase} from './TrialPl
 import {CoefficientDashboard} from './CoefficientDashboard';
 import {StoreAdminRow} from './StoreAdminRow';
 import {downloadJson} from './downloadJson';
+import {STORAGE_ERROR_POLICY} from './storageErrorPolicy';
 
 const RENDER_DURATION_S = 1.7;
 const LOOP_START_S = 0.1;
@@ -179,8 +180,8 @@ export function Lab(props: LabProps) {
         }
     }, [store, advance, createAudioContext]);
 
-    // Records one decision. On a write failure, quota/transaction retain the choice
-    // AND its pick for a Retry; denied/version discard it. Split out from handleChoose
+    // Records one decision. On a write failure, a kind STORAGE_ERROR_POLICY marks
+    // retryable retains the choice AND its pick for a Retry; other kinds discard it. Split out from handleChoose
     // so the Retry button replays the exact held pick rather than a guessed default.
     const recordPending = useCallback(async (p: PendingTrial, pick: Pick) => {
         if (!session || !store) {
@@ -194,7 +195,7 @@ export function Lab(props: LabProps) {
             await advance(session);
         } catch (err) {
             if (err instanceof CalibrationStoreError) {
-                const keep = err.kind === 'quota' || err.kind === 'transaction';
+                const keep = STORAGE_ERROR_POLICY[err.kind].retryable;
                 setStorageError({kind: err.kind, pending: keep ? p : null, pick: keep ? pick : null});
             } else {
                 throw err;
@@ -285,6 +286,7 @@ export function Lab(props: LabProps) {
     }, [audioUnavailable, terminal, pending, resumeAudio]);
 
     const sessionActive = session !== null && terminal === null && pending !== null;
+    const storageErrorPolicy = storageError ? STORAGE_ERROR_POLICY[storageError.kind] : null;
 
     return (
         <main style={pageStyle}>
@@ -297,11 +299,11 @@ export function Lab(props: LabProps) {
                 onResetListener={reset}
                 resetDisabled={sessionActive}
             />
-            {storageError && (
+            {storageError && storageErrorPolicy && (
                 <div style={{padding: 12, background: '#3a1a1a', borderRadius: 8, marginBottom: 16}} data-testid="storage-error">
-                    <p style={{color: 'crimson'}}>Storage error ({storageError.kind}). {storageError.kind === 'version' ? 'Reload to update.' : 'Recording is disabled until resolved.'}</p>
-                    {storageError.kind === 'quota' && <p>Export then Clear all to recover (export is a backup; clear frees quota).</p>}
-                    {storageError.pending && storageError.pick && (storageError.kind === 'quota' || storageError.kind === 'transaction') && (
+                    <p style={{color: 'crimson'}}>Storage error ({storageError.kind}). {storageErrorPolicy.action}</p>
+                    {storageErrorPolicy.recoveryHint && <p>{storageErrorPolicy.recoveryHint}</p>}
+                    {storageError.pending && storageError.pick && storageErrorPolicy.retryable && (
                         <button type="button" data-testid="retry-save" disabled={submitting} onClick={() => { void recordPending(storageError.pending!, storageError.pick!); }}>Retry save</button>
                     )}
                 </div>
