@@ -6,19 +6,32 @@ import {act} from 'react';
 import {Lab} from './Lab';
 import type {CalibrationStore, GetAllResult} from '../store/calibrationStore';
 import {CalibrationStoreError} from '../store/calibrationStore';
+import type {CalibrationTrial} from '../store/calibrationTrial';
 
-// A fake store that counts addTrial calls; getAllTrials returns the running rows.
-function fakeStore(): CalibrationStore & {added: number} {
-    const state = {added: 0};
+type FakeStore = CalibrationStore & {added: number; attempts: CalibrationTrial[]};
+
+// A fake store that counts successful addTrial calls and records every attempted trial;
+// the first `quotaFailures` attempts reject with a quota error before anything is written.
+function fakeStore(quotaFailures = 0): FakeStore {
+    const state = {added: 0, failuresLeft: quotaFailures};
+    const attempts: CalibrationTrial[] = [];
 
     return {
-        addTrial: async () => { state.added += 1; },
+        addTrial: async (trial: CalibrationTrial) => {
+            attempts.push(trial);
+            if (state.failuresLeft > 0) {
+                state.failuresLeft -= 1;
+                throw new CalibrationStoreError('quota', 'full');
+            }
+            state.added += 1;
+        },
         getAllTrials: async (): Promise<GetAllResult> => ({rows: [], skippedMalformedCount: 0}),
         exportToJson: async () => '{}',
         clear: async () => undefined,
         close: () => undefined,
         get added() { return state.added; },
-    } as CalibrationStore & {added: number};
+        attempts,
+    };
 }
 
 // jsdom has no Web Audio, so inject a fake running context + a noop audio handle.
@@ -105,6 +118,38 @@ describe('Lab', () => {
         await clickById('[data-testid="choose-a"]');
 
         // Assert
+        expect(container.querySelector('[data-testid="sweep-complete"]')).not.toBeNull();
+    });
+
+    it('holds the pick on a quota failure and replays it on Retry', async () => {
+        // Arrange: a one-trial sweep, so a successful replay advances to sweep-complete.
+        const store = fakeStore(1);
+        await mount(async () => store);
+        setValue('[data-testid="deltas-input"]', '10');
+        setValue('[data-testid="repeats-input"]', '1');
+        await clickById('[data-testid="start-session"]');
+
+        // Act: choose B (not the default-looking A) and hit the quota failure.
+        await clickById('[data-testid="choose-b"]');
+
+        // Assert: the failure is held for Retry, nothing was written and the player stays on the held trial.
+        expect(container.querySelector('[data-testid="storage-error"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="retry-save"]')).not.toBeNull();
+        expect(store.added).toBe(0);
+        expect(container.querySelector('[data-testid="player-body"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="sweep-complete"]')).toBeNull();
+
+        // Act
+        await clickById('[data-testid="retry-save"]');
+
+        // Assert: the replay wrote the same trial with the same choice, once, and advanced.
+        // trialId and timestampMs are minted per write, so only the held trial's fields compare.
+        expect(store.attempts).toHaveLength(2);
+        const [failed, replayed] = store.attempts;
+        expect(replayed.choice).toBe(failed.choice);
+        expect([replayed.sessionId, replayed.sweepDelta, replayed.seedA, replayed.seedB]).toEqual([failed.sessionId, failed.sweepDelta, failed.seedA, failed.seedB]);
+        expect(store.added).toBe(1);
+        expect(container.querySelector('[data-testid="storage-error"]')).toBeNull();
         expect(container.querySelector('[data-testid="sweep-complete"]')).not.toBeNull();
     });
 });
