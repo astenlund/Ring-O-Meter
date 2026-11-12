@@ -1,0 +1,6 @@
+# Store text with LF line endings in the index whatever the working copy uses.
+* text=auto
+
+# Committed binaries (the paths `git ls-files --eol` reports as i/-text).
+*.pdf binary
+*.gz binary
