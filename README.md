@@ -17,6 +17,8 @@ Set the project-local hooks path so the pre-commit hook runs:
 git config core.hooksPath hooks
 ```
 
+If your user- or system-level Git config already sets `core.hooksPath`, the local setting replaces it, so the project hook runs that directory's `pre-commit` itself after its own checks.
+
 ### Run the web app
 
 Slice 0 is browser-only; the server arrives in slice 1.
