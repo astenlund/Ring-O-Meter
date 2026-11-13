@@ -2,6 +2,7 @@
 
 # Auto-fix formatting on staged C# and TS/JS files. Unfixable issues block.
 # Setup: git config core.hooksPath hooks  (one time per clone)
+# A local core.hooksPath replaces a user- or system-level one rather than adding to it, so this hook then runs that directory's pre-commit itself, after its own checks, and fails if it fails.
 
 set -e
 
@@ -37,11 +38,9 @@ if [ -n "$STAGED_JS" ]; then
         # Final check fails on unfixable
         (cd web && pnpm exec eslint $STAGED_JS_REL)
 
-        # Type-check the whole web/ project so type errors block the commit.
-        # Only runs if web/ has been bootstrapped (skip silently otherwise).
-        if [ -f web/tsconfig.json ]; then
-            (cd web && pnpm exec tsc --noEmit)
-        fi
+        # Type-check the projects web/tsconfig.json references (src/ and every .ts at the web/ root) so type errors block the commit; web/e2e is in no tsconfig.
+        # web/tsconfig.json is solution-style (no files, only project references), so only build mode checks anything.
+        (cd web && pnpm exec tsc -b)
     fi
 fi
 
@@ -49,6 +48,33 @@ if [ -n "$STAGED_CS" ]; then
     # Final check that format actually settled (verify-no-changes will exit non-zero
     # if there is anything still off)
     dotnet format Ring-O-Meter.slnx --verify-no-changes --include $STAGED_CS
+fi
+
+# Chain to the pre-commit of the hooks directory configured outside this clone, last, so it sees the final staged content.
+# --includes is needed because a scoped lookup otherwise ignores [include] directives, where a user-level hooksPath often lives.
+# --type=path applies Git's own pathname expansion (~, ~user/, %(prefix)/), so this resolves the directory Git itself would use.
+# git config --get exits 1 only when the key is absent; any other status means the lookup failed, which blocks the commit rather than skipping the chain.
+PREVIOUS_HOOKS=
+for SCOPE in --global --system; do
+    STATUS=0
+    PREVIOUS_HOOKS=$(git config "$SCOPE" --includes --type=path --get core.hooksPath) || STATUS=$?
+    if [ "$STATUS" -eq 0 ]; then
+        break
+    fi
+    if [ "$STATUS" -ne 1 ]; then
+        echo "pre-commit: could not read $SCOPE core.hooksPath (git config exited $STATUS)" >&2
+        exit 1
+    fi
+    PREVIOUS_HOOKS=
+done
+
+# RINGOMETER_PRECOMMIT_CHAINED marks a run this chain started, so a configured directory holding another checkout's copy of this hook cannot recurse.
+if [ -z "${RINGOMETER_PRECOMMIT_CHAINED:-}" ] && [ -n "$PREVIOUS_HOOKS" ] && [ -x "$PREVIOUS_HOOKS/pre-commit" ]; then
+    PREVIOUS_DIR=$(cd "$PREVIOUS_HOOKS" && pwd -P)
+    OWN_DIR=$(cd "$REPO_ROOT/hooks" && pwd -P)
+    if [ "$PREVIOUS_DIR" != "$OWN_DIR" ]; then
+        RINGOMETER_PRECOMMIT_CHAINED=1 "$PREVIOUS_DIR/pre-commit"
+    fi
 fi
 
 exit 0
