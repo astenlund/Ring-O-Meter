@@ -6,30 +6,60 @@
 
 set -e
 
-# Resolve repo root so the hook works regardless of the cwd git invokes it
-# from (commits made from a subdirectory must still find the .slnx and the
-# staged files, which git emits as repo-root-relative paths).
+# Resolve repo root so the hook works regardless of the cwd git invokes it from (commits made from a subdirectory must still find the .slnx and the staged files, which git emits as repo-root-relative paths).
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
 STAGED_CS=$(git diff --cached --name-only --diff-filter=ACM -- '*.cs')
 STAGED_JS=$(git diff --cached --name-only --diff-filter=ACM -- 'web/**/*.ts' 'web/**/*.tsx' 'web/**/*.js')
 
+# Each tool is probed once, so the partial-stage guard and the fix step for a file kind always agree on whether that kind gets rewritten.
+HAVE_DOTNET=false
+HAVE_PNPM=false
+if command -v dotnet >/dev/null 2>&1; then
+    HAVE_DOTNET=true
+fi
+if command -v pnpm >/dev/null 2>&1; then
+    HAVE_PNPM=true
+fi
+
+# The fix steps below re-add each whole file, so a file with unstaged changes would have them committed without notice; refuse such files up front.
+# Only file kinds the hook will actually rewrite are checked: C# when dotnet is available, web files when pnpm is.
+# The staged paths are passed as literal pathspecs, and a failing git diff aborts the hook through set -e rather than reading as "nothing partially staged".
+PARTIAL_CS=
+PARTIAL_JS=
+if [ -n "$STAGED_CS" ] && $HAVE_DOTNET; then
+    PARTIAL_CS=$(git --literal-pathspecs diff --name-only -- $STAGED_CS)
+fi
+if [ -n "$STAGED_JS" ] && $HAVE_PNPM; then
+    PARTIAL_JS=$(git --literal-pathspecs diff --name-only -- $STAGED_JS)
+fi
+if [ -n "$PARTIAL_CS$PARTIAL_JS" ]; then
+    echo "pre-commit: these files have unstaged changes that the auto-fix would commit along with the staged ones:" >&2
+    for FILE in $PARTIAL_CS $PARTIAL_JS; do
+        echo "  $FILE" >&2
+    done
+    echo "Stage or stash the rest of each file, then commit again." >&2
+    exit 1
+fi
+
 if [ -n "$STAGED_CS" ]; then
-    if ! command -v dotnet >/dev/null 2>&1; then
+    if ! $HAVE_DOTNET; then
         echo "warning: dotnet not found, skipping C# format"
     else
         dotnet format Ring-O-Meter.slnx --include $STAGED_CS
         echo "$STAGED_CS" | xargs git add
+
+        # Final check that format actually settled (verify-no-changes will exit non-zero if there is anything still off)
+        dotnet format Ring-O-Meter.slnx --verify-no-changes --include $STAGED_CS
     fi
 fi
 
 if [ -n "$STAGED_JS" ]; then
-    if ! command -v pnpm >/dev/null 2>&1; then
+    if ! $HAVE_PNPM; then
         echo "warning: pnpm not found, skipping JS lint (install pnpm to enable)"
     else
-        # Staged paths come back repo-root-relative (e.g. web/src/foo.ts).
-        # Strip the web/ prefix so they resolve when eslint runs with cwd=web.
+        # Staged paths come back repo-root-relative (e.g. web/src/foo.ts); strip the web/ prefix so they resolve when eslint runs with cwd=web.
         STAGED_JS_REL=$(echo "$STAGED_JS" | sed 's|^web/||')
 
         (cd web && pnpm exec eslint --fix $STAGED_JS_REL)
@@ -42,12 +72,6 @@ if [ -n "$STAGED_JS" ]; then
         # web/tsconfig.json is solution-style (no files, only project references), so only build mode checks anything.
         (cd web && pnpm exec tsc -b)
     fi
-fi
-
-if [ -n "$STAGED_CS" ]; then
-    # Final check that format actually settled (verify-no-changes will exit non-zero
-    # if there is anything still off)
-    dotnet format Ring-O-Meter.slnx --verify-no-changes --include $STAGED_CS
 fi
 
 # Chain to the pre-commit of the hooks directory configured outside this clone, last, so it sees the final staged content.
