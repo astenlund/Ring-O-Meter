@@ -51,21 +51,44 @@ exit 0
 STUB
 chmod +x "$STUBS/pnpm" "$STUBS/dotnet"
 
-# Prints PATH without every directory that holds the named program, so the hook's command -v probe cannot find it.
+# Prints PATH with every directory that holds the named program replaced by a mirror without it, so the hook's command -v probe cannot find the program while the directory's other executables stay reachable (on Linux, apt's dotnet sits in /usr/bin beside git and sh).
+# A mirror holds one exec wrapper per executable; a file whose path contains a single quote is left out, since the wrapper's quoting cannot carry it.
 path_without() {
-    local dir kept=
+    local program=$1 dir file name mirror kept= index=0 wrapped
     local IFS=:
     for dir in $PATH; do
-        if [ -n "$dir" ] && [ ! -e "$dir/$1" ] && [ ! -e "$dir/$1.exe" ] && [ ! -e "$dir/$1.cmd" ]; then
-            kept="${kept:+$kept:}$dir"
+        [ -n "$dir" ] || continue
+        if [ -e "$dir/$program" ] || [ -e "$dir/$program.exe" ] || [ -e "$dir/$program.cmd" ]; then
+            index=$((index + 1))
+            mirror="$WORK/path-without-$program/$index"
+            mkdir -p "$mirror" || return 1
+            wrapped=0
+            for file in "$dir"/*; do
+                name=${file##*/}
+                case $name in
+                    "$program" | "$program.exe" | "$program.cmd") continue ;;
+                esac
+                case $file in
+                    *"'"*) continue ;;
+                esac
+                if [ -f "$file" ] && [ -x "$file" ]; then
+                    printf '%s\n' '#!/bin/sh' "exec '$file' \"\$@\"" > "$mirror/${name%.exe}" || return 1
+                    wrapped=$((wrapped + 1))
+                fi
+            done
+            if [ "$wrapped" -gt 0 ]; then
+                chmod +x "$mirror"/* || return 1
+            fi
+            dir=$mirror
         fi
+        kept="${kept:+$kept:}$dir"
     done
     printf '%s' "$kept"
 }
 
 STUB_PATH="$STUBS:$PATH"
-NO_PNPM_PATH=$(path_without pnpm)
-NO_DOTNET_PATH=$(path_without dotnet)
+NO_PNPM_PATH=$(path_without pnpm) || { echo "$SCRIPT_NAME: could not build a PATH without pnpm" >&2; exit 1; }
+NO_DOTNET_PATH=$(path_without dotnet) || { echo "$SCRIPT_NAME: could not build a PATH without dotnet" >&2; exit 1; }
 
 FAILURES=0
 CASE_COUNT=0
