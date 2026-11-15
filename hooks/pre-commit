@@ -68,7 +68,7 @@ if [ -n "$STAGED_JS" ]; then
         # Final check fails on unfixable
         (cd web && pnpm exec eslint $STAGED_JS_REL)
 
-        # Type-check the projects web/tsconfig.json references (src/ and every .ts at the web/ root) so type errors block the commit; web/e2e is in no tsconfig.
+        # Type-check the projects web/tsconfig.json references (src/, every .ts at the web/ root, and web/e2e) so type errors block the commit.
         # web/tsconfig.json is solution-style (no files, only project references), so only build mode checks anything.
         (cd web && pnpm exec tsc -b)
     fi
