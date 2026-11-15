@@ -104,7 +104,12 @@ setup_git() {
     git -C "$REPO" "$@" || { echo "$SCRIPT_NAME: setup failed in $CURRENT_CASE: git $*" >&2; exit 1; }
 }
 
-# Creates a repository with one committed C# file and two committed web files.
+# Names with a space and a non-ASCII character, which Git would otherwise quote and the shell would otherwise split.
+NON_ASCII=$(printf '\303\244')
+ODD_TS="web/src/odd name-$NON_ASCII.ts"
+ODD_CS="src/Odd name-$NON_ASCII.cs"
+
+# Creates a repository with committed C# and web files, including one of each with an odd name.
 new_repo() {
     CURRENT_CASE=$1
     CASE_COUNT=$((CASE_COUNT + 1))
@@ -115,6 +120,8 @@ new_repo() {
     printf 'one\n' > "$REPO/web/src/a.ts"
     printf 'one\n' > "$REPO/web/src/b.ts"
     printf 'one\n' > "$REPO/src/A.cs"
+    printf 'one\n' > "$REPO/$ODD_TS"
+    printf 'one\n' > "$REPO/$ODD_CS"
     printf 'one\n' > "$REPO/README.md"
     setup_git init -q
     setup_git config user.name test
@@ -131,12 +138,12 @@ stage_partially() {
     printf 'one\nstaged\nunstaged\n' > "$REPO/$1"
 }
 
-# Reports whether a reduced PATH still provides what git needs to run the hook; a case whose PATH lost them is skipped, which fails the run as unverified.
+# Reports whether a reduced PATH still provides git and the bash the hook's shebang asks for; a case whose PATH lost them is skipped, which fails the run as unverified.
 path_runs_hook() {
-    if PATH="$1" command -v git > /dev/null 2>&1 && PATH="$1" command -v sh > /dev/null 2>&1; then
+    if PATH="$1" command -v git > /dev/null 2>&1 && PATH="$1" command -v bash > /dev/null 2>&1; then
         return 0
     fi
-    echo "SKIP [$CURRENT_CASE]: removing the program from PATH also removed git or sh" >&2
+    echo "SKIP [$CURRENT_CASE]: removing the program from PATH also removed git or bash" >&2
     SKIPPED=$((SKIPPED + 1))
     return 1
 }
@@ -238,6 +245,26 @@ for missing in pnpm dotnet; do
         if [ "$(git -C "$REPO" show "HEAD:$partial_file")" != "$(printf 'one\nstaged')" ]; then
             fail "the unstaged line reached the commit"
         fi
+    fi
+done
+
+# Partially staged files with odd names are refused by their exact names.
+new_repo partial-odd-names
+stage_partially "$ODD_TS"
+stage_partially "$ODD_CS"
+run_commit "$STUB_PATH"
+expect_refused_naming "$ODD_TS" "$ODD_CS"
+
+# Fully staged files with odd names are fixed and re-staged under their exact names.
+new_repo full-stage-odd-names
+printf 'one\nBAD\n' > "$REPO/$ODD_TS"
+printf 'one\nBAD\n' > "$REPO/$ODD_CS"
+setup_git add -- "$ODD_TS" "$ODD_CS"
+run_commit "$STUB_PATH"
+expect_committed
+for path in "$ODD_TS" "$ODD_CS"; do
+    if [ "$(git -C "$REPO" show "HEAD:$path")" != "$(printf 'one\nGOOD')" ]; then
+        fail "$path was not committed with the fix applied"
     fi
 done
 

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 # Auto-fix formatting on staged C# and TS/JS files. Unfixable issues block.
 # Setup: git config core.hooksPath hooks  (one time per clone)
@@ -10,8 +10,28 @@ set -e
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
-STAGED_CS=$(git diff --cached --name-only --diff-filter=ACM -- '*.cs')
-STAGED_JS=$(git diff --cached --name-only --diff-filter=ACM -- 'web/**/*.ts' 'web/**/*.tsx' 'web/**/*.js')
+# Reads the NUL-separated paths a command prints into the PATHS array, so every path reaches the tools below as one argument, unquoted and unsplit.
+# The command appends an empty record only when it succeeds, and git never prints an empty path, so a failing command blocks the commit rather than reading as an empty list.
+read_paths() {
+    local path complete=false
+    PATHS=()
+    while IFS= read -r -d '' path; do
+        if [ -z "$path" ]; then
+            complete=true
+            break
+        fi
+        PATHS+=("$path")
+    done < <("$@" && printf '\0')
+    if ! $complete; then
+        echo "pre-commit: could not list files with: $*" >&2
+        exit 1
+    fi
+}
+
+read_paths git diff --cached -z --name-only --diff-filter=ACM -- '*.cs'
+STAGED_CS=("${PATHS[@]}")
+read_paths git diff --cached -z --name-only --diff-filter=ACM -- 'web/**/*.ts' 'web/**/*.tsx' 'web/**/*.js'
+STAGED_JS=("${PATHS[@]}")
 
 # Each tool is probed once, so the partial-stage guard and the fix step for a file kind always agree on whether that kind gets rewritten.
 HAVE_DOTNET=false
@@ -25,48 +45,47 @@ fi
 
 # The fix steps below re-add each whole file, so a file with unstaged changes would have them committed without notice; refuse such files up front.
 # Only file kinds the hook will actually rewrite are checked: C# when dotnet is available, web files when pnpm is.
-# The staged paths are passed as literal pathspecs, and a failing git diff aborts the hook through set -e rather than reading as "nothing partially staged".
-PARTIAL_CS=
-PARTIAL_JS=
-if [ -n "$STAGED_CS" ] && $HAVE_DOTNET; then
-    PARTIAL_CS=$(git --literal-pathspecs diff --name-only -- $STAGED_CS)
+# The staged paths are passed as literal pathspecs, so no path is read as a glob or other pathspec magic.
+PARTIAL=()
+if [ ${#STAGED_CS[@]} -gt 0 ] && $HAVE_DOTNET; then
+    read_paths git --literal-pathspecs diff -z --name-only -- "${STAGED_CS[@]}"
+    PARTIAL+=("${PATHS[@]}")
 fi
-if [ -n "$STAGED_JS" ] && $HAVE_PNPM; then
-    PARTIAL_JS=$(git --literal-pathspecs diff --name-only -- $STAGED_JS)
+if [ ${#STAGED_JS[@]} -gt 0 ] && $HAVE_PNPM; then
+    read_paths git --literal-pathspecs diff -z --name-only -- "${STAGED_JS[@]}"
+    PARTIAL+=("${PATHS[@]}")
 fi
-if [ -n "$PARTIAL_CS$PARTIAL_JS" ]; then
+if [ ${#PARTIAL[@]} -gt 0 ]; then
     echo "pre-commit: these files have unstaged changes that the auto-fix would commit along with the staged ones:" >&2
-    for FILE in $PARTIAL_CS $PARTIAL_JS; do
-        echo "  $FILE" >&2
-    done
+    printf '  %s\n' "${PARTIAL[@]}" >&2
     echo "Stage or stash the rest of each file, then commit again." >&2
     exit 1
 fi
 
-if [ -n "$STAGED_CS" ]; then
+if [ ${#STAGED_CS[@]} -gt 0 ]; then
     if ! $HAVE_DOTNET; then
         echo "warning: dotnet not found, skipping C# format"
     else
-        dotnet format Ring-O-Meter.slnx --include $STAGED_CS
-        echo "$STAGED_CS" | xargs git add
+        dotnet format Ring-O-Meter.slnx --include "${STAGED_CS[@]}"
+        git --literal-pathspecs add -- "${STAGED_CS[@]}"
 
         # Final check that format actually settled (verify-no-changes will exit non-zero if there is anything still off)
-        dotnet format Ring-O-Meter.slnx --verify-no-changes --include $STAGED_CS
+        dotnet format Ring-O-Meter.slnx --verify-no-changes --include "${STAGED_CS[@]}"
     fi
 fi
 
-if [ -n "$STAGED_JS" ]; then
+if [ ${#STAGED_JS[@]} -gt 0 ]; then
     if ! $HAVE_PNPM; then
         echo "warning: pnpm not found, skipping JS lint (install pnpm to enable)"
     else
         # Staged paths come back repo-root-relative (e.g. web/src/foo.ts); strip the web/ prefix so they resolve when eslint runs with cwd=web.
-        STAGED_JS_REL=$(echo "$STAGED_JS" | sed 's|^web/||')
+        STAGED_JS_REL=("${STAGED_JS[@]#web/}")
 
-        (cd web && pnpm exec eslint --fix $STAGED_JS_REL)
-        echo "$STAGED_JS" | xargs git add
+        (cd web && pnpm exec eslint --fix "${STAGED_JS_REL[@]}")
+        git --literal-pathspecs add -- "${STAGED_JS[@]}"
 
         # Final check fails on unfixable
-        (cd web && pnpm exec eslint $STAGED_JS_REL)
+        (cd web && pnpm exec eslint "${STAGED_JS_REL[@]}")
 
         # Type-check the projects web/tsconfig.json references (src/, every .ts at the web/ root, and web/e2e) so type errors block the commit.
         # web/tsconfig.json is solution-style (no files, only project references), so only build mode checks anything.
