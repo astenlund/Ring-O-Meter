@@ -24,7 +24,7 @@ The hook auto-fixes staged C# and web files and re-stages them whole, so it refu
 
 ### Run the web app
 
-Slice 0 is browser-only; the server arrives in slice 1.
+Local development runs on the Vite dev server alone; it serves its own `/config.json` stub, so no backend is needed.
 
 ```
 cd web
@@ -33,6 +33,17 @@ pnpm dev
 ```
 
 Open the printed URL (typically `http://localhost:5173`).
+
+### The server host
+
+`src/RingOMeter.Server` is the deployed host: a minimal ASP.NET Core app that serves the built web app as static files with the cross-origin isolation headers, plus `/health` and `/config.json`. Its `wwwroot` holds only a `.gitkeep` in the repository; the `Dockerfile` builds `web/dist` and copies it in, so the container image is the way to run the full app as deployed:
+
+```
+docker build -t ring-o-meter .
+docker run --rm -p 8080:8080 ring-o-meter
+```
+
+Then open `http://localhost:8080`.
 
 ## Tests
 
