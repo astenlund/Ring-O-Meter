@@ -8,6 +8,7 @@ A browser-based tuning and vowel-matching companion for barbershop quartets.
 
 - .NET 10 SDK
 - Node.js 22+ and pnpm 10+
+- bash for the pre-commit hook (3.2 or newer, so the macOS system bash works; Git for Windows includes one)
 
 ### One-time setup per clone
 
